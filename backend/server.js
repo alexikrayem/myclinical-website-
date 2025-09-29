@@ -24,10 +24,15 @@ const app = express();
 const PORT = process.env.PORT || 5001;
 
 // Middleware
+const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [];
+
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? ['https://your-frontend-domain.com', 'https://your-admin-domain.com']
-    : ['http://localhost:5001', 'http://localhost:5173', 'http://localhost:4173', 'http://localhost:5174'],
+  origin: process.env.NODE_ENV === 'production' ? allowedOrigins : [
+    'http://localhost:5001',
+    'http://localhost:5173',
+    'http://localhost:4173',
+    'http://localhost:5174'
+  ],
   credentials: true
 }));
 
