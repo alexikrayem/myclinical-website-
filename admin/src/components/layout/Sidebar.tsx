@@ -73,10 +73,11 @@ const Sidebar: React.FC = () => {
   ];
 
   return (
-    <div className="sidebar h-full flex flex-col">
-      <div className="p-6 border-b border-gray-200">
+    <div className="h-full flex flex-col">
+      {/* Brand */}
+      <div className="sidebar-brand">
         <div className="flex items-center space-x-3 space-x-reverse">
-          <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl flex items-center justify-center">
+          <div className="w-10 h-10 bg-blue-500 rounded-xl flex items-center justify-center">
             <Sparkles className="w-6 h-6 text-white" />
           </div>
           <div>
@@ -86,32 +87,30 @@ const Sidebar: React.FC = () => {
         </div>
       </div>
 
-      <nav className="flex-1 p-4 space-y-2">
-          {menuItems.map((item) => {
-            const Icon = item.icon;
-            return (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  className={`sidebar-item ${
-                    isActive(item.path)
-                      ? 'active'
-                      : ''
-                  }`}
-                >
-                  <Icon size={20} className={`sidebar-icon ${isActive(item.path) ? 'text-white' : item.color}`} />
-                  <span>{item.label}</span>
-                </Link>
-            );
-          })}
+      {/* Navigation */}
+      <nav className="sidebar-nav flex-1">
+        {menuItems.map((item) => {
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.path}
+              to={item.path}
+              className={`sidebar-item ${isActive(item.path) ? 'active' : ''}`}
+            >
+              <Icon size={20} className="sidebar-icon" />
+              <span>{item.label}</span>
+            </Link>
+          );
+        })}
       </nav>
 
-      <div className="p-4 border-t">
+      {/* Logout */}
+      <div className="p-4 border-t border-gray-200">
         <button
           onClick={handleLogout}
-          className="sidebar-item w-full text-red-600 hover:bg-red-50 hover:text-red-700"
+          className="sidebar-item w-full text-red-600 hover:bg-red-50"
         >
-          <LogOut size={20} className="sidebar-icon text-red-500" />
+          <LogOut size={20} className="sidebar-icon" />
           <span>تسجيل الخروج</span>
         </button>
       </div>

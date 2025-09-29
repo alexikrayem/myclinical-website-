@@ -39,7 +39,6 @@ const Dashboard: React.FC = () => {
         });
       } catch (error) {
         console.error('Error fetching stats:', error);
-        // Fallback to default values
         setStats({
           totalArticles: 0,
           totalResearch: 0,
@@ -60,33 +59,25 @@ const Dashboard: React.FC = () => {
       title: 'إجمالي المقالات',
       value: stats.totalArticles,
       icon: FileText,
-      color: 'from-blue-500 to-blue-600',
-      textColor: 'text-blue-600',
-      bgColor: 'bg-blue-50',
+      color: 'bg-blue-500',
     },
     {
       title: 'الأبحاث العلمية',
       value: stats.totalResearch,
       icon: BookOpen,
-      color: 'from-purple-500 to-purple-600',
-      textColor: 'text-purple-600',
-      bgColor: 'bg-purple-50',
+      color: 'bg-purple-500',
     },
     {
       title: 'المقالات المميزة',
       value: stats.featuredArticles,
       icon: TrendingUp,
-      color: 'from-yellow-500 to-yellow-600',
-      textColor: 'text-yellow-600',
-      bgColor: 'bg-yellow-50',
+      color: 'bg-yellow-500',
     },
     {
       title: 'المؤلفون',
       value: stats.totalAuthors,
       icon: Users,
-      color: 'from-green-500 to-green-600',
-      textColor: 'text-green-600',
-      bgColor: 'bg-green-50',
+      color: 'bg-green-500',
     },
   ];
 
@@ -112,6 +103,7 @@ const Dashboard: React.FC = () => {
   return (
     <AdminLayout>
       <div className="space-y-8">
+        {/* Welcome Section */}
         <div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">مرحباً بك في لوحة التحكم</h1>
           <p className="text-gray-600">إدارة محتوى منصة طب الأسنان العربي</p>
@@ -128,12 +120,9 @@ const Dashboard: React.FC = () => {
                     <p className="text-sm font-semibold text-gray-600 mb-1">{stat.title}</p>
                     <p className="text-3xl font-bold text-gray-900">{stat.value}</p>
                   </div>
-                  <div className={`stats-icon bg-gradient-to-r ${stat.color}`}>
-                    <Icon size={20} />
+                  <div className={`stats-icon ${stat.color}`}>
+                    <Icon size={20} className="text-white" />
                   </div>
-                </div>
-                <div className={`h-2 ${stat.bgColor} rounded-full overflow-hidden`}>
-                  <div className={`h-full bg-gradient-to-r ${stat.color} w-full transform origin-left animate-pulse`}></div>
                 </div>
               </div>
             );
@@ -146,9 +135,9 @@ const Dashboard: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <Link
               to="/articles/create"
-              className="card p-6 text-center hover:shadow-xl transition-all duration-300 group"
+              className="card p-6 text-center hover:shadow-lg transition-all duration-300 group text-decoration-none"
             >
-              <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
+              <div className="w-16 h-16 bg-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
                 <Plus size={24} className="text-white" />
               </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">إضافة مقال جديد</h3>
@@ -157,9 +146,9 @@ const Dashboard: React.FC = () => {
             
             <Link
               to="/research/create"
-              className="card p-6 text-center hover:shadow-xl transition-all duration-300 group"
+              className="card p-6 text-center hover:shadow-lg transition-all duration-300 group text-decoration-none"
             >
-              <div className="w-16 h-16 bg-gradient-to-r from-purple-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
+              <div className="w-16 h-16 bg-purple-500 rounded-2xl flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
                 <BookOpen size={24} className="text-white" />
               </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">إضافة بحث علمي</h3>
@@ -168,9 +157,9 @@ const Dashboard: React.FC = () => {
             
             <Link
               to="/authors/create"
-              className="card p-6 text-center hover:shadow-xl transition-all duration-300 group"
+              className="card p-6 text-center hover:shadow-lg transition-all duration-300 group text-decoration-none"
             >
-              <div className="w-16 h-16 bg-gradient-to-r from-green-500 to-green-600 rounded-2xl flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
+              <div className="w-16 h-16 bg-green-500 rounded-2xl flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
                 <Users size={24} className="text-white" />
               </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">إضافة مؤلف</h3>

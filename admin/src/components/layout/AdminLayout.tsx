@@ -11,28 +11,32 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
   const { user } = useAuth();
 
   return (
-    <div className="flex h-screen bg-gradient-to-br from-gray-50 to-gray-100" dir="rtl">
-      <div className="w-64 flex-shrink-0">
+    <div className="admin-layout">
+      {/* Sidebar */}
+      <div className="admin-sidebar">
         <Sidebar />
       </div>
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Modern Header */}
-        <header className="header">
+      
+      {/* Main Content Area */}
+      <div className="admin-main">
+        {/* Header */}
+        <header className="admin-header">
           <div className="header-content">
             <div>
               <h1 className="header-title">لوحة التحكم</h1>
               <p className="text-sm text-gray-600">منصة طب الأسنان العربي</p>
             </div>
+            
             <div className="header-actions">
-              <button className="action-button">
+              <button className="action-button" title="الإشعارات">
                 <Bell size={20} />
               </button>
-              <button className="action-button">
+              <button className="action-button" title="الإعدادات">
                 <Settings size={20} />
               </button>
               <div className="flex items-center space-x-3 space-x-reverse">
-                <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full flex items-center justify-center">
-                  <User size={16} className="text-white" />
+                <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center">
+                  <User size={20} className="text-white" />
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-semibold text-gray-900">{user?.email}</p>
@@ -43,10 +47,9 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
           </div>
         </header>
         
-        <main className="content-area">
-          <div className="content-container">
+        {/* Content */}
+        <main className="admin-content">
           {children}
-          </div>
         </main>
       </div>
     </div>
