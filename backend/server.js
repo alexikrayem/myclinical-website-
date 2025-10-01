@@ -11,6 +11,8 @@ import articlesRoutes from './routes/articles.js';
 import researchRoutes from './routes/research.js';
 import adminRoutes from './routes/admin.js';
 import authorsRoutes from './routes/authors.js';
+import aiRoutes from './routes/ai.js';
+
 
 // Middleware
 import { errorHandler } from './middleware/errorHandler.js';
@@ -24,15 +26,10 @@ const app = express();
 const PORT = process.env.PORT || 5001;
 
 // Middleware
-const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [];
-
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' ? allowedOrigins : [
-    'http://localhost:5001',
-    'http://localhost:5173',
-    'http://localhost:4173',
-    'http://localhost:5174'
-  ],
+  origin: process.env.NODE_ENV === 'production' 
+    ? ['https://your-frontend-domain.com', 'https://your-admin-domain.com']
+    : ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:4173', 'http://localhost:5174'],
   credentials: true
 }));
 
@@ -83,6 +80,7 @@ app.use('/api/articles', articlesRoutes);
 app.use('/api/research', researchRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/authors', authorsRoutes);
+app.use('/api/ai', aiRoutes);
 
 // 404 handler for API routes
 app.use('/api/*', (req, res) => {

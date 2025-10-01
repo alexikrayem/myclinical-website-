@@ -85,7 +85,6 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
       [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
     }));
     
-    // Clear error when user starts typing
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
     }
@@ -397,7 +396,6 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
               </div>
             )}
 
-            {/* Image Preview */}
             {(formData.cover_image_url || coverImageFile) && (
               <div className="image-preview">
                 <img

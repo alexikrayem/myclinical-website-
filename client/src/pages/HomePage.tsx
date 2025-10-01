@@ -35,7 +35,7 @@ const HomePage: React.FC = () => {
   return (
     <div className="layout-modern">
       {/* Hero Section */}
-      <section className="relative py-16 lg:py-24 overflow-hidden min-h-[60vh] md:min-h-[70vh] flex items-center justify-center text-white">
+      <section className="relative py-12 lg:py-16 overflow-hidden min-h-[60vh] md:min-h-[70vh] flex items-center justify-center text-white">
         {/* Background Gradient */}
         <div className="absolute inset-0 z-0 bg-gradient-to-br from-blue-700 via-blue-800 to-purple-900 opacity-95"></div>
         {/* Subtle Dots Pattern Overlay (if `pattern-dots` is a CSS utility) */}
@@ -51,7 +51,7 @@ const HomePage: React.FC = () => {
             </div>
             
             {/* Heading */}
-            <h1 className="text-5xl md:text-6xl lg:text-7xl font-extrabold text-white mb-6 leading-tight drop-shadow-lg">
+            <h1 className="text-4xl md:text-5xl lg:text-5xl font-extrabold text-white mb-6 leading-tight drop-shadow-lg">
               منصة طب الأسنان
               <span className="block text-blue-200">العربي</span>
             </h1>
@@ -85,7 +85,7 @@ const HomePage: React.FC = () => {
       </section>
 
       {/* Stats Section */}
-      <section className="section-modern-sm bg-white">
+      <section className="py-12 bg-white">
         <div className="container-modern">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div className="text-center">
@@ -114,7 +114,7 @@ const HomePage: React.FC = () => {
       </section>
 
       {/* Featured Articles */}
-      <section className="section-modern bg-gray-50">
+      <section className="py-12 bg-gray-50">
         <div className="container-modern">
           <div className="text-center mb-12">
             <div className="inline-flex items-center bg-blue-100 text-blue-800 rounded-full px-4 py-2 mb-4">
@@ -131,7 +131,7 @@ const HomePage: React.FC = () => {
       </section>
 
       {/* Categories Section */}
-      <section className="section-modern bg-white">
+      <section className="py-12 bg-white">
         <div className="container-modern">
           <div className="text-center mb-12">
             <h2 className="text-4xl lg:text-5xl font-extrabold text-gray-900 mb-4 leading-tight">التخصصات الطبية</h2> {/* Updated heading style */}
@@ -145,7 +145,7 @@ const HomePage: React.FC = () => {
               <Link 
                 key={category.id}
                 to={`/articles?tag=${encodeURIComponent(category.id)}`}
-                className="group relative overflow-hidden rounded-2xl card-shadow-lg h-64 transition-modern hover:scale-105"
+                className="group relative overflow-hidden rounded-2xl card-shadow-lg h-48 transition-modern hover:scale-105"
               >
                 <img 
                   src={category.image} 
@@ -168,7 +168,7 @@ const HomePage: React.FC = () => {
       </section>
 
       {/* Latest Articles */}
-      <section className="section-modern bg-gray-50">
+      <section className="py-12 bg-gray-50">
         <div className="container-modern">
           <div className="flex flex-col md:flex-row justify-between items-center mb-12 text-center md:text-right"> {/* Adjusted for RTL and responsiveness */}
             <div>
