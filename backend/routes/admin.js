@@ -7,7 +7,10 @@ import { dirname } from 'path';
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import { validateArticle, validateResearch } from '../middleware/validation.js';
-import { authenticateToken } from '../middleware/auth.js';
+import { authenticateToken, trackLoginAttempt, checkLoginAllowed } from '../middleware/auth.js';
+import { authLimiter, uploadLimiter } from '../middleware/rateLimiter.js';
+import { validateUploadedFile } from '../middleware/fileValidation.js';
+import { sanitizeFileName } from '../middleware/inputSanitizer.js';
 
 dotenv.config();
 
@@ -52,12 +55,28 @@ const upload = multer({
 });
 
 // Admin authentication - FIXED
-router.post('/login', async (req, res) => {
+// Admin authentication with rate limiting and security
+router.post('/login', authLimiter, checkLoginAllowed, async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    // Input validation
     if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
+      trackLoginAttempt(email || req.ip, false);
+      return res.status(400).json({ 
+        error: 'Email and password are required',
+        code: 'MISSING_CREDENTIALS'
+      });
+    }
+
+    // Basic email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      trackLoginAttempt(email, false);
+      return res.status(400).json({ 
+        error: 'Invalid email format',
+        code: 'INVALID_EMAIL'
+      });
     }
 
     // Sign in with Supabase Auth
@@ -67,12 +86,26 @@ router.post('/login', async (req, res) => {
     });
 
     if (authError) {
-      console.error('Auth error:', authError);
-      return res.status(401).json({ error: 'Invalid credentials' });
+      // Track failed attempt
+      const attemptResult = trackLoginAttempt(email, false);
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Auth error:', authError.message);
+      }
+      
+      return res.status(401).json({ 
+        error: 'Invalid email or password',
+        code: 'INVALID_CREDENTIALS',
+        remainingAttempts: attemptResult.remainingAttempts
+      });
     }
 
     if (!authData.user) {
-      return res.status(401).json({ error: 'Authentication failed' });
+      trackLoginAttempt(email, false);
+      return res.status(401).json({ 
+        error: 'Authentication failed',
+        code: 'AUTH_FAILED'
+      });
     }
 
     // Check if the user is an admin
@@ -82,31 +115,73 @@ router.post('/login', async (req, res) => {
       .eq('id', authData.user.id)
       .single();
 
-    if (adminError) {
-      console.error('Admin check error:', adminError);
-      return res.status(403).json({ error: 'User is not an admin' });
+    if (adminError || !adminData) {
+      trackLoginAttempt(email, false);
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Admin check error:', adminError);
+      }
+      
+      return res.status(403).json({ 
+        error: 'Access denied - insufficient permissions',
+        code: 'NOT_ADMIN'
+      });
     }
 
-    if (!adminData) {
-      return res.status(403).json({ error: 'Unauthorized access - not an admin' });
-    }
+    // Successful login - reset attempts
+    trackLoginAttempt(email, true);
+
+    // Set secure cookie options
+    const cookieOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    };
 
     // Return success response with session data
-    res.json({
-      message: 'Login successful',
-      user: {
-        id: adminData.id,
-        email: adminData.email,
-        role: adminData.role,
-      },
-      session: authData.session,
-    });
+    res
+      .cookie('session', authData.session.access_token, cookieOptions)
+      .json({
+        message: 'Login successful',
+        user: {
+          id: adminData.id,
+          email: adminData.email,
+          role: adminData.role,
+        },
+        session: {
+          access_token: authData.session.access_token,
+          expires_at: authData.session.expires_at,
+        },
+      });
   } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ error: 'Internal server error during login' });
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Login error:', error);
+    }
+    res.status(500).json({ 
+      error: 'An error occurred during login',
+      code: 'INTERNAL_ERROR'
+    });
   }
 });
 
+// Logout endpoint
+router.post('/logout', authenticateToken, async (req, res) => {
+  try {
+    // Clear session cookie
+    res.clearCookie('session');
+    
+    res.json({ 
+      message: 'Logout successful',
+      code: 'LOGOUT_SUCCESS'
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      error: 'An error occurred during logout',
+      code: 'LOGOUT_ERROR'
+    });
+  }
+});
 // Get admin profile
 router.get('/profile', authenticateToken, async (req, res) => {
   try {
@@ -126,7 +201,7 @@ router.get('/profile', authenticateToken, async (req, res) => {
 });
 
 // Create new article
-router.post('/articles', authenticateToken, upload.single('cover_image'), validateArticle, async (req, res) => {
+router.post('/articles', authenticateToken, uploadLimiter, upload.single('cover_image'), validateUploadedFile(['jpg', 'jpeg', 'png']), validateArticle, async (req, res) => {
   try {
     const { title, excerpt, content, author, tags, is_featured } = req.body;
     
@@ -168,7 +243,7 @@ router.post('/articles', authenticateToken, upload.single('cover_image'), valida
 });
 
 // Update article
-router.put('/articles/:id', authenticateToken, upload.single('cover_image'), validateArticle, async (req, res) => {
+router.put('/articles/:id', authenticateToken, uploadLimiter, upload.single('cover_image'), validateUploadedFile(['jpg', 'jpeg', 'png']), validateArticle, async (req, res) => {
   try {
     const { id } = req.params;
     const { title, excerpt, content, author, tags, is_featured } = req.body;
@@ -261,7 +336,7 @@ router.delete('/articles/:id', authenticateToken, async (req, res) => {
 });
 
 // Create new research
-router.post('/research', authenticateToken, upload.single('research_file'), validateResearch, async (req, res) => {
+router.post('/research', authenticateToken, uploadLimiter, upload.single('research_file'), validateUploadedFile(['pdf', 'doc', 'docx']), validateResearch, async (req, res) => {
   try {
     const { title, abstract, authors, journal, publication_date } = req.body;
     
@@ -295,7 +370,7 @@ router.post('/research', authenticateToken, upload.single('research_file'), vali
 });
 
 // Update research
-router.put('/research/:id', authenticateToken, upload.single('research_file'), validateResearch, async (req, res) => {
+router.put('/research/:id', authenticateToken, uploadLimiter, upload.single('research_file'), validateUploadedFile(['pdf', 'doc', 'docx']), validateResearch, async (req, res) => {
   try {
     const { id } = req.params;
     const { title, abstract, authors, journal, publication_date } = req.body;
@@ -387,7 +462,7 @@ router.delete('/research/:id', authenticateToken, async (req, res) => {
 // Authors management routes
 
 // Create new author
-router.post('/authors', authenticateToken, upload.single('image'), async (req, res) => {
+router.post('/authors', authenticateToken, uploadLimiter, upload.single('image'), validateUploadedFile(['jpg', 'jpeg', 'png']), async (req, res) => {
   try {
     const { 
       name, 
@@ -441,7 +516,7 @@ router.post('/authors', authenticateToken, upload.single('image'), async (req, r
 });
 
 // Update author
-router.put('/authors/:id', authenticateToken, upload.single('image'), async (req, res) => {
+router.put('/authors/:id', authenticateToken, uploadLimiter, upload.single('image'), validateUploadedFile(['jpg', 'jpeg', 'png']), async (req, res) => {
   try {
     const { id } = req.params;
     const { 

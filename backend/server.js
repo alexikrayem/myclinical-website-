@@ -5,6 +5,7 @@ import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import cookieParser from 'cookie-parser';
 
 // Routes
 import articlesRoutes from './routes/articles.js';
@@ -13,11 +14,19 @@ import adminRoutes from './routes/admin.js';
 import authorsRoutes from './routes/authors.js';
 import aiRoutes from './routes/ai.js';
 
-
-// Middleware
+// Security Middleware
 import { errorHandler } from './middleware/errorHandler.js';
+import { securityHeaders, customSecurityHeaders } from './middleware/securityHeaders.js';
+import { apiLimiter } from './middleware/rateLimiter.js';
+import { sanitizeData, preventXSS, preventHPP, validateInput } from './middleware/inputSanitizer.js';
+import { preventSensitiveFileAccess } from './middleware/fileValidation.js';
+import { validateEnvironment, validateProductionSecurity, requireValidEnvironment } from './middleware/envValidator.js';
+import { getCorsOrigins } from './config/security.js';
 
+// Load and validate environment variables
 dotenv.config();
+validateEnvironment();
+validateProductionSecurity();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -25,23 +34,59 @@ const __dirname = dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 5001;
 
-// Middleware
+// Trust proxy (important for rate limiting and security when behind a proxy)
+app.set('trust proxy', 1);
+
+// Security Headers - Apply first
+app.use(securityHeaders);
+app.use(customSecurityHeaders);
+
+// CORS Configuration with security
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? ['https://doctortabeeb.netlify.app', 'https://iridescent-axolotl-f6b4f6.netlify.app']
-    : ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:4173', 'http://localhost:5174'],
-  credentials: true
+  origin: getCorsOrigins(),
+  credentials: true,
+  optionsSuccessStatus: 200,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['RateLimit-Limit', 'RateLimit-Remaining', 'RateLimit-Reset'],
+  maxAge: 86400, // 24 hours
 }));
 
+// Body parsing with size limits
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Health check endpoint
+// Cookie parser for session management
+app.use(cookieParser());
+
+// Input sanitization and validation
+app.use(sanitizeData); // Prevent NoSQL injection
+app.use(preventXSS); // Prevent XSS attacks
+app.use(preventHPP); // Prevent HTTP Parameter Pollution
+app.use(validateInput); // Custom input validation
+
+// Environment validation middleware
+app.use(requireValidEnvironment);
+
+// Health check endpoint (no rate limiting)
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'OK', 
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
+    security: 'enabled'
+  });
+});
+
+// Security status endpoint (for monitoring)
+app.get('/security-status', (req, res) => {
+  res.json({
+    headers: 'enabled',
+    rateLimiting: 'enabled',
+    inputSanitization: 'enabled',
+    cors: 'configured',
+    fileValidation: 'enabled',
+    timestamp: new Date().toISOString()
   });
 });
 
@@ -72,8 +117,21 @@ const upload = multer({
   }
 });
 
-// Make upload directory static
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+// Serve uploads directory with security checks
+app.use('/uploads', preventSensitiveFileAccess, express.static(path.join(__dirname, '../uploads'), {
+  dotfiles: 'deny', // Don't serve hidden files
+  index: false, // Don't serve directory indexes
+  setHeaders: (res, filePath) => {
+    // Add security headers for uploaded files
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    // Prevent direct execution of uploaded files
+    res.setHeader('Content-Disposition', 'attachment');
+  }
+}));
+
+// Apply general API rate limiting to all API routes
+app.use('/api/', apiLimiter);
 
 // API Routes
 app.use('/api/articles', articlesRoutes);

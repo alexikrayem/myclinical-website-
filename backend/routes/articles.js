@@ -8,6 +8,8 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 const pdfParse = require("pdf-parse");
+import { aiLimiter, searchLimiter, uploadLimiter } from '../middleware/rateLimiter.js';
+import { validateUploadedFile } from '../middleware/fileValidation.js';
 
 dotenv.config();
 
@@ -24,7 +26,7 @@ const upload = multer({ dest: "uploads/" });
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 // AI artciles 
-router.post("/generate-article", async (req, res) => {
+router.post("/generate-article", aiLimiter, async (req, res) => {
   try {
     const { text, language, articleType } = req.body;
 
@@ -58,7 +60,7 @@ router.post("/generate-article", async (req, res) => {
 });
 
 // === Generate article from file (PDF or TXT) ===
-router.post("/generate-article-from-file", upload.single("file"), async (req, res) => {
+router.post("/generate-article-from-file", aiLimiter, uploadLimiter, upload.single("file"), validateUploadedFile(['pdf', 'txt']), async (req, res) => {
   try {
     const { language, articleType } = req.body;
     const filePath = req.file.path;
@@ -101,7 +103,7 @@ router.post("/generate-article-from-file", upload.single("file"), async (req, re
 });
 
 // Get all articles with advanced search
-router.get('/', async (req, res) => {
+router.get('/', searchLimiter, async (req, res) => {
   try {
     const { tag, search, limit = 12, page = 1 } = req.query;
     const offset = (page - 1) * limit;
