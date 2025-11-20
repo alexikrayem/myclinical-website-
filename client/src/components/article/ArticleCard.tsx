@@ -14,13 +14,14 @@ interface ArticleCardProps {
     author: string;
     tags: string[];
     is_featured?: boolean;
+    author_image?: string;
   };
   featured?: boolean;
 }
 
 const ArticleCard: React.FC<ArticleCardProps> = ({ article, featured = false }) => {
   const navigate = useNavigate();
-  
+
   const formattedDate = formatDistance(
     new Date(article.publication_date),
     new Date(),
@@ -32,7 +33,7 @@ const ArticleCard: React.FC<ArticleCardProps> = ({ article, featured = false }) 
     if ((e.target as HTMLElement).closest('a, button')) {
       return;
     }
-    
+
     // Navigate to article and scroll to top
     navigate(`/articles/${article.id}`);
     setTimeout(() => {
@@ -42,34 +43,42 @@ const ArticleCard: React.FC<ArticleCardProps> = ({ article, featured = false }) 
 
   if (featured) {
     return (
-      <div 
+      <div
         className="relative overflow-hidden rounded-3xl card-shadow-lg group cursor-pointer transition-modern hover:scale-[1.02]"
         onClick={handleCardClick}
       >
         <div className="relative h-[500px]">
-          <img 
-            src={article.cover_image} 
+          <img
+            src={article.cover_image}
             alt={article.title}
-            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
+            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent"></div>
           <div className="absolute inset-0 bg-gradient-to-br from-blue-600/20 to-purple-600/20"></div>
-          
+
           <div className="absolute top-6 right-6">
             <span className="status-featured inline-flex items-center">
               <Sparkles size={14} className="ml-1" />
               مقال مميز
             </span>
           </div>
-          
+
           <div className="absolute bottom-0 left-0 right-0 p-8 text-white">
             <h2 className="text-2xl lg:text-3xl font-bold mb-3 line-clamp-2 leading-tight">{article.title}</h2>
             <p className="mb-4 text-blue-100 line-clamp-2 text-lg leading-relaxed">{article.excerpt}</p>
-            
+
             <div className="flex items-center justify-between">
               <div className="flex items-center text-sm text-blue-200 space-x-4 space-x-reverse">
                 <div className="flex items-center">
-                  <User size={16} className="ml-1" />
+                  {article.author_image ? (
+                    <img
+                      src={article.author_image}
+                      alt={article.author}
+                      className="w-8 h-8 rounded-full object-cover ml-2 border-2 border-white/20"
+                    />
+                  ) : (
+                    <User size={16} className="ml-1" />
+                  )}
                   <span className="font-medium">{article.author}</span>
                 </div>
                 <div className="flex items-center">
@@ -77,7 +86,7 @@ const ArticleCard: React.FC<ArticleCardProps> = ({ article, featured = false }) 
                   <span>{formattedDate}</span>
                 </div>
               </div>
-              
+
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -99,18 +108,18 @@ const ArticleCard: React.FC<ArticleCardProps> = ({ article, featured = false }) 
   }
 
   return (
-    <div 
+    <div
       className="bg-white rounded-2xl overflow-hidden card-shadow group cursor-pointer transition-modern hover:scale-[1.02] animate-scaleIn"
       onClick={handleCardClick}
     >
       <div className="relative overflow-hidden">
-        <img 
-          src={article.cover_image} 
-          alt={article.title} 
+        <img
+          src={article.cover_image}
+          alt={article.title}
           className="w-full h-56 object-cover transition-transform duration-500 group-hover:scale-110"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-        
+
         {article.is_featured && (
           <div className="absolute top-4 right-4">
             <span className="status-featured inline-flex items-center text-xs">
@@ -120,12 +129,12 @@ const ArticleCard: React.FC<ArticleCardProps> = ({ article, featured = false }) 
           </div>
         )}
       </div>
-      
+
       <div className="p-6">
         <div className="flex flex-wrap gap-2 mb-4">
           {article.tags.slice(0, 2).map((tag, index) => (
-            <Link 
-              key={index} 
+            <Link
+              key={index}
               to={`/articles?tag=${encodeURIComponent(tag)}`}
               className="tag-modern inline-flex items-center"
               onClick={(e) => e.stopPropagation()}
@@ -140,13 +149,13 @@ const ArticleCard: React.FC<ArticleCardProps> = ({ article, featured = false }) 
             </span>
           )}
         </div>
-        
+
         <h3 className="text-xl font-bold text-gray-900 mb-3 line-clamp-2 leading-tight group-hover:text-blue-600 transition-colors">
           {article.title}
         </h3>
-        
+
         <p className="text-gray-600 mb-4 line-clamp-2 leading-relaxed">{article.excerpt}</p>
-        
+
         <div className="flex items-center justify-between pt-4 border-t border-gray-100">
           <div className="flex items-center text-sm text-gray-500">
             <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center ml-3">
@@ -157,7 +166,7 @@ const ArticleCard: React.FC<ArticleCardProps> = ({ article, featured = false }) 
               <div className="text-xs text-gray-500">{formattedDate}</div>
             </div>
           </div>
-          
+
           <div className="text-blue-600 group-hover:text-blue-700 transition-colors">
             <ArrowLeft size={20} className="transform group-hover:translate-x-1 transition-transform" />
           </div>

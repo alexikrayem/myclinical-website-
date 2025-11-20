@@ -29,8 +29,8 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
       ['bold', 'italic', 'underline', 'strike'],
       [{ 'align': [] }],
-      [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-      [{ 'indent': '-1'}, { 'indent': '+1' }],
+      [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+      [{ 'indent': '-1' }, { 'indent': '+1' }],
       ['link', 'image'],
       [{ 'color': [] }, { 'background': [] }],
       ['blockquote', 'code-block'],
@@ -62,25 +62,25 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       toast.error('يرجى اختيار ملف');
       return;
     }
-    
+
     if (inputType === 'text' && !textInput.trim()) {
       toast.error('يرجى إدخال النص');
       return;
     }
 
     setAiLoading(true);
-    
+
     try {
       const formData = new FormData();
-      
+
       if (inputType === 'file' && file) {
         formData.append('file', file);
       } else {
         formData.append('textInput', textInput);
       }
-      
+
       formData.append('language', 'arabic');
-      formData.append('contentType', 'article');
+      formData.append('articleType', 'article');
 
       const response = await api.post('/ai/generate-content', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
@@ -93,7 +93,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         setFile(null);
         setTextInput('');
       }
-      
+
     } catch (error: any) {
       console.error('Error generating content:', error);
       const errorMessage = error.response?.data?.error || 'حدث خطأ أثناء توليد المحتوى';
@@ -115,7 +115,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
           توليد المحتوى بالذكاء الاصطناعي
         </button>
       </div>
-      
+
       <div className="bg-white rounded-lg border">
         <ReactQuill
           theme="snow"
@@ -162,22 +162,20 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                 <div className="flex space-x-4 space-x-reverse">
                   <button
                     onClick={() => setInputType('text')}
-                    className={`flex-1 p-4 rounded-xl border-2 transition-all ${
-                      inputType === 'text'
+                    className={`flex-1 p-4 rounded-xl border-2 transition-all ${inputType === 'text'
                         ? 'border-blue-500 bg-blue-50 text-blue-700'
                         : 'border-gray-200 hover:border-gray-300'
-                    }`}
+                      }`}
                   >
                     <div className="font-medium">إدخال نص</div>
                     <div className="text-xs text-gray-500">نسخ ولصق</div>
                   </button>
                   <button
                     onClick={() => setInputType('file')}
-                    className={`flex-1 p-4 rounded-xl border-2 transition-all ${
-                      inputType === 'file'
+                    className={`flex-1 p-4 rounded-xl border-2 transition-all ${inputType === 'file'
                         ? 'border-blue-500 bg-blue-50 text-blue-700'
                         : 'border-gray-200 hover:border-gray-300'
-                    }`}
+                      }`}
                   >
                     <div className="font-medium">رفع ملف</div>
                     <div className="text-xs text-gray-500">PDF أو نص</div>

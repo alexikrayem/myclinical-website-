@@ -35,6 +35,17 @@ export const articlesApi = {
     }
   },
 
+  // Get all unique tags
+  getTags: async () => {
+    try {
+      const response = await api.get('/articles/tags');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching tags:', error);
+      return [];
+    }
+  },
+
   // Get single article by ID
   getById: async (id: string) => {
     try {
@@ -60,12 +71,12 @@ export const articlesApi = {
   // Search articles
   search: async (query: string, limit = 10, page = 1) => {
     try {
-      const response = await api.get('/articles', { 
-        params: { 
-          search: query, 
-          limit, 
-          page 
-        } 
+      const response = await api.get('/articles', {
+        params: {
+          search: query,
+          limit,
+          page
+        }
       });
       return response.data;
     } catch (error) {
@@ -113,12 +124,12 @@ export const researchApi = {
   // Search research papers
   search: async (query: string, limit = 10, page = 1) => {
     try {
-      const response = await api.get('/research', { 
-        params: { 
-          search: query, 
-          limit, 
-          page 
-        } 
+      const response = await api.get('/research', {
+        params: {
+          search: query,
+          limit,
+          page
+        }
       });
       return response.data;
     } catch (error) {

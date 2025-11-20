@@ -11,6 +11,7 @@ import { authenticateToken, trackLoginAttempt, checkLoginAllowed } from '../midd
 import { authLimiter, uploadLimiter } from '../middleware/rateLimiter.js';
 import { validateUploadedFile } from '../middleware/fileValidation.js';
 import { sanitizeFileName } from '../middleware/inputSanitizer.js';
+import { body, validationResult } from 'express-validator';
 
 dotenv.config();
 
@@ -38,7 +39,7 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ 
+const upload = multer({
   storage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
   fileFilter: function (req, file, cb) {
@@ -56,127 +57,133 @@ const upload = multer({
 
 // Admin authentication - FIXED
 // Admin authentication with rate limiting and security
-router.post('/login', authLimiter, checkLoginAllowed, async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    // Input validation
-    if (!email || !password) {
-      trackLoginAttempt(email || req.ip, false);
-      return res.status(400).json({ 
-        error: 'Email and password are required',
-        code: 'MISSING_CREDENTIALS'
-      });
-    }
-
-    // Basic email format validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      trackLoginAttempt(email, false);
-      return res.status(400).json({ 
-        error: 'Invalid email format',
-        code: 'INVALID_EMAIL'
-      });
-    }
-
-    // Sign in with Supabase Auth
-    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (authError) {
-      // Track failed attempt
-      const attemptResult = trackLoginAttempt(email, false);
-      
-      if (process.env.NODE_ENV === 'development') {
-        console.error('Auth error:', authError.message);
+router.post('/login',
+  authLimiter,
+  checkLoginAllowed,
+  [
+    body('email').isEmail().withMessage('بريد إلكتروني غير صالح').normalizeEmail(),
+    body('password').isLength({ min: 6 }).withMessage('كلمة المرور قصيرة جداً')
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          error: errors.array()[0].msg,
+          code: 'VALIDATION_ERROR'
+        });
       }
-      
-      return res.status(401).json({ 
-        error: 'Invalid email or password',
-        code: 'INVALID_CREDENTIALS',
-        remainingAttempts: attemptResult.remainingAttempts
-      });
-    }
 
-    if (!authData.user) {
-      trackLoginAttempt(email, false);
-      return res.status(401).json({ 
-        error: 'Authentication failed',
-        code: 'AUTH_FAILED'
-      });
-    }
+      const { email, password } = req.body;
 
-    // Check if the user is an admin
-    const { data: adminData, error: adminError } = await supabase
-      .from('admins')
-      .select('*')
-      .eq('id', authData.user.id)
-      .single();
-
-    if (adminError || !adminData) {
-      trackLoginAttempt(email, false);
-      
-      if (process.env.NODE_ENV === 'development') {
-        console.error('Admin check error:', adminError);
+      // Basic email format validation
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        trackLoginAttempt(email, false);
+        return res.status(400).json({
+          error: 'Invalid email format',
+          code: 'INVALID_EMAIL'
+        });
       }
-      
-      return res.status(403).json({ 
-        error: 'Access denied - insufficient permissions',
-        code: 'NOT_ADMIN'
+
+      // Sign in with Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (authError) {
+        // Track failed attempt
+        const attemptResult = trackLoginAttempt(email, false);
+
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Auth error:', authError.message);
+        }
+
+        return res.status(401).json({
+          error: 'Invalid email or password',
+          code: 'INVALID_CREDENTIALS',
+          remainingAttempts: attemptResult.remainingAttempts
+        });
+      }
+
+      if (!authData.user) {
+        trackLoginAttempt(email, false);
+        return res.status(401).json({
+          error: 'Authentication failed',
+          code: 'AUTH_FAILED'
+        });
+      }
+
+      // Check if the user is an admin
+      const { data: adminData, error: adminError } = await supabase
+        .from('admins')
+        .select('*')
+        .eq('id', authData.user.id)
+        .single();
+
+      if (adminError || !adminData) {
+        trackLoginAttempt(email, false);
+
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Admin check error:', adminError);
+        }
+
+        return res.status(403).json({
+          error: 'Access denied - insufficient permissions',
+          code: 'NOT_ADMIN'
+        });
+      }
+
+      // Successful login - reset attempts
+      trackLoginAttempt(email, true);
+
+      // Set secure cookie options
+      const cookieOptions = {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 24 * 60 * 60 * 1000, // 24 hours
+      };
+
+      // Return success response with session data
+      res
+        .cookie('session', authData.session.access_token, cookieOptions)
+        .json({
+          message: 'Login successful',
+          user: {
+            id: adminData.id,
+            email: adminData.email,
+            role: adminData.role,
+          },
+          session: {
+            access_token: authData.session.access_token,
+            expires_at: authData.session.expires_at,
+          },
+        });
+    } catch (error) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Login error:', error);
+      }
+      res.status(500).json({
+        error: 'An error occurred during login',
+        code: 'INTERNAL_ERROR'
       });
     }
-
-    // Successful login - reset attempts
-    trackLoginAttempt(email, true);
-
-    // Set secure cookie options
-    const cookieOptions = {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 24 * 60 * 60 * 1000, // 24 hours
-    };
-
-    // Return success response with session data
-    res
-      .cookie('session', authData.session.access_token, cookieOptions)
-      .json({
-        message: 'Login successful',
-        user: {
-          id: adminData.id,
-          email: adminData.email,
-          role: adminData.role,
-        },
-        session: {
-          access_token: authData.session.access_token,
-          expires_at: authData.session.expires_at,
-        },
-      });
-  } catch (error) {
-    if (process.env.NODE_ENV === 'development') {
-      console.error('Login error:', error);
-    }
-    res.status(500).json({ 
-      error: 'An error occurred during login',
-      code: 'INTERNAL_ERROR'
-    });
-  }
-});
+  });
 
 // Logout endpoint
 router.post('/logout', authenticateToken, async (req, res) => {
   try {
     // Clear session cookie
     res.clearCookie('session');
-    
-    res.json({ 
+
+    res.json({
       message: 'Logout successful',
       code: 'LOGOUT_SUCCESS'
     });
   } catch (error) {
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'An error occurred during logout',
       code: 'LOGOUT_ERROR'
     });
@@ -201,68 +208,85 @@ router.get('/profile', authenticateToken, async (req, res) => {
 });
 
 // Create new article
-router.post('/articles', authenticateToken, uploadLimiter, upload.single('cover_image'), validateUploadedFile(['jpg', 'jpeg', 'png']), validateArticle, async (req, res) => {
-  try {
-    const { title, excerpt, content, author, tags, is_featured } = req.body;
-    
-    let cover_image = '';
-    
-    // If file was uploaded
-    if (req.file) {
-      cover_image = `/uploads/${req.file.filename}`;
-    } else if (req.body.cover_image_url) {
-      // If external URL was provided
-      cover_image = req.body.cover_image_url;
-    } else {
-      return res.status(400).json({ error: 'Cover image is required' });
+router.post('/articles',
+  authenticateToken,
+  uploadLimiter,
+  upload.single('cover_image'),
+  validateUploadedFile(['jpg', 'jpeg', 'png']),
+  validateArticle,
+  [
+    body('title').trim().isLength({ min: 5, max: 200 }).escape(),
+    body('excerpt').trim().isLength({ min: 10, max: 500 }).escape(),
+    // content is HTML, so we might want to sanitize it differently or rely on frontend + basic checks
+    body('author').trim().escape()
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ error: errors.array()[0].msg });
+      }
+
+      const { title, excerpt, content, author, tags, is_featured } = req.body;
+
+      let cover_image = '';
+
+      // If file was uploaded
+      if (req.file) {
+        cover_image = `/uploads/${req.file.filename}`;
+      } else if (req.body.cover_image_url) {
+        // If external URL was provided
+        cover_image = req.body.cover_image_url;
+      } else {
+        return res.status(400).json({ error: 'Cover image is required' });
+      }
+
+      const { data, error } = await supabase
+        .from('articles')
+        .insert([
+          {
+            title,
+            excerpt,
+            content,
+            cover_image,
+            author,
+            tags: JSON.parse(tags), // Convert JSON string to array
+            is_featured: is_featured === 'true',
+            publication_date: new Date().toISOString(),
+          }
+        ])
+        .select();
+
+      if (error) throw error;
+
+      res.status(201).json(data[0]);
+    } catch (error) {
+      console.error('Error creating article:', error);
+      res.status(500).json({ error: 'Failed to create article' });
     }
-    
-    const { data, error } = await supabase
-      .from('articles')
-      .insert([
-        {
-          title,
-          excerpt,
-          content,
-          cover_image,
-          author,
-          tags: JSON.parse(tags), // Convert JSON string to array
-          is_featured: is_featured === 'true',
-          publication_date: new Date().toISOString(),
-        }
-      ])
-      .select();
-    
-    if (error) throw error;
-    
-    res.status(201).json(data[0]);
-  } catch (error) {
-    console.error('Error creating article:', error);
-    res.status(500).json({ error: 'Failed to create article' });
-  }
-});
+  });
 
 // Update article
 router.put('/articles/:id', authenticateToken, uploadLimiter, upload.single('cover_image'), validateUploadedFile(['jpg', 'jpeg', 'png']), validateArticle, async (req, res) => {
   try {
     const { id } = req.params;
     const { title, excerpt, content, author, tags, is_featured } = req.body;
-    
+
     // Get the current article to check if cover image exists
     const { data: existingArticle, error: fetchError } = await supabase
       .from('articles')
       .select('cover_image')
       .eq('id', id)
       .single();
-    
+
     if (fetchError) throw fetchError;
-    
+
     let cover_image = existingArticle.cover_image;
-    
+
     // Update cover image if a new one was uploaded
     if (req.file) {
       cover_image = `/uploads/${req.file.filename}`;
-      
+
       // Delete old image if it's a local file
       if (existingArticle.cover_image.startsWith('/uploads/')) {
         const oldImagePath = path.join(__dirname, '..', '..', existingArticle.cover_image);
@@ -273,7 +297,7 @@ router.put('/articles/:id', authenticateToken, uploadLimiter, upload.single('cov
     } else if (req.body.cover_image_url) {
       cover_image = req.body.cover_image_url;
     }
-    
+
     const { data, error } = await supabase
       .from('articles')
       .update({
@@ -288,9 +312,9 @@ router.put('/articles/:id', authenticateToken, uploadLimiter, upload.single('cov
       })
       .eq('id', id)
       .select();
-    
+
     if (error) throw error;
-    
+
     res.json(data[0]);
   } catch (error) {
     console.error('Error updating article:', error);
@@ -302,24 +326,24 @@ router.put('/articles/:id', authenticateToken, uploadLimiter, upload.single('cov
 router.delete('/articles/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     // Get the article to check if it has a local image to delete
     const { data: article, error: fetchError } = await supabase
       .from('articles')
       .select('cover_image')
       .eq('id', id)
       .single();
-    
+
     if (fetchError) throw fetchError;
-    
+
     // Delete the article
     const { error } = await supabase
       .from('articles')
       .delete()
       .eq('id', id);
-    
+
     if (error) throw error;
-    
+
     // Delete the cover image if it's a local file
     if (article.cover_image.startsWith('/uploads/')) {
       const imagePath = path.join(__dirname, '..', '..', article.cover_image);
@@ -327,7 +351,7 @@ router.delete('/articles/:id', authenticateToken, async (req, res) => {
         fs.unlinkSync(imagePath);
       }
     }
-    
+
     res.json({ message: 'Article deleted successfully' });
   } catch (error) {
     console.error('Error deleting article:', error);
@@ -339,13 +363,13 @@ router.delete('/articles/:id', authenticateToken, async (req, res) => {
 router.post('/research', authenticateToken, uploadLimiter, upload.single('research_file'), validateUploadedFile(['pdf', 'doc', 'docx']), validateResearch, async (req, res) => {
   try {
     const { title, abstract, authors, journal, publication_date } = req.body;
-    
+
     if (!req.file) {
       return res.status(400).json({ error: 'Research file is required' });
     }
-    
+
     const file_url = `/uploads/${req.file.filename}`;
-    
+
     const { data, error } = await supabase
       .from('researches')
       .insert([
@@ -359,9 +383,9 @@ router.post('/research', authenticateToken, uploadLimiter, upload.single('resear
         }
       ])
       .select();
-    
+
     if (error) throw error;
-    
+
     res.status(201).json(data[0]);
   } catch (error) {
     console.error('Error creating research:', error);
@@ -374,22 +398,22 @@ router.put('/research/:id', authenticateToken, uploadLimiter, upload.single('res
   try {
     const { id } = req.params;
     const { title, abstract, authors, journal, publication_date } = req.body;
-    
+
     // Get the current research to check if file exists
     const { data: existingResearch, error: fetchError } = await supabase
       .from('researches')
       .select('file_url')
       .eq('id', id)
       .single();
-    
+
     if (fetchError) throw fetchError;
-    
+
     let file_url = existingResearch.file_url;
-    
+
     // Update file if a new one was uploaded
     if (req.file) {
       file_url = `/uploads/${req.file.filename}`;
-      
+
       // Delete old file if it's a local file
       if (existingResearch.file_url.startsWith('/uploads/')) {
         const oldFilePath = path.join(__dirname, '..', '..', existingResearch.file_url);
@@ -398,7 +422,7 @@ router.put('/research/:id', authenticateToken, uploadLimiter, upload.single('res
         }
       }
     }
-    
+
     const { data, error } = await supabase
       .from('researches')
       .update({
@@ -412,9 +436,9 @@ router.put('/research/:id', authenticateToken, uploadLimiter, upload.single('res
       })
       .eq('id', id)
       .select();
-    
+
     if (error) throw error;
-    
+
     res.json(data[0]);
   } catch (error) {
     console.error('Error updating research:', error);
@@ -426,24 +450,24 @@ router.put('/research/:id', authenticateToken, uploadLimiter, upload.single('res
 router.delete('/research/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     // Get the research to check if it has a local file to delete
     const { data: research, error: fetchError } = await supabase
       .from('researches')
       .select('file_url')
       .eq('id', id)
       .single();
-    
+
     if (fetchError) throw fetchError;
-    
+
     // Delete the research
     const { error } = await supabase
       .from('researches')
       .delete()
       .eq('id', id);
-    
+
     if (error) throw error;
-    
+
     // Delete the file if it's a local file
     if (research.file_url.startsWith('/uploads/')) {
       const filePath = path.join(__dirname, '..', '..', research.file_url);
@@ -451,7 +475,7 @@ router.delete('/research/:id', authenticateToken, async (req, res) => {
         fs.unlinkSync(filePath);
       }
     }
-    
+
     res.json({ message: 'Research deleted successfully' });
   } catch (error) {
     console.error('Error deleting research:', error);
@@ -464,20 +488,20 @@ router.delete('/research/:id', authenticateToken, async (req, res) => {
 // Create new author
 router.post('/authors', authenticateToken, uploadLimiter, upload.single('image'), validateUploadedFile(['jpg', 'jpeg', 'png']), async (req, res) => {
   try {
-    const { 
-      name, 
-      bio, 
-      specialization, 
-      experience_years, 
-      education, 
-      location, 
-      email, 
+    const {
+      name,
+      bio,
+      specialization,
+      experience_years,
+      education,
+      location,
+      email,
       website,
-      is_active 
+      is_active
     } = req.body;
-    
+
     let image = '';
-    
+
     // If file was uploaded
     if (req.file) {
       image = `/uploads/${req.file.filename}`;
@@ -487,7 +511,7 @@ router.post('/authors', authenticateToken, uploadLimiter, upload.single('image')
     } else {
       return res.status(400).json({ error: 'Author image is required' });
     }
-    
+
     const { data, error } = await supabase
       .from('authors')
       .insert([
@@ -505,9 +529,9 @@ router.post('/authors', authenticateToken, uploadLimiter, upload.single('image')
         }
       ])
       .select();
-    
+
     if (error) throw error;
-    
+
     res.status(201).json(data[0]);
   } catch (error) {
     console.error('Error creating author:', error);
@@ -519,33 +543,33 @@ router.post('/authors', authenticateToken, uploadLimiter, upload.single('image')
 router.put('/authors/:id', authenticateToken, uploadLimiter, upload.single('image'), validateUploadedFile(['jpg', 'jpeg', 'png']), async (req, res) => {
   try {
     const { id } = req.params;
-    const { 
-      name, 
-      bio, 
-      specialization, 
-      experience_years, 
-      education, 
-      location, 
-      email, 
+    const {
+      name,
+      bio,
+      specialization,
+      experience_years,
+      education,
+      location,
+      email,
       website,
-      is_active 
+      is_active
     } = req.body;
-    
+
     // Get the current author to check if image exists
     const { data: existingAuthor, error: fetchError } = await supabase
       .from('authors')
       .select('image')
       .eq('id', id)
       .single();
-    
+
     if (fetchError) throw fetchError;
-    
+
     let image = existingAuthor.image;
-    
+
     // Update image if a new one was uploaded
     if (req.file) {
       image = `/uploads/${req.file.filename}`;
-      
+
       // Delete old image if it's a local file
       if (existingAuthor.image.startsWith('/uploads/')) {
         const oldImagePath = path.join(__dirname, '..', '..', existingAuthor.image);
@@ -556,7 +580,7 @@ router.put('/authors/:id', authenticateToken, uploadLimiter, upload.single('imag
     } else if (req.body.image_url) {
       image = req.body.image_url;
     }
-    
+
     const { data, error } = await supabase
       .from('authors')
       .update({
@@ -574,9 +598,9 @@ router.put('/authors/:id', authenticateToken, uploadLimiter, upload.single('imag
       })
       .eq('id', id)
       .select();
-    
+
     if (error) throw error;
-    
+
     res.json(data[0]);
   } catch (error) {
     console.error('Error updating author:', error);
@@ -588,24 +612,24 @@ router.put('/authors/:id', authenticateToken, uploadLimiter, upload.single('imag
 router.delete('/authors/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     // Get the author to check if it has a local image to delete
     const { data: author, error: fetchError } = await supabase
       .from('authors')
       .select('image')
       .eq('id', id)
       .single();
-    
+
     if (fetchError) throw fetchError;
-    
+
     // Delete the author
     const { error } = await supabase
       .from('authors')
       .delete()
       .eq('id', id);
-    
+
     if (error) throw error;
-    
+
     // Delete the image if it's a local file
     if (author.image.startsWith('/uploads/')) {
       const imagePath = path.join(__dirname, '..', '..', author.image);
@@ -613,7 +637,7 @@ router.delete('/authors/:id', authenticateToken, async (req, res) => {
         fs.unlinkSync(imagePath);
       }
     }
-    
+
     res.json({ message: 'Author deleted successfully' });
   } catch (error) {
     console.error('Error deleting author:', error);

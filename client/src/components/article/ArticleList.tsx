@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import ArticleCard from './ArticleCard';
-import { articlesApi } from '../../lib/api';
+import { useArticles } from '../../hooks/useArticles';
 import { Search, Filter, X, Loader, FileText } from 'lucide-react';
 
 interface ArticleListProps {
@@ -12,63 +12,38 @@ interface ArticleListProps {
 
 const ArticleList: React.FC<ArticleListProps> = ({ tag, limit = 12, showFilters = true }) => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [articles, setArticles] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || '');
   const [selectedTags, setSelectedTags] = useState<string[]>(tag ? [tag] : []);
-  const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [showTagFilter, setShowTagFilter] = useState(false);
-  const [totalResults, setTotalResults] = useState(0);
 
-  useEffect(() => {
-    const fetchArticles = async () => {
-      try {
-        setLoading(true);
-        
-        const params: any = { limit };
-        
-        if (selectedTags.length > 0) {
-          params.tag = selectedTags[0];
-        }
-        
-        if (searchTerm) {
-          params.search = searchTerm;
-        }
+  const queryParams = useMemo(() => {
+    const params: any = { limit };
+    if (selectedTags.length > 0) params.tag = selectedTags[0];
+    if (searchTerm) params.search = searchTerm;
+    return params;
+  }, [limit, selectedTags, searchTerm]);
 
-        const response = await articlesApi.getAll(params);
-        const articlesData = response.data || response || [];
-        setArticles(articlesData);
-        setTotalResults(response.pagination?.total || articlesData.length);
+  const { data: response, isLoading: loading } = useArticles(queryParams);
 
-        // Extract unique tags
-        if (articlesData.length > 0) {
-          const allTags: string[] = [];
-          articlesData.forEach((article: any) => {
-            if (Array.isArray(article.tags)) {
-              article.tags.forEach((tag: any) => {
-                if (typeof tag === 'string') {
-                  allTags.push(tag);
-                }
-              });
+  const articles = useMemo(() => response?.data || response || [], [response]);
+  const totalResults = response?.pagination?.total || articles.length;
+
+  const availableTags = useMemo(() => {
+    if (articles.length > 0) {
+      const allTags: string[] = [];
+      articles.forEach((article: any) => {
+        if (Array.isArray(article.tags)) {
+          article.tags.forEach((tag: any) => {
+            if (typeof tag === 'string') {
+              allTags.push(tag);
             }
           });
-          const uniqueTags = [...new Set(allTags)];
-          setAvailableTags(uniqueTags);
-        } else {
-          setAvailableTags([]);
         }
-      } catch (error) {
-        console.error('Error fetching articles:', error);
-        setArticles([]);
-        setTotalResults(0);
-        setAvailableTags([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchArticles();
-  }, [searchTerm, selectedTags, tag, limit]);
+      });
+      return [...new Set(allTags)];
+    }
+    return [];
+  }, [articles]);
 
   // Update URL when search changes
   useEffect(() => {
@@ -87,9 +62,9 @@ const ArticleList: React.FC<ArticleListProps> = ({ tag, limit = 12, showFilters 
   };
 
   const toggleTag = (tagName: string) => {
-    setSelectedTags(prev => 
-      prev.includes(tagName) 
-        ? prev.filter(t => t !== tagName) 
+    setSelectedTags(prev =>
+      prev.includes(tagName)
+        ? prev.filter(t => t !== tagName)
         : [tagName]
     );
   };
@@ -153,19 +128,18 @@ const ArticleList: React.FC<ArticleListProps> = ({ tag, limit = 12, showFilters 
                 </button>
               )}
             </div>
-            
+
             <div className="flex gap-3">
               <button
                 type="button"
                 onClick={toggleTagFilter}
-                className={`btn-secondary inline-flex items-center ${
-                  showTagFilter ? 'bg-blue-50 border-blue-300 text-blue-700' : ''
-                }`}
+                className={`btn-secondary inline-flex items-center ${showTagFilter ? 'bg-blue-50 border-blue-300 text-blue-700' : ''
+                  }`}
               >
                 <Filter size={18} className="ml-2" />
                 تصفية
               </button>
-              
+
               {(searchTerm || selectedTags.length > 0) && (
                 <button
                   type="button"
@@ -219,11 +193,10 @@ const ArticleList: React.FC<ArticleListProps> = ({ tag, limit = 12, showFilters 
                   <button
                     key={tagName}
                     onClick={() => toggleTag(tagName)}
-                    className={`px-4 py-2 rounded-full text-sm font-medium transition-modern ${
-                      selectedTags.includes(tagName)
-                        ? 'bg-blue-500 text-white shadow-lg'
-                        : 'bg-white text-gray-700 hover:bg-blue-50 hover:text-blue-600 border border-gray-200'
-                    }`}
+                    className={`px-4 py-2 rounded-full text-sm font-medium transition-modern ${selectedTags.includes(tagName)
+                      ? 'bg-blue-500 text-white shadow-lg'
+                      : 'bg-white text-gray-700 hover:bg-blue-50 hover:text-blue-600 border border-gray-200'
+                      }`}
                   >
                     {tagName}
                   </button>
@@ -256,7 +229,7 @@ const ArticleList: React.FC<ArticleListProps> = ({ tag, limit = 12, showFilters 
           </div>
           <h3 className="text-xl font-bold text-gray-700 mb-2">لا توجد مقالات</h3>
           <p className="text-gray-500 mb-6 max-w-md mx-auto">
-            {searchTerm || selectedTags.length > 0 
+            {searchTerm || selectedTags.length > 0
               ? 'لم نتمكن من العثور على مقالات تطابق معايير البحث. جرب كلمات مختلفة أو امسح المرشحات.'
               : 'لا توجد مقالات متاحة حالياً.'
             }
@@ -272,7 +245,7 @@ const ArticleList: React.FC<ArticleListProps> = ({ tag, limit = 12, showFilters 
         </div>
       ) : (
         <div className="grid-modern">
-          {articles.map((article, index) => (
+          {articles.map((article: any, index: number) => (
             <div key={article.id} style={{ animationDelay: `${index * 0.1}s` }}>
               <ArticleCard article={article} />
             </div>

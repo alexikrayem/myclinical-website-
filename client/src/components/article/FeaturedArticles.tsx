@@ -1,28 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronRight, ChevronLeft, Loader } from 'lucide-react';
 import ArticleCard from './ArticleCard';
-import { articlesApi } from '../../lib/api';
+import { useFeaturedArticles } from '../../hooks/useArticles';
 
 const FeaturedArticles: React.FC = () => {
-  const [articles, setArticles] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: articles = [], isLoading: loading } = useFeaturedArticles();
   const [currentSlide, setCurrentSlide] = useState(0);
-
-  useEffect(() => {
-    const fetchFeaturedArticles = async () => {
-      try {
-        const data = await articlesApi.getFeatured();
-        setArticles(data || []);
-      } catch (error) {
-        console.error('Error fetching featured articles:', error);
-        setArticles([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchFeaturedArticles();
-  }, []);
 
   // Auto-advance slides
   useEffect(() => {
@@ -30,7 +13,7 @@ const FeaturedArticles: React.FC = () => {
       const interval = setInterval(() => {
         setCurrentSlide((prev) => (prev === articles.length - 1 ? 0 : prev + 1));
       }, 6000);
-      
+
       return () => clearInterval(interval);
     }
   }, [articles.length]);
@@ -65,14 +48,13 @@ const FeaturedArticles: React.FC = () => {
   return (
     <div className="relative">
       <div className="relative overflow-hidden rounded-3xl">
-        {articles.map((article, index) => (
+        {articles.map((article: any, index: number) => (
           <div
             key={article.id}
-            className={`transition-all duration-700 ease-in-out ${
-              index === currentSlide 
-                ? 'opacity-100 transform translate-x-0' 
-                : 'opacity-0 absolute top-0 left-0 right-0 transform translate-x-full'
-            }`}
+            className={`transition-all duration-700 ease-in-out ${index === currentSlide
+              ? 'opacity-100 transform translate-x-0'
+              : 'opacity-0 absolute top-0 left-0 right-0 transform translate-x-full'
+              }`}
           >
             {index === currentSlide && <ArticleCard article={article} featured={true} />}
           </div>
@@ -87,7 +69,7 @@ const FeaturedArticles: React.FC = () => {
             >
               <ChevronLeft size={20} className="mx-auto" />
             </button>
-            
+
             <button
               onClick={nextSlide}
               className="absolute right-6 top-1/2 transform -translate-y-1/2 w-12 h-12 bg-white/90 hover:bg-white text-gray-800 rounded-full shadow-lg transition-all duration-300 hover:scale-110 z-20 backdrop-blur-sm"
@@ -97,15 +79,14 @@ const FeaturedArticles: React.FC = () => {
             </button>
 
             <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 flex space-x-2 z-20">
-              {articles.map((_, index) => (
+              {articles.map((_: any, index: number) => (
                 <button
                   key={index}
                   onClick={() => setCurrentSlide(index)}
-                  className={`w-3 h-3 rounded-full transition-all duration-300 ${
-                    index === currentSlide 
-                      ? 'bg-white scale-125' 
-                      : 'bg-white/50 hover:bg-white/75'
-                  }`}
+                  className={`w-3 h-3 rounded-full transition-all duration-300 ${index === currentSlide
+                    ? 'bg-white scale-125'
+                    : 'bg-white/50 hover:bg-white/75'
+                    }`}
                   aria-label={`Go to slide ${index + 1}`}
                 />
               ))}

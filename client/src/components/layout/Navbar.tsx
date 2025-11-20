@@ -7,6 +7,7 @@ const Navbar: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const location = useLocation();
   const navigate = useNavigate();
+const [showMobileSearch, setShowMobileSearch] = useState(false);
 
   const toggleMenu = () => {
     setIsMenuOpen(!isMenuOpen);
@@ -45,55 +46,60 @@ const Navbar: React.FC = () => {
 
           {/* Mobile menu button - NOW ON THE LEFT */}
           {/* Changed right-0 to left-0 and pr-4 to pl-4 */}
-          <div className="absolute top-1/2 -translate-y-1/2 left-0 md:hidden z-30 pl-4"> 
-            <button 
-              className="p-2 rounded-lg hover:bg-gray-100 transition-colors" 
-              onClick={toggleMenu}
-            >
-              {isMenuOpen ? <X size={24} className="text-gray-700" /> : <Menu size={24} className="text-gray-700" />}
-            </button>
-          </div>
+          {/* Mobile buttons (menu + search) */}
+<div className="absolute top-1/2 -translate-y-1/2 left-0 md:hidden z-30 flex items-center gap-2 pl-4">
+  <button 
+    className="p-2 rounded-lg hover:bg-gray-100 transition-colors" 
+    onClick={() => setIsMenuOpen(!isMenuOpen)}
+  >
+    {isMenuOpen ? <X size={24} className="text-gray-700" /> : <Menu size={24} className="text-gray-700" />}
+  </button>
+
+  <button 
+    className="p-2 rounded-lg hover:bg-gray-100 transition-colors" 
+    onClick={() => setShowMobileSearch(!showMobileSearch)}
+  >
+    <Search size={22} className="text-gray-700" />
+  </button>
+</div>
+
 
           {/* Desktop Navigation */}
           {/* Adjusted margin back to mr-40 to push from the right-aligned logo */}
-          <nav className="hidden md:flex items-center space-x-8 space-x-reverse mr-40"> 
-            <Link 
-              to="/" 
-              className={`nav-link-modern text-gray-700 hover:text-blue-600 transition-colors ${
-                isActive('/') ? 'text-blue-600 font-semibold' : ''
-              }`}
-            >
-              الرئيسية
-            </Link>
-            <Link 
-              to="/articles" 
-              className={`nav-link-modern text-gray-700 hover:text-blue-600 transition-colors ${
-                isActive('/articles') ? 'text-blue-600 font-semibold' : ''
-              }`}
-            >
-              المقالات
-            </Link>
-            <Link 
-              to="/research-topics" 
-              className={`nav-link-modern text-gray-700 hover:text-blue-600 transition-colors ${
-                isActive('/research-topics') ? 'text-blue-600 font-semibold' : ''
-              }`}
-            >
-              أبحاث علمية
-            </Link>
-          </nav>
+        <nav className="hidden md:flex items-center space-x-4 space-x-reverse mr-40">
+  {[
+    { path: '/', label: 'الرئيسية' },
+    { path: '/articles', label: 'المقالات' },
+    { path: '/research-topics', label: 'أبحاث علمية' },
+  ].map(({ path, label }) => (
+    <Link
+      key={path}
+      to={path}
+      className={`relative px-4 py-2 rounded-lg font-medium transition-all duration-300 ${
+        isActive(path)
+          ? 'bg-blue-600 text-white shadow-md'
+          : 'text-gray-700 hover:text-blue-600 hover:bg-blue-50'
+      }`}
+    >
+      {label}
+    </Link>
+  ))}
+</nav>
+
 
           {/* Desktop Search Bar */}
           {/* No changes needed here, it stays on the far right */}
           <div className="hidden md:flex items-center">
             <form onSubmit={handleSearch} className="relative">
-              <input
-                type="text"
-                placeholder="ابحث في المقالات..."
-                className="search-input w-64 text-gray-700 placeholder-gray-400"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
+   <input
+  type="text"
+  placeholder="ابحث في المقالات..."
+  className="search-input w-64 text-gray-700 placeholder-gray-400 bg-white/80 backdrop-blur-md rounded-lg shadow-lg hover:shadow-xl focus:shadow-xl focus:ring-2 focus:ring-blue-400/40 focus:outline-none transition-all duration-300"
+  value={searchQuery}
+  onChange={(e) => setSearchQuery(e.target.value)}
+/>
+
+
               <button 
                 type="submit" 
                 className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-blue-600 transition-colors"
@@ -122,37 +128,50 @@ const Navbar: React.FC = () => {
               </div>
             </form>
             <nav className="flex flex-col space-y-2">
-              <Link 
-                to="/" 
-                className={`nav-link-modern text-gray-700 hover:text-blue-600 hover:bg-blue-50 transition-colors ${
-                  isActive('/') ? 'text-blue-600 font-semibold bg-blue-50' : ''
-                }`} 
-                onClick={toggleMenu}
-              >
-                الرئيسية
-              </Link>
-              <Link 
-                to="/articles" 
-                className={`nav-link-modern text-gray-700 hover:text-blue-600 hover:bg-blue-50 transition-colors ${
-                  isActive('/articles') ? 'text-blue-600 font-semibold bg-blue-50' : ''
-                }`} 
-                onClick={toggleMenu}
-              >
-                المقالات
-              </Link>
-              <Link 
-                to="/research-topics" 
-                className={`nav-link-modern text-gray-700 hover:text-blue-600 hover:bg-blue-50 transition-colors ${
-                  isActive('/research-topics') ? 'text-blue-600 font-semibold bg-blue-50' : ''
-                }`} 
-                onClick={toggleMenu}
-              >
-                أبحاث علمية
-              </Link>
-            </nav>
+  {[
+    { path: '/', label: 'الرئيسية' },
+    { path: '/articles', label: 'المقالات' },
+    { path: '/research-topics', label: 'أبحاث علمية' },
+  ].map(({ path, label }) => (
+    <Link
+      key={path}
+      to={path}
+      onClick={toggleMenu}
+      className={`block px-3 py-2 rounded-md font-medium text-base text-center transition-all duration-300 ${
+        isActive(path)
+          ? 'bg-blue-600 text-white shadow-sm'
+          : 'text-gray-700 hover:text-blue-600 hover:bg-blue-50'
+      }`}
+    >
+      {label}
+    </Link>
+  ))}
+</nav>
+
           </div>
         )}
       </div>
+      {/* Mobile Search Overlay (slides down) */}
+{showMobileSearch && (
+  <div className="md:hidden absolute top-full left-0 w-full bg-white/90 backdrop-blur-md border-b border-gray-200 shadow-lg overflow-hidden animate-slideDown z-40">
+    <form onSubmit={handleSearch} className="relative p-4">
+      <input
+        type="text"
+        placeholder="ابحث في المقالات..."
+        className="w-full text-gray-700 placeholder-gray-400 bg-white/80 backdrop-blur-md rounded-lg border border-black/20 focus:border-black/40 focus:ring-2 focus:ring-blue-400/30 focus:outline-none transition-all duration-300"
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+      />
+      <button 
+        type="submit" 
+        className="absolute right-7 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-blue-600 transition-colors"
+      >
+        <Search size={18} />
+      </button>
+    </form>
+  </div>
+)}
+
     </header>
   );
 };
