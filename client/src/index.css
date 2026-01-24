@@ -3,6 +3,13 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+  font-family: 'MontserratArabic';
+  src: url('/Montserrat-Arabic SemiBold 600.otf') format('opentype');
+  font-weight: 600;
+  font-style: normal;
+}
+
 
 
 :root {

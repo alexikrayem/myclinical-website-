@@ -8,12 +8,18 @@ import Dashboard from './pages/Dashboard';
 import Articles from './pages/Articles';
 import CreateArticle from './pages/CreateArticle';
 import EditArticle from './pages/EditArticle';
+import Categories from './pages/Categories';
 import Research from './pages/Research';
 import CreateResearch from './pages/CreateResearch';
 import EditResearch from './pages/EditResearch';
 import Authors from './pages/Authors';
 import CreateAuthor from './pages/CreateAuthor';
 import EditAuthor from './pages/EditAuthor';
+import Courses from './pages/Courses';
+import CreateCourse from './pages/CreateCourse';
+import EditCourse from './pages/EditCourse';
+import GenerateCodes from './pages/GenerateCodes';
+import LicenseReports from './pages/LicenseReports';
 import NotFoundPage from './pages/NotFoundPage';
 
 // Context
@@ -27,19 +33,26 @@ function App() {
         <Router>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
-            
+
             {/* Protected Routes */}
             <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/articles" element={<ProtectedRoute><Articles /></ProtectedRoute>} />
             <Route path="/articles/create" element={<ProtectedRoute><CreateArticle /></ProtectedRoute>} />
             <Route path="/articles/edit/:id" element={<ProtectedRoute><EditArticle /></ProtectedRoute>} />
+            <Route path="/categories" element={<ProtectedRoute><Categories /></ProtectedRoute>} />
             <Route path="/research" element={<ProtectedRoute><Research /></ProtectedRoute>} />
             <Route path="/research/create" element={<ProtectedRoute><CreateResearch /></ProtectedRoute>} />
             <Route path="/research/edit/:id" element={<ProtectedRoute><EditResearch /></ProtectedRoute>} />
             <Route path="/authors" element={<ProtectedRoute><Authors /></ProtectedRoute>} />
             <Route path="/authors/create" element={<ProtectedRoute><CreateAuthor /></ProtectedRoute>} />
             <Route path="/authors/edit/:id" element={<ProtectedRoute><EditAuthor /></ProtectedRoute>} />
-            
+            <Route path="/courses" element={<ProtectedRoute><Courses /></ProtectedRoute>} />
+            <Route path="/courses/create" element={<ProtectedRoute><CreateCourse /></ProtectedRoute>} />
+            <Route path="/courses/create" element={<ProtectedRoute><CreateCourse /></ProtectedRoute>} />
+            <Route path="/courses/edit/:id" element={<ProtectedRoute><EditCourse /></ProtectedRoute>} />
+            <Route path="/codes/generate" element={<ProtectedRoute><GenerateCodes /></ProtectedRoute>} />
+            <Route path="/licenses" element={<ProtectedRoute><LicenseReports /></ProtectedRoute>} />
+
             {/* 404 Page */}
             <Route path="*" element={<NotFoundPage />} />
           </Routes>

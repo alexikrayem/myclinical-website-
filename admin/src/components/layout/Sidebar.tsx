@@ -1,13 +1,17 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  FileText, 
-  BookOpen, 
+import {
+  LayoutDashboard,
+  FileText,
+  BookOpen,
   Users,
-  Plus, 
+  Plus,
   Sparkles,
-  LogOut
+  Shield,
+  Video,
+  CreditCard,
+  LogOut,
+  Tag
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -47,6 +51,12 @@ const Sidebar: React.FC = () => {
       color: 'text-green-400',
     },
     {
+      icon: Tag,
+      label: 'التصنيفات',
+      path: '/categories',
+      color: 'text-yellow-500',
+    },
+    {
       icon: BookOpen,
       label: 'الأبحاث',
       path: '/research',
@@ -69,6 +79,30 @@ const Sidebar: React.FC = () => {
       label: 'إضافة مؤلف',
       path: '/authors/create',
       color: 'text-orange-400',
+    },
+    {
+      icon: Video,
+      label: 'الدورات',
+      path: '/courses',
+      color: 'text-blue-600',
+    },
+    {
+      icon: Plus,
+      label: 'إضافة دورة',
+      path: '/courses/create',
+      color: 'text-blue-400',
+    },
+    {
+      icon: CreditCard,
+      label: 'بطاقات الرصيد',
+      path: '/codes/generate',
+      color: 'text-indigo-500',
+    },
+    {
+      icon: Shield,
+      label: 'التقارير',
+      path: '/licenses',
+      color: 'text-red-500',
     },
   ];
 

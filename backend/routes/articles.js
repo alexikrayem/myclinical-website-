@@ -9,6 +9,7 @@ import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 const pdfParse = require("pdf-parse");
 import { aiLimiter, searchLimiter, uploadLimiter } from '../middleware/rateLimiter.js';
+import { cacheMiddleware } from '../middleware/cache.js';
 import { validateUploadedFile } from '../middleware/fileValidation.js';
 import { body, query, validationResult } from 'express-validator';
 
@@ -164,6 +165,7 @@ router.get('/tags', async (req, res) => {
 // Get all articles with advanced search
 router.get('/',
   searchLimiter,
+  cacheMiddleware(300), // Cache for 5 minutes
   [
     query('tag').optional().trim().escape(),
     query('search').optional().trim().escape(),
@@ -185,6 +187,17 @@ router.get('/',
       // Tag filtering
       if (tag) {
         query = query.contains('tags', [tag]);
+      }
+
+      // Type filtering (default to 'article' if not specified, or allow fetching all?)
+      // For now, let's allow optional filtering. If passed, filter.
+      // If client page needs specific type, it will pass it.
+      if (req.query.type) {
+        query = query.eq('article_type', req.query.type);
+      } else {
+        // Default behavior: show everything or just articles?
+        // Existing behavior showed everything. Let's keep it but arguably should filter by 'article' by default?
+        // No, let's keep it flexible.
       }
 
       // Simple search using ilike for better compatibility
@@ -214,7 +227,7 @@ router.get('/',
   });
 
 // Get featured articles
-router.get('/featured', async (req, res) => {
+router.get('/featured', cacheMiddleware(600), async (req, res) => {
   try {
     const { data: articles, error } = await supabase
       .from('articles')
@@ -254,12 +267,26 @@ router.get('/featured', async (req, res) => {
   }
 });
 
-// Get single article by ID
+// Get single article by ID with access control
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
 
-    const { data, error } = await supabase
+    let userId = null;
+    let hasAccess = false;
+
+    // 1. Verify User if token exists
+    if (token) {
+      const { data: { user }, error } = await supabase.auth.getUser(token);
+      if (!error && user) {
+        userId = user.id;
+      }
+    }
+
+    // 2. Fetch Article
+    const { data: article, error } = await supabase
       .from('articles')
       .select('*')
       .eq('id', id)
@@ -272,7 +299,59 @@ router.get('/:id', async (req, res) => {
       throw error;
     }
 
-    res.json(data);
+    // 3. Check Access (if user is logged in)
+    if (userId) {
+      // Check for Admin
+      const { data: admin } = await supabase
+        .from('admins')
+        .select('id')
+        .eq('id', userId)
+        .single();
+
+      if (admin) {
+        hasAccess = true;
+      } else {
+        // Check Article Access table
+        const { data: access } = await supabase
+          .from('article_access')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('article_id', id)
+          .single();
+
+        if (access) hasAccess = true;
+      }
+    }
+
+    // 4. Handle Content Delivery
+    // If article is free (credits_required = 0) everyone has access
+    if (article.credits_required === 0) hasAccess = true;
+
+    if (hasAccess) {
+      // Return full content
+      res.json({
+        ...article,
+        is_preview: false,
+        has_access: true
+      });
+    } else {
+      // Return truncated content (Peek)
+      // Truncate at ~600 chars, try to cut at a space
+      const TRUNCATE_LENGTH = 600;
+      let truncatedContent = article.content;
+
+      if (article.content.length > TRUNCATE_LENGTH) {
+        const cutIndex = article.content.indexOf(' ', TRUNCATE_LENGTH);
+        truncatedContent = article.content.substring(0, cutIndex > 0 ? cutIndex : TRUNCATE_LENGTH) + '...';
+      }
+
+      res.json({
+        ...article,
+        content: truncatedContent, // Hidden content
+        is_preview: true,
+        has_access: false
+      });
+    }
   } catch (error) {
     console.error('Error fetching article:', error);
     res.status(500).json({ error: 'Failed to fetch article' });

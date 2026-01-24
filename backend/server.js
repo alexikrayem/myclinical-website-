@@ -6,6 +6,9 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import cookieParser from 'cookie-parser';
+import compression from 'compression';
+import logger from './config/logger.js';
+import { requestLogger } from './middleware/requestLogger.js';
 
 // Routes
 import articlesRoutes from './routes/articles.js';
@@ -13,6 +16,10 @@ import researchRoutes from './routes/research.js';
 import adminRoutes from './routes/admin.js';
 import authorsRoutes from './routes/authors.js';
 import aiRoutes from './routes/ai.js';
+import coursesRoutes from './routes/courses.js';
+import creditsRoutes from './routes/credits.js';
+import userAuthRoutes from './routes/userAuth.js';
+import uploadRoutes from './routes/upload.js';
 
 // Security Middleware
 import { errorHandler } from './middleware/errorHandler.js';
@@ -40,6 +47,12 @@ app.set('trust proxy', 1);
 // Security Headers - Apply first
 app.use(securityHeaders);
 app.use(customSecurityHeaders);
+
+// Response Compression
+app.use(compression());
+
+// Request Logging
+app.use(requestLogger);
 
 // CORS Configuration with security
 app.use(cors({
@@ -70,8 +83,8 @@ app.use(requireValidEnvironment);
 
 // Health check endpoint (no rate limiting)
 app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
+  res.json({
+    status: 'OK',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
     security: 'enabled'
@@ -101,7 +114,7 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ 
+const upload = multer({
   storage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
   fileFilter: function (req, file, cb) {
@@ -139,6 +152,10 @@ app.use('/api/research', researchRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/authors', authorsRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/courses', coursesRoutes);
+app.use('/api/credits', creditsRoutes);
+app.use('/api/auth', userAuthRoutes);
+app.use('/api/upload', uploadRoutes);
 
 // 404 handler for API routes
 app.use('/api/*', (req, res) => {
@@ -149,10 +166,12 @@ app.use('/api/*', (req, res) => {
 app.use(errorHandler);
 
 // Start server
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📊 Health check: http://localhost:${PORT}/health`);
-  console.log(`🔧 Environment: ${process.env.NODE_ENV || 'development'}`);
-});
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    logger.info(`🚀 Server running on port ${PORT}`);
+    logger.info(`📊 Health check: http://localhost:${PORT}/health`);
+    logger.info(`🔧 Environment: ${process.env.NODE_ENV || 'development'}`);
+  });
+}
 
 export default app;

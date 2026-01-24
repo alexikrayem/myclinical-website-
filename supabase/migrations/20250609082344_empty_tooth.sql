@@ -114,6 +114,7 @@ CREATE POLICY "Admins can read own data"
   USING (auth.uid() = id);
 
 -- Add policy for admins to read all admin data (for user management)
+DROP POLICY IF EXISTS "Admins can read all admin data" ON admins;
 CREATE POLICY "Admins can read all admin data"
   ON admins
   FOR SELECT

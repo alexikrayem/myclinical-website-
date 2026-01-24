@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS authors (
 ALTER TABLE authors ENABLE ROW LEVEL SECURITY;
 
 -- Anyone can read active authors
+DROP POLICY IF EXISTS "Anyone can read active authors" ON authors;
 CREATE POLICY "Anyone can read active authors"
   ON authors
   FOR SELECT
@@ -55,6 +56,7 @@ CREATE POLICY "Anyone can read active authors"
   USING (is_active = true);
 
 -- Only admins can insert, update, delete authors
+DROP POLICY IF EXISTS "Admins can insert authors" ON authors;
 CREATE POLICY "Admins can insert authors"
   ON authors
   FOR INSERT
@@ -65,6 +67,7 @@ CREATE POLICY "Admins can insert authors"
     )
   );
 
+DROP POLICY IF EXISTS "Admins can update authors" ON authors;
 CREATE POLICY "Admins can update authors"
   ON authors
   FOR UPDATE
@@ -80,6 +83,7 @@ CREATE POLICY "Admins can update authors"
     )
   );
 
+DROP POLICY IF EXISTS "Admins can delete authors" ON authors;
 CREATE POLICY "Admins can delete authors"
   ON authors
   FOR DELETE
@@ -151,7 +155,7 @@ INSERT INTO authors (name, bio, image, specialization, experience_years, educati
   'بكالوريوس طب وجراحة الأسنان، زمالة جراحة الفم والوجه والفكين - كندا',
   'الرياض، المملكة العربية السعودية',
   'dr.abdullah@example.com'
-);
+) ON CONFLICT (name) DO NOTHING;
 
 -- Create function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_authors_updated_at()
@@ -163,6 +167,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Create trigger to automatically update updated_at
+DROP TRIGGER IF EXISTS authors_updated_at_trigger ON authors;
 CREATE TRIGGER authors_updated_at_trigger
   BEFORE UPDATE ON authors
   FOR EACH ROW EXECUTE FUNCTION update_authors_updated_at();

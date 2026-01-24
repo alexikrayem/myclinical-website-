@@ -21,12 +21,50 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
     tags: [] as string[],
     is_featured: false,
     cover_image_url: '',
+    article_type: 'article', // Default type
   });
   const [coverImageFile, setCoverImageFile] = useState<File | null>(null);
   const [tagInput, setTagInput] = useState('');
   const [useImageUrl, setUseImageUrl] = useState(false);
   const [previewMode, setPreviewMode] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [authors, setAuthors] = useState<{ id: string; name: string }[]>([]);
+  const [loadingAuthors, setLoadingAuthors] = useState(true);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [loadingCategories, setLoadingCategories] = useState(true);
+
+  // Fetch authors on mount
+  useEffect(() => {
+    const fetchAuthors = async () => {
+      try {
+        const response = await api.get('/authors');
+        setAuthors(response.data || []);
+      } catch (error) {
+        console.error('Error fetching authors:', error);
+        toast.error('فشل في تحميل قائمة المؤلفين');
+      } finally {
+        setLoadingAuthors(false);
+      }
+    };
+    fetchAuthors();
+  }, []);
+
+  // Fetch available tags/categories on mount
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const response = await api.get('/admin/categories');
+        // Map response objects to just names if needed, or handle icons/colors
+        const categoryNames = response.data.map((cat: any) => cat.name_ar || cat.name);
+        setCategories(categoryNames);
+      } catch (error) {
+        console.error('Error fetching categories:', error);
+      } finally {
+        setLoadingCategories(false);
+      }
+    };
+    fetchCategories();
+  }, []);
 
   useEffect(() => {
     if (article && isEditing) {
@@ -38,6 +76,7 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
         tags: article.tags || [],
         is_featured: article.is_featured || false,
         cover_image_url: article.cover_image || '',
+        article_type: article.article_type || 'article',
       });
       setUseImageUrl(article.cover_image && !article.cover_image.startsWith('/uploads/'));
     }
@@ -84,7 +123,7 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
       ...prev,
       [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
     }));
-    
+
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
     }
@@ -129,7 +168,7 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!validateForm()) {
       toast.error('يرجى تصحيح الأخطاء في النموذج');
       return;
@@ -137,14 +176,16 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
 
     try {
       setLoading(true);
-      
+
       const submitData = new FormData();
       submitData.append('title', formData.title);
       submitData.append('excerpt', formData.excerpt);
       submitData.append('content', formData.content);
       submitData.append('author', formData.author);
+
       submitData.append('tags', JSON.stringify(formData.tags));
       submitData.append('is_featured', formData.is_featured.toString());
+      submitData.append('article_type', formData.article_type);
 
       if (useImageUrl) {
         submitData.append('cover_image_url', formData.cover_image_url);
@@ -216,7 +257,7 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
               </div>
 
               <h1 className="text-3xl font-bold text-gray-900">{formData.title}</h1>
-              
+
               <div className="flex items-center text-gray-600">
                 <User size={16} className="ml-2" />
                 <span>{formData.author}</span>
@@ -226,9 +267,9 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
                 {formData.excerpt}
               </div>
 
-              <div 
+              <div
                 className="prose prose-lg max-w-none"
-                dangerouslySetInnerHTML={{ __html: formData.content }} 
+                dangerouslySetInnerHTML={{ __html: formData.content }}
               />
             </div>
           </div>
@@ -262,7 +303,7 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
             <FileText size={20} className="inline ml-2" />
             المعلومات الأساسية
           </div>
-          
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div>
               <label className="form-label">عنوان المقال *</label>
@@ -279,14 +320,27 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
 
             <div>
               <label className="form-label">المؤلف *</label>
-              <input
-                type="text"
+              <select
                 name="author"
                 value={formData.author}
-                onChange={handleInputChange}
+                onChange={(e) => {
+                  setFormData(prev => ({ ...prev, author: e.target.value }));
+                  if (errors.author) {
+                    setErrors(prev => ({ ...prev, author: '' }));
+                  }
+                }}
                 className={`form-input ${errors.author ? 'border-red-500' : ''}`}
-                placeholder="أدخل اسم المؤلف"
-              />
+                disabled={loadingAuthors}
+              >
+                <option value="">
+                  {loadingAuthors ? 'جارٍ التحميل...' : 'اختر المؤلف'}
+                </option>
+                {authors.map((author) => (
+                  <option key={author.id} value={author.name}>
+                    {author.name}
+                  </option>
+                ))}
+              </select>
               {errors.author && <p className="form-error">{errors.author}</p>}
             </div>
           </div>
@@ -311,7 +365,7 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
             <FileText size={20} className="inline ml-2" />
             محتوى المقال
           </div>
-          
+
           <div>
             <label className="form-label">المحتوى *</label>
             <div className={`rich-editor ${errors.content ? 'border-red-500' : ''}`}>
@@ -332,7 +386,7 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
             <Image size={20} className="inline ml-2" />
             صورة الغلاف
           </div>
-          
+
           <div className="space-y-4">
             <div className="flex items-center space-x-6 space-x-reverse">
               <label className="flex items-center">
@@ -416,32 +470,70 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
             <Tag size={20} className="inline ml-2" />
             العلامات والإعدادات
           </div>
-          
+
           <div className="space-y-6">
             <div>
-              <label className="form-label">العلامات *</label>
-              <div className="tag-input">
-                {formData.tags.map((tag, index) => (
-                  <span key={index} className="tag-item">
-                    {tag}
-                    <button
-                      type="button"
-                      onClick={() => removeTag(tag)}
-                      className="tag-remove"
+              <label className="form-label">التصنيفات *</label>
+              {loadingCategories ? (
+                <p className="text-gray-500 text-sm">جارٍ تحميل التصنيفات...</p>
+              ) : categories.length === 0 ? (
+                <p className="text-gray-500 text-sm">لا توجد تصنيفات متاحة</p>
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 p-4 border rounded-lg bg-gray-50">
+                  {categories.map((category) => (
+                    <label
+                      key={category}
+                      className={`flex items-center p-2 rounded-lg cursor-pointer transition-all ${formData.tags.includes(category)
+                        ? 'bg-blue-100 border-blue-500 border-2'
+                        : 'bg-white border border-gray-200 hover:border-blue-300'
+                        }`}
                     >
-                      <X size={14} />
-                    </button>
-                  </span>
-                ))}
-                <input
-                  type="text"
-                  value={tagInput}
-                  onChange={(e) => setTagInput(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
-                  className="flex-1 min-w-0 border-none outline-none bg-transparent"
-                  placeholder="أضف علامة واضغط Enter"
-                />
-              </div>
+                      <input
+                        type="checkbox"
+                        checked={formData.tags.includes(category)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setFormData(prev => ({
+                              ...prev,
+                              tags: [...prev.tags, category]
+                            }));
+                          } else {
+                            setFormData(prev => ({
+                              ...prev,
+                              tags: prev.tags.filter(t => t !== category)
+                            }));
+                          }
+                          if (errors.tags) {
+                            setErrors(prev => ({ ...prev, tags: '' }));
+                          }
+                        }}
+                        className="ml-2 w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                      />
+                      <span className="text-sm font-medium text-gray-700">{category}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+              {formData.tags.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <span className="text-sm text-gray-600">المختارة:</span>
+                  {formData.tags.map((tag) => (
+                    <span key={tag} className="tag-item">
+                      {tag}
+                      <button
+                        type="button"
+                        onClick={() => setFormData(prev => ({
+                          ...prev,
+                          tags: prev.tags.filter(t => t !== tag)
+                        }))}
+                        className="tag-remove"
+                      >
+                        <X size={14} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
               {errors.tags && <p className="form-error">{errors.tags}</p>}
             </div>
 

@@ -41,34 +41,64 @@ export const validateUploadedFile = (allowedTypes = ['pdf', 'jpg', 'png', 'doc',
     // Validate file size
     const maxSize = process.env.MAX_FILE_SIZE || 5242880; // 5MB default
     if (req.file.size > maxSize) {
-      fs.unlinkSync(req.file.path); // Delete the file
-      return res.status(400).json({ 
-        error: `File too large. Maximum size is ${Math.floor(maxSize / 1024 / 1024)}MB` 
+      // For disk storage, delete the file
+      if (req.file.path) {
+        fs.unlinkSync(req.file.path);
+      }
+      return res.status(400).json({
+        error: `File too large. Maximum size is ${Math.floor(maxSize / 1024 / 1024)}MB`
       });
     }
 
-    // Validate file type using magic numbers
-    const validation = validateFileType(req.file.path, allowedTypes);
-    if (!validation.valid) {
-      fs.unlinkSync(req.file.path); // Delete the file
-      return res.status(400).json({ 
-        error: 'Invalid file type. Only PDF, DOC, DOCX, JPG, and PNG files are allowed.' 
-      });
+    // For memory storage (req.file.buffer exists, no req.file.path)
+    if (req.file.buffer && !req.file.path) {
+      // Validate using buffer
+      const fileHeader = Array.from(req.file.buffer.slice(0, 8));
+      let isValid = false;
+
+      for (const type of allowedTypes) {
+        const signature = FILE_SIGNATURES[type];
+        if (signature && signature.every((byte, index) => fileHeader[index] === byte)) {
+          isValid = true;
+          break;
+        }
+      }
+
+      if (!isValid) {
+        return res.status(400).json({
+          error: 'Invalid file type. Only PDF, DOC, DOCX, JPG, and PNG files are allowed.'
+        });
+      }
+
+      // Sanitize filename for memory storage
+      req.file.originalname = sanitizeFileName(req.file.originalname);
+      return next();
     }
 
-    // Sanitize filename
-    const sanitizedName = sanitizeFileName(req.file.originalname);
-    const newPath = path.join(path.dirname(req.file.path), sanitizedName);
-    
-    // Rename file to sanitized name
-    try {
-      fs.renameSync(req.file.path, newPath);
-      req.file.path = newPath;
-      req.file.filename = sanitizedName;
-    } catch (error) {
-      console.error('Error renaming file:', error);
-      fs.unlinkSync(req.file.path);
-      return res.status(500).json({ error: 'Error processing uploaded file' });
+    // For disk storage (original implementation)
+    if (req.file.path) {
+      // Validate file type using magic numbers
+      const validation = validateFileType(req.file.path, allowedTypes);
+      if (!validation.valid) {
+        fs.unlinkSync(req.file.path);
+        return res.status(400).json({
+          error: 'Invalid file type. Only PDF, DOC, DOCX, JPG, and PNG files are allowed.'
+        });
+      }
+
+      // Sanitize filename
+      const sanitizedName = sanitizeFileName(req.file.originalname);
+      const newPath = path.join(path.dirname(req.file.path), sanitizedName);
+
+      try {
+        fs.renameSync(req.file.path, newPath);
+        req.file.path = newPath;
+        req.file.filename = sanitizedName;
+      } catch (error) {
+        console.error('Error renaming file:', error);
+        fs.unlinkSync(req.file.path);
+        return res.status(500).json({ error: 'Error processing uploaded file' });
+      }
     }
 
     next();
@@ -79,24 +109,24 @@ export const validateUploadedFile = (allowedTypes = ['pdf', 'jpg', 'png', 'doc',
 export const validateFileAccess = (filePath) => {
   const uploadsDir = path.resolve('uploads');
   const requestedPath = path.resolve(filePath);
-  
+
   // Ensure the file is within the uploads directory (prevent path traversal)
   if (!requestedPath.startsWith(uploadsDir)) {
     return false;
   }
-  
+
   // Check if file exists
   if (!fs.existsSync(requestedPath)) {
     return false;
   }
-  
+
   return true;
 };
 
 // Middleware to prevent direct access to sensitive files
 export const preventSensitiveFileAccess = (req, res, next) => {
   const filePath = req.path;
-  
+
   // List of patterns that should not be accessible
   const blockedPatterns = [
     /\.env/i,
@@ -108,12 +138,12 @@ export const preventSensitiveFileAccess = (req, res, next) => {
     /key/i,
     /node_modules/i,
   ];
-  
+
   for (const pattern of blockedPatterns) {
     if (pattern.test(filePath)) {
       return res.status(403).json({ error: 'Access denied' });
     }
   }
-  
+
   next();
 };

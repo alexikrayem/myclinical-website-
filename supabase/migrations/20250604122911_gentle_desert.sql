@@ -80,6 +80,7 @@ ALTER TABLE admins ENABLE ROW LEVEL SECURITY;
 
 -- Articles policies
 -- Anyone can read articles
+DROP POLICY IF EXISTS "Anyone can read articles" ON articles;
 CREATE POLICY "Anyone can read articles"
   ON articles
   FOR SELECT
@@ -87,6 +88,7 @@ CREATE POLICY "Anyone can read articles"
   USING (true);
 
 -- Only admins can insert, update, delete articles
+DROP POLICY IF EXISTS "Admins can insert articles" ON articles;
 CREATE POLICY "Admins can insert articles"
   ON articles
   FOR INSERT
@@ -97,6 +99,7 @@ CREATE POLICY "Admins can insert articles"
     )
   );
 
+DROP POLICY IF EXISTS "Admins can update articles" ON articles;
 CREATE POLICY "Admins can update articles"
   ON articles
   FOR UPDATE
@@ -107,6 +110,7 @@ CREATE POLICY "Admins can update articles"
     )
   );
 
+DROP POLICY IF EXISTS "Admins can delete articles" ON articles;
 CREATE POLICY "Admins can delete articles"
   ON articles
   FOR DELETE
@@ -119,6 +123,7 @@ CREATE POLICY "Admins can delete articles"
 
 -- Researches policies
 -- Anyone can read researches
+DROP POLICY IF EXISTS "Anyone can read researches" ON researches;
 CREATE POLICY "Anyone can read researches"
   ON researches
   FOR SELECT
@@ -126,6 +131,7 @@ CREATE POLICY "Anyone can read researches"
   USING (true);
 
 -- Only admins can insert, update, delete researches
+DROP POLICY IF EXISTS "Admins can insert researches" ON researches;
 CREATE POLICY "Admins can insert researches"
   ON researches
   FOR INSERT
@@ -136,6 +142,7 @@ CREATE POLICY "Admins can insert researches"
     )
   );
 
+DROP POLICY IF EXISTS "Admins can update researches" ON researches;
 CREATE POLICY "Admins can update researches"
   ON researches
   FOR UPDATE
@@ -146,6 +153,7 @@ CREATE POLICY "Admins can update researches"
     )
   );
 
+DROP POLICY IF EXISTS "Admins can delete researches" ON researches;
 CREATE POLICY "Admins can delete researches"
   ON researches
   FOR DELETE
@@ -158,6 +166,7 @@ CREATE POLICY "Admins can delete researches"
 
 -- Admins policies
 -- Only the same admin can read their own data
+DROP POLICY IF EXISTS "Admins can read own data" ON admins;
 CREATE POLICY "Admins can read own data"
   ON admins
   FOR SELECT

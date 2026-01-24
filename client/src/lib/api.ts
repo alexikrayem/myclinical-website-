@@ -153,4 +153,264 @@ export const authorsApi = {
   },
 };
 
+// Courses API
+export const coursesApi = {
+  getAll: async (params?: { category?: string; search?: string; limit?: number; page?: number; featured?: boolean }) => {
+    try {
+      const response = await api.get('/courses', { params });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching courses:', error);
+      throw error;
+    }
+  },
+
+  getFeatured: async () => {
+    try {
+      const response = await api.get('/courses/featured');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching featured courses:', error);
+      throw error;
+    }
+  },
+
+  getById: async (id: string) => {
+    try {
+      const response = await api.get(`/courses/${id}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching course:', error);
+      throw error;
+    }
+  },
+
+  purchaseAccess: async (id: string) => {
+    try {
+      const token = getUserToken();
+      const response = await api.post(`/courses/${id}/access`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error purchasing access:', error);
+      throw error;
+    }
+  },
+
+  getQuiz: async (id: string) => {
+    try {
+      const token = getUserToken();
+      const response = await api.get(`/courses/${id}/quiz`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching quiz:', error);
+      throw error;
+    }
+  },
+
+  submitQuiz: async (courseId: string, quizId: string, answers: number[]) => {
+    try {
+      const token = getUserToken();
+      const response = await api.post(`/courses/${courseId}/quiz/submit`, { quizId, answers }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error submitting quiz:', error);
+      throw error;
+    }
+  }
+};
+
+// Helper to get user token
+const getUserToken = () => localStorage.getItem('user_token');
+
+// Auth API for regular users (phone + password)
+export const authApi = {
+  register: async (phoneNumber: string, password: string, displayName?: string) => {
+    try {
+      const response = await api.post('/auth/register', {
+        phone_number: phoneNumber,
+        password,
+        display_name: displayName
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error registering:', error);
+      throw error;
+    }
+  },
+
+  login: async (phoneNumber: string, password: string) => {
+    try {
+      const response = await api.post('/auth/login', {
+        phone_number: phoneNumber,
+        password
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error logging in:', error);
+      throw error;
+    }
+  },
+
+  logout: async () => {
+    try {
+      const token = getUserToken();
+      if (token) {
+        await api.post('/auth/logout', {}, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      }
+    } catch (error) {
+      console.error('Error logging out:', error);
+    }
+  },
+
+  getProfile: async () => {
+    try {
+      const token = getUserToken();
+      const response = await api.get('/auth/profile', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching profile:', error);
+      throw error;
+    }
+  },
+
+  updateProfile: async (displayName: string) => {
+    try {
+      const token = getUserToken();
+      const response = await api.put('/auth/profile',
+        { display_name: displayName },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      throw error;
+    }
+  },
+
+  changePassword: async (currentPassword: string, newPassword: string) => {
+    try {
+      const token = getUserToken();
+      const response = await api.put('/auth/change-password',
+        { current_password: currentPassword, new_password: newPassword },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error changing password:', error);
+      throw error;
+    }
+  }
+};
+
+// Credits API (uses user_token for regular users)
+export const creditsApi = {
+  getBalance: async () => {
+    try {
+      const token = getUserToken();
+      const response = await api.get('/credits/balance', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching credit balance:', error);
+      throw error;
+    }
+  },
+
+  redeemCode: async (code: string) => {
+    try {
+      const token = getUserToken();
+      const response = await api.post('/credits/redeem', { code }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error redeeming code:', error);
+      throw error;
+    }
+  },
+
+  consumeVideo: async (minutes: number, courseId: string) => {
+    try {
+      const token = getUserToken();
+      const response = await api.post('/credits/consume-video',
+        { minutes, course_id: courseId },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error consuming video credits:', error);
+      throw error;
+    }
+  },
+
+  consumeArticle: async (articleId: string) => {
+    try {
+      const token = getUserToken();
+      const response = await api.post('/credits/consume-article',
+        { article_id: articleId },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error consuming article credits:', error);
+      throw error;
+    }
+  },
+
+  checkArticleAccess: async (articleId: string) => {
+    try {
+      const token = getUserToken();
+      const response = await api.get(`/credits/check-article-access/${articleId}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error checking article access:', error);
+      throw error;
+    }
+  },
+
+  getTransactions: async (page = 1, limit = 10, type?: string) => {
+    try {
+      const token = getUserToken();
+      const response = await api.get('/credits/transactions', {
+        params: { page, limit, type },
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching transactions:', error);
+      throw error;
+    }
+  }
+};
+
+// Admin API
+export const adminApi = {
+  getLicenseReport: async (params?: { search?: string; page?: number; limit?: number }) => {
+    try {
+      const token = localStorage.getItem('admin_token');
+      const response = await api.get('/admin/reports/licenses', {
+        params,
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching license report:', error);
+      throw error;
+    }
+  }
+};
+
 export default api;

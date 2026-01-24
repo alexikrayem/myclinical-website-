@@ -24,18 +24,70 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   const [file, setFile] = React.useState<File | null>(null);
   const [textInput, setTextInput] = React.useState('');
 
+
+
+  const reactQuillRef = React.useRef<ReactQuill>(null);
+
   const modules = useMemo(() => ({
-    toolbar: [
-      [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
-      ['bold', 'italic', 'underline', 'strike'],
-      [{ 'align': [] }],
-      [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-      [{ 'indent': '-1' }, { 'indent': '+1' }],
-      ['link', 'image'],
-      [{ 'color': [] }, { 'background': [] }],
-      ['blockquote', 'code-block'],
-      ['clean']
-    ],
+    toolbar: {
+      container: [
+        [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
+        ['bold', 'italic', 'underline', 'strike'],
+        [{ 'align': [] }],
+        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+        [{ 'indent': '-1' }, { 'indent': '+1' }],
+        ['link', 'image'],
+        [{ 'color': [] }, { 'background': [] }],
+        ['blockquote', 'code-block'],
+        ['clean']
+      ],
+      handlers: {
+        image: () => {
+          // Custom handler logic 
+          const input = document.createElement('input');
+          input.setAttribute('type', 'file');
+          input.setAttribute('accept', 'image/*');
+          input.click();
+
+          input.onchange = async () => {
+            const file = input.files?.[0];
+            if (file) {
+              const formData = new FormData();
+              formData.append('image', file);
+              const toastId = toast.loading('جارٍ رفع الصورة...');
+
+              try {
+                // Note: Assuming api base URL is configured correctly
+                const res = await api.post('/upload', formData, {
+                  headers: { 'Content-Type': 'multipart/form-data' }
+                });
+
+                const url = res.data.url; // Relative URL e.g. /uploads/filename.jpg
+                // Need to prepend API URL if it's separate, but usually serves static
+                // Assuming /uploads is served statically by backend
+                // We need the Full URL if frontend/backend are on different ports in dev
+                // Or just the relative path if proxy is set up.
+                // Let's assume relative path works with proxy or full URL if returned.
+
+                const quill = reactQuillRef.current?.getEditor();
+                if (quill) {
+                  const range = quill.getSelection(true);
+                  const fullUrl = (import.meta as any).env.VITE_API_URL ? `${(import.meta as any).env.VITE_API_URL.replace('/api', '')}${url}` : url;
+                  quill.insertEmbed(range.index, 'image', fullUrl);
+                }
+
+                toast.success('تم رفع الصورة');
+              } catch (e) {
+                toast.error('فشل رفع الصورة');
+                console.error(e);
+              } finally {
+                toast.dismiss(toastId);
+              }
+            }
+          };
+        }
+      }
+    },
   }), []);
 
   const formats = [
@@ -118,6 +170,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
       <div className="bg-white rounded-lg border">
         <ReactQuill
+          ref={reactQuillRef}
           theme="snow"
           value={value}
           onChange={onChange}
@@ -163,8 +216,8 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                   <button
                     onClick={() => setInputType('text')}
                     className={`flex-1 p-4 rounded-xl border-2 transition-all ${inputType === 'text'
-                        ? 'border-blue-500 bg-blue-50 text-blue-700'
-                        : 'border-gray-200 hover:border-gray-300'
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      : 'border-gray-200 hover:border-gray-300'
                       }`}
                   >
                     <div className="font-medium">إدخال نص</div>
@@ -173,8 +226,8 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                   <button
                     onClick={() => setInputType('file')}
                     className={`flex-1 p-4 rounded-xl border-2 transition-all ${inputType === 'file'
-                        ? 'border-blue-500 bg-blue-50 text-blue-700'
-                        : 'border-gray-200 hover:border-gray-300'
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      : 'border-gray-200 hover:border-gray-300'
                       }`}
                   >
                     <div className="font-medium">رفع ملف</div>

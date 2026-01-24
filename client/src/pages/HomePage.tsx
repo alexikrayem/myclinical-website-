@@ -1,9 +1,10 @@
 import React, { useRef, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, BookOpen, FileText, Sparkles, TrendingUp, Users, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, BookOpen, FileText, Sparkles, TrendingUp, ChevronLeft, ChevronRight, Video } from 'lucide-react';
 import FeaturedArticles from '../components/article/FeaturedArticles';
 import ArticleList from '../components/article/ArticleList';
 import { useTags } from '../hooks/useArticles';
+import RotatingDentalImages from '../components/home/RotatingDentalImages';
 
 const HomePage: React.FC = () => {
   const { data: tags = [] } = useTags();
@@ -64,110 +65,100 @@ const HomePage: React.FC = () => {
   return (
     <div className="layout-modern">
       {/* Hero Section */}
-      {/* Modern Hero Section */}
-      <section className="hero-modern relative overflow-hidden flex items-center justify-center min-h-[80vh] text-white">
-        {/* Animated Floating Lights */}
-        <div className="absolute top-0 left-0 w-72 h-72 bg-blue-500/20 rounded-full blur-3xl animate-float-slow"></div>
-        <div className="absolute bottom-10 right-10 w-96 h-96 bg-purple-600/30 rounded-full blur-3xl animate-float-delayed"></div>
-
-        {/* Gradient Overlay */}
-        <div className="absolute inset-0 bg-gradient-to-br from-blue-800/70 via-indigo-900/80 to-purple-900/80 z-0"></div>
-
-        {/* Dotted Pattern */}
-        <div className="absolute inset-0 pattern-dots opacity-20 z-0"></div>
-
-        <div className="container-modern relative z-10 text-center px-6 animate-fadeIn">
-          {/* Tagline */}
-          <div className="inline-flex items-center gap-2 bg-white/15 backdrop-blur-md rounded-full px-6 py-2 mb-6 border border-white/20 shadow-lg transition-modern hover:scale-105">
-            <Sparkles className="w-5 h-5 text-blue-200 animate-pulse" />
-            <span className="text-sm font-medium tracking-wide">منصة طب الأسنان الرائدة</span>
-          </div>
-
-          {/* Heading */}
-          <h1 className="text-4xl md:text-6xl font-extrabold leading-tight drop-shadow-xl mb-6">
-            <span className="block text-white">منصة طب الأسنان</span>
-            <span className="block bg-gradient-to-r from-blue-300 via-indigo-300 to-purple-300 bg-clip-text text-transparent">
-              العربي
-            </span>
-          </h1>
-
-          {/* Description */}
-          <p className="text-lg md:text-2xl text-blue-100/90 mb-10 leading-relaxed max-w-3xl mx-auto">
-            موسوعة متكاملة من المقالات والأبحاث العلمية المتخصصة
-            <br />
-            في مجال طب الأسنان باللغة العربية
-          </p>
-
-          {/* CTA Buttons */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link
-              to="/articles"
-              className="btn-primary inline-flex items-center justify-center text-lg px-8 py-4 rounded-xl shadow-lg hover:-translate-y-1 transition-modern"
-            >
-              <BookOpen size={22} className="ml-3" />
-              استكشف المقالات
-            </Link>
-
-            <Link
-              to="/research-topics"
-              className="btn-secondary inline-flex items-center justify-center text-lg px-8 py-4 rounded-xl shadow-lg hover:-translate-y-1 transition-modern backdrop-blur-md"
-            >
-              <FileText size={22} className="ml-3" />
-              تصفح الأبحاث
-            </Link>
-          </div>
+      <section className="relative min-h-[85vh] flex items-center overflow-hidden bg-[#F8FAFC]">
+        {/* Background Elements */}
+        <div className="absolute inset-0 z-0">
+          <div className="absolute top-[-20%] right-[-10%] w-[600px] h-[600px] bg-blue-100/50 rounded-full blur-[100px] animate-pulse-slow"></div>
+          <div className="absolute bottom-[-20%] left-[-10%] w-[500px] h-[500px] bg-purple-100/50 rounded-full blur-[100px] animate-pulse-slow delay-1000"></div>
+          <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20"></div>
+          {/* Grid Pattern */}
+          <div className="absolute inset-0" style={{ backgroundImage: 'radial-gradient(#CBD5E1 1px, transparent 1px)', backgroundSize: '40px 40px', opacity: 0.3 }}></div>
         </div>
 
-        {/* Decorative wave divider */}
-        <svg
-          className="absolute bottom-0 left-0 w-full text-white/10"
-          viewBox="0 0 1440 320"
-          fill="currentColor"
-        >
-          <path d="M0,224L60,197.3C120,171,240,117,360,128C480,139,600,213,720,224C840,235,960,181,1080,154.7C1200,128,1320,128,1380,128L1440,128L1440,320L0,320Z" />
-        </svg>
-      </section>
+        <div className="container-modern relative z-10 w-full">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
 
+            {/* Text Content (Right) */}
+            <div className="text-right order-2 lg:order-1 space-y-8">
+              <div className="inline-flex items-center gap-2 bg-white border border-blue-100 shadow-sm rounded-full px-4 py-1.5 animate-fadeIn">
+                <span className="relative flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
+                </span>
+                <span className="text-sm font-medium text-blue-900">المنصة الأولى لأطباء الأسنان العرب</span>
+              </div>
 
-      {/* Stats Section */}
-      <section className="py-12 bg-white">
-        <div className="container-modern">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-                <FileText className="w-8 h-8 text-white" />
+              <h1 className="text-5xl lg:text-7xl font-black text-gray-900 leading-[1.15] tracking-tight">
+                ارتقِ بمستقبلك <br />
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">
+                  المهني والعلمي
+                </span>
+              </h1>
+
+              <p className="text-xl text-gray-600 leading-relaxed max-w-2xl ml-auto">
+                موسوعة متكاملة تجمع بين أحدث المقالات العلمية، الدورات التدريبية المعتمدة، والأبحاث المتخصصة في طب الأسنان.
+              </p>
+
+              <div className="flex flex-col sm:flex-row gap-4 justify-end pt-4">
+                <Link
+                  to="/courses"
+                  className="inline-flex items-center justify-center px-8 py-4 text-lg font-bold text-white transition-all duration-200 bg-blue-600 rounded-2xl hover:bg-blue-700 hover:shadow-lg hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-600"
+                >
+                  <BookOpen className="ml-2 -mr-1" size={24} />
+                  تصفح الدورات
+                </Link>
+                <Link
+                  to="/articles"
+                  className="inline-flex items-center justify-center px-8 py-4 text-lg font-bold text-gray-700 transition-all duration-200 bg-white border border-gray-200 rounded-2xl hover:bg-gray-50 hover:border-gray-300 hover:shadow-md hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-200"
+                >
+                  <FileText className="ml-2 -mr-1" size={24} />
+                  قراءة المقالات
+                </Link>
               </div>
-              <div className="text-3xl font-bold text-gray-900 mb-2">500+</div>
-              <p className="text-gray-600">مقال متخصص</p>
+
+              {/* Stats */}
+              <div className="grid grid-cols-3 gap-6 pt-8 border-t border-gray-200/60">
+                <div>
+                  <p className="text-3xl font-bold text-gray-900">+500</p>
+                  <p className="text-sm text-gray-500 mt-1">مقال علمي</p>
+                </div>
+                <div>
+                  <p className="text-3xl font-bold text-gray-900">+50</p>
+                  <p className="text-sm text-gray-500 mt-1">دورة تدريبية</p>
+                </div>
+                <div>
+                  <p className="text-3xl font-bold text-gray-900">+10k</p>
+                  <p className="text-sm text-gray-500 mt-1">طبيب مشترك</p>
+                </div>
+              </div>
             </div>
-            <div className="text-center">
-              <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-                <BookOpen className="w-8 h-8 text-white" />
+
+            {/* Visual Content (Left) */}
+            <div className="relative order-1 lg:order-2 hidden lg:block">
+              <div className="relative w-full aspect-square max-w-[600px] mx-auto">
+                {/* Main Image/Shape */}
+                <div className="absolute inset-0">
+                  <RotatingDentalImages />
+                </div>
+
+                {/* Floating Cards - Now handled inside RotatingDentalImages for 3D effect */}
               </div>
-              <div className="text-3xl font-bold text-gray-900 mb-2">150+</div>
-              <p className="text-gray-600">بحث علمي</p>
-            </div>
-            <div className="text-center">
-              <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-                <Users className="w-8 h-8 text-white" />
-              </div>
-              <div className="text-3xl font-bold text-gray-900 mb-2">50+</div>
-              <p className="text-gray-600">خبير ومختص</p>
             </div>
           </div>
         </div>
       </section>
+
 
       {/* Featured Articles */}
       <section className="py-12 bg-gray-50">
         <div className="container-modern">
-          <div className="text-center mb-12">
+          <div className="text-right mb-12">
             <div className="inline-flex items-center bg-blue-100 text-blue-800 rounded-full px-4 py-2 mb-4">
               <TrendingUp className="w-4 h-4 ml-2" />
               <span className="text-sm font-medium">المحتوى المميز</span>
             </div>
             <h2 className="text-4xl lg:text-5xl font-extrabold text-gray-900 mb-4 leading-tight">المقالات المميزة</h2> {/* Updated heading style */}
-            <p className="text-lg text-gray-600 max-w-2xl mx-auto"> {/* Updated paragraph style */}
+            <p className="text-lg text-gray-600 max-w-2xl ml-auto"> {/* Updated paragraph style */}
               اكتشف أحدث وأهم المقالات في مجال طب الأسنان من خبراء ومختصين معتمدين
             </p>
           </div>
@@ -193,7 +184,7 @@ const HomePage: React.FC = () => {
               <h2 className="text-4xl lg:text-5xl font-extrabold text-gray-900 mb-4 leading-tight">
                 التخصصات <span className="text-transparent bg-clip-text bg-gradient-to-l from-purple-600 to-blue-600">الطبية</span>
               </h2>
-              <p className="text-lg text-gray-600 max-w-2xl mr-auto">
+              <p className="text-lg text-gray-600 max-w-2xl ml-auto">
                 استكشف المقالات والأبحاث العلمية مصنفة حسب التخصصات الطبية الدقيقة
               </p>
             </div>
@@ -243,7 +234,7 @@ const HomePage: React.FC = () => {
                 <Link
                   key={category.id}
                   to={`/articles?tag=${encodeURIComponent(category.id)}`}
-                  className="group relative overflow-hidden rounded-3xl h-80 min-w-[260px] md:min-w-[300px] flex-shrink-0 snap-center transition-all duration-500 hover:-translate-y-3 hover:shadow-2xl cursor-pointer bg-white border border-gray-100"
+                  className="group relative overflow-hidden rounded-3xl h-48 w-80 flex-shrink-0 snap-center transition-all duration-300 hover:shadow-2xl hover:border-blue-300 cursor-pointer bg-white border border-gray-100"
                 >
                   {/* Image Container */}
                   <div className="absolute inset-0 h-full w-full">
@@ -263,7 +254,7 @@ const HomePage: React.FC = () => {
                       <div className="w-12 h-1 bg-blue-500 rounded-full mb-4 w-0 group-hover:w-12 transition-all duration-500 delay-100"></div>
                       <h3 className="text-2xl font-bold text-white mb-2 drop-shadow-md">{category.name}</h3>
                       <p className="text-gray-200 text-sm opacity-0 group-hover:opacity-100 transition-opacity duration-500 delay-100 transform translate-y-4 group-hover:translate-y-0 mb-4">
-                        تصفح جميع المقالات المتعلقة بـ {category.name}
+                        تصفح جميع المقالات
                       </p>
 
                       <div className="inline-flex items-center text-white font-medium group-hover:text-blue-300 transition-colors">
