@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Clock, Tag, User, ArrowLeft, Sparkles } from 'lucide-react';
+import { Clock, Tag, User, ArrowLeft, Sparkles, Stethoscope } from 'lucide-react';
 import { formatDistance } from 'date-fns';
 import { ar } from 'date-fns/locale';
 
@@ -15,6 +15,8 @@ interface ArticleCardProps {
     tags: string[];
     is_featured?: boolean;
     author_image?: string;
+    article_type?: 'article' | 'clinical_case';
+    score?: number;
   };
   featured?: boolean;
 }
@@ -51,6 +53,7 @@ const ArticleCard: React.FC<ArticleCardProps> = ({ article, featured = false }) 
           <img
             src={article.cover_image}
             alt={article.title}
+            loading="lazy"
             className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent"></div>
@@ -116,18 +119,35 @@ const ArticleCard: React.FC<ArticleCardProps> = ({ article, featured = false }) 
         <img
           src={article.cover_image}
           alt={article.title}
+          loading="lazy"
           className="w-full h-56 object-cover transition-transform duration-500 group-hover:scale-110"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
 
-        {article.is_featured && (
-          <div className="absolute top-4 right-4">
-            <span className="status-featured inline-flex items-center text-xs">
+        {/* Badges Container */}
+        <div className="absolute top-4 right-4 flex flex-col gap-2 items-end">
+          {article.is_featured && (
+            <span className="status-featured inline-flex items-center text-xs shadow-sm">
               <Sparkles size={12} className="ml-1" />
               مميز
             </span>
-          </div>
-        )}
+          )}
+
+          {/* Smart Match Badge */}
+          {article.score && article.score >= 10 && (
+            <span className="bg-yellow-100 text-yellow-800 border border-yellow-200 px-3 py-1 rounded-full text-xs font-bold inline-flex items-center shadow-lg animate-pulse">
+              <Sparkles size={12} className="ml-1 text-yellow-600" />
+              أفضل تطابق
+            </span>
+          )}
+
+          {article.article_type === 'clinical_case' && !article.is_featured && (
+            <span className="bg-teal-500 text-white px-3 py-1 rounded-full text-xs font-medium inline-flex items-center shadow-lg">
+              <Stethoscope size={12} className="ml-1" />
+              حالة سريرية
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="p-6">
@@ -158,7 +178,7 @@ const ArticleCard: React.FC<ArticleCardProps> = ({ article, featured = false }) 
 
         <div className="flex items-center justify-between pt-4 border-t border-gray-100">
           <div className="flex items-center text-sm text-gray-500">
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center ml-3">
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center ml-3 ${article.article_type === 'clinical_case' ? 'bg-gradient-to-br from-teal-500 to-teal-600' : 'bg-gradient-to-br from-blue-500 to-blue-600'}`}>
               <User size={14} className="text-white" />
             </div>
             <div>
@@ -167,7 +187,7 @@ const ArticleCard: React.FC<ArticleCardProps> = ({ article, featured = false }) 
             </div>
           </div>
 
-          <div className="text-blue-600 group-hover:text-blue-700 transition-colors">
+          <div className={`${article.article_type === 'clinical_case' ? 'text-teal-600 group-hover:text-teal-700' : 'text-blue-600 group-hover:text-blue-700'} transition-colors`}>
             <ArrowLeft size={20} className="transform group-hover:translate-x-1 transition-transform" />
           </div>
         </div>

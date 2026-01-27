@@ -17,38 +17,14 @@ interface Course {
 
 interface CourseListProps {
     courses: Course[];
-    isLoading: boolean;
     emptyMessage?: string;
 }
 
 const CourseList: React.FC<CourseListProps> = ({
     courses,
-    isLoading,
     emptyMessage = "لا توجد دورات متاحة حالياً."
 }) => {
-    if (isLoading) {
-        return (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                {[...Array(6)].map((_, i) => (
-                    <div key={i} className="bg-white rounded-2xl overflow-hidden card-shadow h-[450px] animate-pulse">
-                        <div className="h-56 bg-gray-200"></div>
-                        <div className="p-6 space-y-4">
-                            <div className="h-4 bg-gray-200 rounded w-1/3"></div>
-                            <div className="h-8 bg-gray-200 rounded w-3/4"></div>
-                            <div className="h-4 bg-gray-200 rounded w-full"></div>
-                            <div className="h-4 bg-gray-200 rounded w-2/3"></div>
-                            <div className="pt-4 border-t border-gray-100 flex justify-between items-center">
-                                <div className="flex items-center">
-                                    <div className="w-8 h-8 rounded-full bg-gray-200 ml-3"></div>
-                                    <div className="h-4 bg-gray-200 rounded w-24"></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                ))}
-            </div>
-        );
-    }
+    // Loading handled by parent component using CourseListSkeleton
 
     if (courses.length === 0) {
         return (

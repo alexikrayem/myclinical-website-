@@ -260,6 +260,16 @@ router.post('/articles',
         return res.status(400).json({ error: 'Cover image is required' });
       }
 
+      // Generate slug from title
+      const generateSlug = (title) => {
+        let slug = title.toLowerCase()
+          .replace(/[^\u0621-\u064Aa-z0-9\s-]/g, '')
+          .replace(/\s+/g, '-')
+          .replace(/-+/g, '-')
+          .trim();
+        return slug || `article-${Date.now()}`;
+      };
+
       const { data, error } = await supabase
         .from('articles')
         .insert([
@@ -271,7 +281,8 @@ router.post('/articles',
             author,
             tags: JSON.parse(tags), // Convert JSON string to array
             is_featured: is_featured === 'true',
-            article_type: req.body.article_type || 'article', // Add article_type
+            article_type: req.body.article_type || 'article',
+            slug: generateSlug(title),
             publication_date: new Date().toISOString(),
           }
         ])
@@ -390,7 +401,7 @@ router.post('/research', authenticateToken, uploadLimiter, upload.single('resear
     // I'll assume 'documents' exists or use 'images' if I have to. 
     // Let's try 'documents'.
 
-    const file_url = await uploadToSupabase(req.file, 'documents');
+    const file_url = await uploadToSupabase(req.file, 'research-pdfs');
 
     const { data, error } = await supabase
       .from('researches')
@@ -434,7 +445,7 @@ router.put('/research/:id', authenticateToken, uploadLimiter, upload.single('res
 
     // Update file if a new one was uploaded
     if (req.file) {
-      file_url = await uploadToSupabase(req.file, 'documents');
+      file_url = await uploadToSupabase(req.file, 'research-pdfs');
     }
 
     const { data, error } = await supabase

@@ -1,13 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Calendar, User, Tag, ChevronRight, ChevronLeft, Clock, Share2, Bookmark, Sparkles, FileText, Lock, Coins } from 'lucide-react';
+import { Helmet } from 'react-helmet-async';
+import { Calendar, User, Tag, ChevronRight, ChevronLeft, Clock, Bookmark, Sparkles, FileText, Lock, Coins } from 'lucide-react';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import ArticleCard from '../components/article/ArticleCard';
 import AuthorCard from '../components/article/AuthorCard';
+import ShareButtons from '../components/article/ShareButtons';
 import { articlesApi, creditsApi } from '../lib/api';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
+import Skeleton from '../components/ui/Skeleton';
 
 const ArticleDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -92,18 +95,35 @@ const ArticleDetailPage: React.FC = () => {
     }
   };
 
+  // ...
+
   if (loading) {
     return (
       <div className="layout-modern py-12">
         <div className="container-modern">
           <div className="max-w-4xl mx-auto">
-            <div className="space-y-8">
-              <div className="skeleton h-80 rounded-3xl"></div>
+            <div className="bg-white rounded-3xl p-8 card-shadow space-y-8">
+              {/* Cover Image Skeleton */}
+              <Skeleton className="w-full h-80 rounded-2xl" type="rect" />
+
+              {/* Header Skeleton */}
               <div className="space-y-4">
-                <div className="skeleton h-10 w-3/4"></div>
-                <div className="skeleton h-4 w-1/4"></div>
-                <div className="skeleton h-4 w-full"></div>
-                <div className="skeleton h-4 w-5/6"></div>
+                <Skeleton className="w-3/4 h-12" />
+                <div className="flex gap-4">
+                  <div className="flex items-center gap-2">
+                    <Skeleton className="w-10 h-10 rounded-full" type="circle" />
+                    <div className="space-y-2">
+                      <Skeleton className="w-24 h-4" />
+                      <Skeleton className="w-16 h-3" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Content Skeleton */}
+              <div className="space-y-3 pt-8">
+                <Skeleton className="w-full h-4" count={6} />
+                <Skeleton className="w-2/3 h-4" />
               </div>
             </div>
           </div>
@@ -111,6 +131,7 @@ const ArticleDetailPage: React.FC = () => {
       </div>
     );
   }
+
 
   if (!article) {
     return (
@@ -143,8 +164,36 @@ const ArticleDetailPage: React.FC = () => {
     { locale: ar }
   );
 
+  // Calculate read time (approx 200 words per minute for Arabic)
+  const calculateReadTime = (content: string): number => {
+    const text = content.replace(/<[^>]*>/g, ''); // Strip HTML
+    const wordCount = text.trim().split(/\s+/).length;
+    return Math.max(1, Math.ceil(wordCount / 200));
+  };
+
+  const readTime = calculateReadTime(article.content || '');
+  const currentUrl = typeof window !== 'undefined' ? window.location.href : '';
+
   return (
     <div className="layout-modern py-12">
+      {/* SEO Meta Tags */}
+      <Helmet>
+        <title>{article.title} | طبيب</title>
+        <meta name="description" content={article.excerpt} />
+        <meta property="og:title" content={article.title} />
+        <meta property="og:description" content={article.excerpt} />
+        <meta property="og:image" content={article.cover_image} />
+        <meta property="og:url" content={currentUrl} />
+        <meta property="og:type" content="article" />
+        <meta property="og:locale" content="ar_SA" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={article.title} />
+        <meta name="twitter:description" content={article.excerpt} />
+        <meta name="twitter:image" content={article.cover_image} />
+        <meta name="author" content={article.author} />
+        <link rel="canonical" href={currentUrl} />
+      </Helmet>
+
       <div className="container-modern">
         <div className="max-w-4xl mx-auto">
           {/* Breadcrumbs */}
@@ -187,7 +236,7 @@ const ArticleDetailPage: React.FC = () => {
 
               <div className="flex items-center">
                 <Clock size={18} className="ml-2 text-green-500" />
-                <span>5 دقائق قراءة</span>
+                <span>{readTime} دقائق للقراءة</span>
               </div>
             </div>
 
@@ -206,10 +255,11 @@ const ArticleDetailPage: React.FC = () => {
 
             {/* Action buttons */}
             <div className="flex items-center gap-4 mb-8">
-              <button className="btn-secondary inline-flex items-center">
-                <Share2 size={18} className="ml-2" />
-                مشاركة
-              </button>
+              <ShareButtons
+                url={currentUrl}
+                title={article.title}
+                description={article.excerpt}
+              />
               <button className="btn-secondary inline-flex items-center">
                 <Bookmark size={18} className="ml-2" />
                 حفظ للقراءة لاحقاً
@@ -222,6 +272,7 @@ const ArticleDetailPage: React.FC = () => {
             <img
               src={article.cover_image}
               alt={article.title}
+              loading="lazy"
               className="w-full h-auto rounded-3xl shadow-2xl"
             />
           </div>

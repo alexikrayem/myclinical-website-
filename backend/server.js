@@ -20,6 +20,9 @@ import coursesRoutes from './routes/courses.js';
 import creditsRoutes from './routes/credits.js';
 import userAuthRoutes from './routes/userAuth.js';
 import uploadRoutes from './routes/upload.js';
+import sitemapRoutes from './routes/sitemap.js';
+import securePdfRoutes from './routes/securePdf.js';
+import { setupSwagger } from './config/swagger.js';
 
 // Security Middleware
 import { errorHandler } from './middleware/errorHandler.js';
@@ -29,6 +32,7 @@ import { sanitizeData, preventXSS, preventHPP, validateInput } from './middlewar
 import { preventSensitiveFileAccess } from './middleware/fileValidation.js';
 import { validateEnvironment, validateProductionSecurity, requireValidEnvironment } from './middleware/envValidator.js';
 import { getCorsOrigins } from './config/security.js';
+import { initSentry, sentryRequestHandler, sentryTracingHandler, sentryErrorHandler } from './config/sentry.js';
 
 // Load and validate environment variables
 dotenv.config();
@@ -40,6 +44,11 @@ const __dirname = dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 5001;
+
+// Initialize Sentry (must be before other middleware)
+initSentry(app);
+app.use(sentryRequestHandler);
+app.use(sentryTracingHandler);
 
 // Trust proxy (important for rate limiting and security when behind a proxy)
 app.set('trust proxy', 1);
@@ -146,9 +155,13 @@ app.use('/uploads', preventSensitiveFileAccess, express.static(path.join(__dirna
 // Apply general API rate limiting to all API routes
 app.use('/api/', apiLimiter);
 
+// Setup API Documentation (Swagger)
+setupSwagger(app);
+
 // API Routes
 app.use('/api/articles', articlesRoutes);
 app.use('/api/research', researchRoutes);
+app.use('/api/research', securePdfRoutes); // Secure PDF viewing
 app.use('/api/admin', adminRoutes);
 app.use('/api/authors', authorsRoutes);
 app.use('/api/ai', aiRoutes);
@@ -157,10 +170,16 @@ app.use('/api/credits', creditsRoutes);
 app.use('/api/auth', userAuthRoutes);
 app.use('/api/upload', uploadRoutes);
 
+// SEO Routes (no /api prefix)
+app.use('/', sitemapRoutes);
+
 // 404 handler for API routes
 app.use('/api/*', (req, res) => {
   res.status(404).json({ error: 'API endpoint not found' });
 });
+
+// Sentry error handler (must be before other error handlers)
+app.use(sentryErrorHandler);
 
 // Error handling middleware
 app.use(errorHandler);

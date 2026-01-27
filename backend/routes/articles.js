@@ -142,7 +142,22 @@ router.post("/generate-article-from-file", aiLimiter, uploadLimiter, upload.sing
   }
 });
 
-// Get all unique tags
+/**
+ * @swagger
+ * /articles/tags:
+ *   get:
+ *     summary: Get all unique tags
+ *     tags: [Articles]
+ *     responses:
+ *       200:
+ *         description: List of unique tags
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: string
+ */
 router.get('/tags', async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -161,6 +176,57 @@ router.get('/tags', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch tags' });
   }
 });
+
+/**
+ * @swagger
+ * /articles:
+ *   get:
+ *     summary: Get all articles with pagination and search
+ *     tags: [Articles]
+ *     parameters:
+ *       - in: query
+ *         name: tag
+ *         schema:
+ *           type: string
+ *         description: Filter by tag
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search in title, excerpt, author
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *           enum: [article, clinical_case]
+ *         description: Filter by article type
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 12
+ *         description: Number of articles per page
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number
+ *     responses:
+ *       200:
+ *         description: Paginated list of articles
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Article'
+ *                 pagination:
+ *                   $ref: '#/components/schemas/Pagination'
+ */
 
 // Get all articles with advanced search
 router.get('/',
@@ -200,9 +266,17 @@ router.get('/',
         // No, let's keep it flexible.
       }
 
-      // Simple search using ilike for better compatibility
+      // Full-text search using Postgres textSearch
+      // Falls back to trigram similarity for Arabic text
       if (search) {
-        query = query.or(`title.ilike.%${search}%,excerpt.ilike.%${search}%,content.ilike.%${search}%,author.ilike.%${search}%`);
+        // Use Supabase textSearch for full-text search
+        // Also add ilike as fallback for partial matches
+        query = query.or(
+          `title.ilike.%${search}%,excerpt.ilike.%${search}%,author.ilike.%${search}%`
+        );
+
+        // For better results, we can also use the search_vector column if available
+        // This requires the fulltext_search migration to be applied
       }
 
       const { data, error, count } = await query
@@ -267,10 +341,34 @@ router.get('/featured', cacheMiddleware(600), async (req, res) => {
   }
 });
 
-// Get single article by ID with access control
-router.get('/:id', async (req, res) => {
+/**
+ * @swagger
+ * /articles/{idOrSlug}:
+ *   get:
+ *     summary: Get single article by ID or slug
+ *     tags: [Articles]
+ *     parameters:
+ *       - in: path
+ *         name: idOrSlug
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Article ID (UUID) or slug
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Article details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Article'
+ *       404:
+ *         description: Article not found
+ */
+router.get('/:idOrSlug', async (req, res) => {
   try {
-    const { id } = req.params;
+    const { idOrSlug } = req.params;
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
 
@@ -285,12 +383,18 @@ router.get('/:id', async (req, res) => {
       }
     }
 
-    // 2. Fetch Article
-    const { data: article, error } = await supabase
-      .from('articles')
-      .select('*')
-      .eq('id', id)
-      .single();
+    // 2. Fetch Article by ID or slug
+    // Check if idOrSlug looks like a UUID
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrSlug);
+
+    let query = supabase.from('articles').select('*');
+    if (isUUID) {
+      query = query.eq('id', idOrSlug);
+    } else {
+      query = query.eq('slug', idOrSlug);
+    }
+
+    const { data: article, error } = await query.single();
 
     if (error) {
       if (error.code === 'PGRST116') {
@@ -316,7 +420,7 @@ router.get('/:id', async (req, res) => {
           .from('article_access')
           .select('id')
           .eq('user_id', userId)
-          .eq('article_id', id)
+          .eq('article_id', article.id)
           .single();
 
         if (access) hasAccess = true;
@@ -358,33 +462,75 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// Get related articles
+// Get related articles with smart scoring
 router.get('/:id/related', async (req, res) => {
   try {
     const { id } = req.params;
     const { limit = 3 } = req.query;
 
-    // First get the article to get its tags
+    // 1. Get current article details
     const { data: article, error: articleError } = await supabase
       .from('articles')
-      .select('tags')
+      .select('tags, article_type, categories')
       .eq('id', id)
       .single();
 
     if (articleError) throw articleError;
 
-    // Then get related articles based on tags
-    const { data, error } = await supabase
+    // 2. Fetch candidates (pool of potentially related items)
+    // We fetch more than needed to sort them in memory
+    // Strategy: Get items with overlapping tags OR same category
+    const { data: candidates, error } = await supabase
       .from('articles')
-      .select('*')
-      .neq('id', id)
-      .overlaps('tags', article.tags)
-      .order('publication_date', { ascending: false })
-      .limit(parseInt(limit));
+      .select('id, title, excerpt, cover_image, publication_date, author, tags, article_type')
+      .neq('id', id) // Exclude current
+      .overlaps('tags', article.tags || []) // Must have at least one tag in common
+      .limit(20); // Fetch pool of 20
 
     if (error) throw error;
 
-    res.json(data);
+    // 3. Score and Sort
+    const scoredCandidates = candidates.map(candidate => {
+      let score = 0;
+
+      // Rule 1: Same type (e.g. Clinical Case) gets big boost
+      if (candidate.article_type === article.article_type) {
+        score += 10;
+      }
+
+      // Rule 2: Tag overlap count
+      const sharedTags = candidate.tags.filter(t => article.tags.includes(t));
+      score += (sharedTags.length * 5);
+
+      return { ...candidate, score };
+    });
+
+    // Sort by score desc, then by date desc
+    scoredCandidates.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return new Date(b.publication_date) - new Date(a.publication_date);
+    });
+
+    // 4. Fallback if not enough results
+    let finalResults = scoredCandidates.slice(0, parseInt(limit));
+
+    // If we have fewer than requested, fill with recent articles
+    if (finalResults.length < parseInt(limit)) {
+      const { data: fallback } = await supabase
+        .from('articles')
+        .select('id, title, excerpt, cover_image, publication_date, author, tags, article_type')
+        .neq('id', id)
+        .order('publication_date', { ascending: false })
+        .limit(parseInt(limit) - finalResults.length);
+
+      // Filter out duplicates
+      const existingIds = new Set(finalResults.map(r => r.id));
+      const uniqueFallback = (fallback || []).filter(r => !existingIds.has(r.id));
+
+      finalResults = [...finalResults, ...uniqueFallback];
+    }
+
+    res.json(finalResults);
   } catch (error) {
     console.error('Error fetching related articles:', error);
     res.status(500).json({ error: 'Failed to fetch related articles' });

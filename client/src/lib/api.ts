@@ -11,6 +11,31 @@ const api = axios.create({
   },
 });
 
+// Global Search API
+export const searchApi = {
+  // Search across all content types
+  searchAll: async (query: string, limit = 5) => {
+    try {
+      const [articlesData, researchData, coursesData] = await Promise.all([
+        articlesApi.search(query, limit),
+        researchApi.search(query, limit),
+        coursesApi.getAll({ search: query, limit })
+      ]);
+
+      const results = [
+        ...(articlesData.data || []).map((item: any) => ({ ...item, type: 'article' })),
+        ...(researchData.data || []).map((item: any) => ({ ...item, type: 'research' })),
+        ...(coursesData.data || []).map((item: any) => ({ ...item, type: 'course' }))
+      ].slice(0, limit);
+
+      return results;
+    } catch (error) {
+      console.error('Error in global search:', error);
+      return [];
+    }
+  }
+};
+
 // Articles API
 export const articlesApi = {
   // Get all articles with optional filters
@@ -107,6 +132,17 @@ export const researchApi = {
     } catch (error) {
       console.error('Error fetching research paper:', error);
       throw error;
+    }
+  },
+
+  // Get related research papers
+  getRelated: async (id: string, limit = 3) => {
+    try {
+      const response = await api.get(`/research/${id}/related`, { params: { limit } });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching related research:', error);
+      return [];
     }
   },
 

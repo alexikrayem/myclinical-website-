@@ -3,6 +3,7 @@ import { Search, Filter, BookOpen } from 'lucide-react';
 import { coursesApi } from '../lib/api';
 import CourseList from '../components/courses/CourseList';
 import VideoCourseCard from '../components/courses/CourseCard';
+import CourseListSkeleton from '../components/loaders/CourseListSkeleton';
 
 const CoursesPage = () => {
     const [courses, setCourses] = useState([]);
@@ -95,8 +96,8 @@ const CoursesPage = () => {
                         <button
                             onClick={() => setActiveCategory('')}
                             className={`px-4 py-2 rounded-xl whitespace-nowrap transition-all ${activeCategory === ''
-                                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-200'
-                                    : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+                                ? 'bg-blue-600 text-white shadow-lg shadow-blue-200'
+                                : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
                                 }`}
                         >
                             الكل
@@ -106,8 +107,8 @@ const CoursesPage = () => {
                                 key={cat}
                                 onClick={() => setActiveCategory(cat)}
                                 className={`px-4 py-2 rounded-xl whitespace-nowrap transition-all ${activeCategory === cat
-                                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-200'
-                                        : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+                                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-200'
+                                    : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
                                     }`}
                             >
                                 {cat}
@@ -117,14 +118,12 @@ const CoursesPage = () => {
                 </div>
             </div>
 
-            {/* All Courses Grid */}
-            <section>
-                <div className="flex items-center justify-between mb-6">
-                    <h2 className="text-2xl font-bold text-gray-900">جميع الدورات</h2>
-                    <span className="text-gray-500 text-sm">{courses.length} دورة متاحة</span>
-                </div>
-                <CourseList courses={courses} isLoading={isLoading} />
-            </section>
+            {isLoading ? (
+                <CourseListSkeleton count={6} />
+            ) : (
+                <CourseList courses={courses} />
+            )}
+
         </div>
     );
 };

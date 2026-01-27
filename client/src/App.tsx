@@ -14,6 +14,7 @@ import HomePage from './pages/HomePage';
 import ArticlesPage from './pages/ArticlesPage';
 import ArticleDetailPage from './pages/ArticleDetailPage';
 import ResearchTopicsPage from './pages/ResearchTopicsPage';
+import ResearchDetailPage from './pages/ResearchDetailPage';
 import NotFoundPage from './pages/NotFoundPage';
 import AboutPage from './pages/AboutPage';
 import CoursesPage from './pages/CoursesPage';
@@ -37,6 +38,7 @@ function App() {
               <Route path="/courses" element={<CoursesPage />} />
               <Route path="/courses/:id" element={<CourseDetailPage />} />
               <Route path="/research-topics" element={<ResearchTopicsPage />} />
+              <Route path="/research/:id" element={<ResearchDetailPage />} />
               <Route path="/about" element={<AboutPage />} />
               <Route path="/clinical-cases" element={<ClinicalCasesPage />} />
               <Route path="/login" element={<LoginPage />} />

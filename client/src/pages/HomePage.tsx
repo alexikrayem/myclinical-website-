@@ -65,83 +65,64 @@ const HomePage: React.FC = () => {
   return (
     <div className="layout-modern">
       {/* Hero Section */}
-      <section className="relative min-h-[85vh] flex items-center overflow-hidden bg-[#F8FAFC]">
-        {/* Background Elements */}
+      <section className="relative min-h-[90vh] flex items-center overflow-hidden bg-gradient-to-b from-slate-50 to-white pt-20">
         <div className="absolute inset-0 z-0">
-          <div className="absolute top-[-20%] right-[-10%] w-[600px] h-[600px] bg-blue-100/50 rounded-full blur-[100px] animate-pulse-slow"></div>
-          <div className="absolute bottom-[-20%] left-[-10%] w-[500px] h-[500px] bg-purple-100/50 rounded-full blur-[100px] animate-pulse-slow delay-1000"></div>
-          <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20"></div>
-          {/* Grid Pattern */}
-          <div className="absolute inset-0" style={{ backgroundImage: 'radial-gradient(#CBD5E1 1px, transparent 1px)', backgroundSize: '40px 40px', opacity: 0.3 }}></div>
+          <div className="absolute top-[-20%] right-[-10%] w-[800px] h-[800px] bg-blue-100/40 rounded-full blur-[120px] animate-pulse-slow"></div>
+          <div className="absolute bottom-[-10%] left-[-5%] w-[600px] h-[600px] bg-purple-100/40 rounded-full blur-[100px] animate-pulse-slow delay-1000"></div>
+          <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-soft-light"></div>
         </div>
 
-        <div className="container-modern relative z-10 w-full">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+        <div className="container-modern relative z-10 w-full mb-12">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
 
             {/* Text Content (Right) */}
-            <div className="text-right order-2 lg:order-1 space-y-8">
-              <div className="inline-flex items-center gap-2 bg-white border border-blue-100 shadow-sm rounded-full px-4 py-1.5 animate-fadeIn">
+            <div className="text-right order-2 lg:order-1 space-y-8 animate-slideUp">
+              <div className="inline-flex items-center gap-2 bg-white/80 backdrop-blur-sm border border-blue-100 shadow-sm rounded-full px-4 py-1.5 animate-fadeIn">
                 <span className="relative flex h-3 w-3">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
                 </span>
-                <span className="text-sm font-medium text-blue-900">المنصة الأولى لأطباء الأسنان العرب</span>
+                <span className="text-sm font-bold text-blue-900">المنصة الأولى لأطباء الأسنان العرب</span>
               </div>
 
-              <h1 className="text-5xl lg:text-7xl font-black text-gray-900 leading-[1.15] tracking-tight">
+              <h1 className="text-5xl lg:text-7xl font-black text-gray-900 leading-[1.1] tracking-tight">
                 ارتقِ بمستقبلك <br />
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">
                   المهني والعلمي
                 </span>
               </h1>
 
-              <p className="text-xl text-gray-600 leading-relaxed max-w-2xl ml-auto">
+              <p className="text-xl text-gray-600 leading-relaxed max-w-2xl ml-auto font-medium">
                 موسوعة متكاملة تجمع بين أحدث المقالات العلمية، الدورات التدريبية المعتمدة، والأبحاث المتخصصة في طب الأسنان.
               </p>
 
-              <div className="flex flex-col sm:flex-row gap-4 justify-end pt-4">
-                <Link
-                  to="/courses"
-                  className="inline-flex items-center justify-center px-8 py-4 text-lg font-bold text-white transition-all duration-200 bg-blue-600 rounded-2xl hover:bg-blue-700 hover:shadow-lg hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-600"
-                >
-                  <BookOpen className="ml-2 -mr-1" size={24} />
-                  تصفح الدورات
-                </Link>
-                <Link
-                  to="/articles"
-                  className="inline-flex items-center justify-center px-8 py-4 text-lg font-bold text-gray-700 transition-all duration-200 bg-white border border-gray-200 rounded-2xl hover:bg-gray-50 hover:border-gray-300 hover:shadow-md hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-200"
-                >
-                  <FileText className="ml-2 -mr-1" size={24} />
-                  قراءة المقالات
-                </Link>
-              </div>
-
-              {/* Stats */}
-              <div className="grid grid-cols-3 gap-6 pt-8 border-t border-gray-200/60">
-                <div>
-                  <p className="text-3xl font-bold text-gray-900">+500</p>
-                  <p className="text-sm text-gray-500 mt-1">مقال علمي</p>
-                </div>
-                <div>
-                  <p className="text-3xl font-bold text-gray-900">+50</p>
-                  <p className="text-sm text-gray-500 mt-1">دورة تدريبية</p>
-                </div>
-                <div>
-                  <p className="text-3xl font-bold text-gray-900">+10k</p>
-                  <p className="text-sm text-gray-500 mt-1">طبيب مشترك</p>
-                </div>
+              {/* Quick Access Grid */}
+              <div className="grid grid-cols-2 gap-4 mt-8">
+                {[
+                  { to: '/research-topics', icon: BookOpen, title: 'المكتبة البحثية', desc: 'أحدث الأبحاث والدراسات', color: 'bg-blue-50 text-blue-600' },
+                  { to: '/courses', icon: Video, title: 'الدورات التدريبية', desc: 'تطوير مهاراتك العملية', color: 'bg-purple-50 text-purple-600' },
+                  { to: '/clinical-cases', icon: Sparkles, title: 'حالات سريرية', desc: 'مناقشة حالات واقعية', color: 'bg-green-50 text-green-600' },
+                  { to: '/articles', icon: FileText, title: 'المقالات العلمية', desc: 'محتوى متجدد يومياً', color: 'bg-orange-50 text-orange-600' },
+                ].map((item, idx) => (
+                  <Link
+                    key={idx}
+                    to={item.to}
+                    className="group flex flex-col p-4 bg-white border border-gray-100 rounded-2xl shadow-sm hover:shadow-md hover:border-blue-200 transition-all duration-300"
+                  >
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-3 ${item.color} group-hover:scale-110 transition-transform`}>
+                      <item.icon size={20} />
+                    </div>
+                    <span className="font-bold text-gray-900 mb-1">{item.title}</span>
+                    <span className="text-xs text-gray-500 font-medium">{item.desc}</span>
+                  </Link>
+                ))}
               </div>
             </div>
 
             {/* Visual Content (Left) */}
-            <div className="relative order-1 lg:order-2 hidden lg:block">
-              <div className="relative w-full aspect-square max-w-[600px] mx-auto">
-                {/* Main Image/Shape */}
-                <div className="absolute inset-0">
-                  <RotatingDentalImages />
-                </div>
-
-                {/* Floating Cards - Now handled inside RotatingDentalImages for 3D effect */}
+            <div className="relative order-1 lg:order-2 hidden lg:block perspective-1000">
+              <div className="relative w-full aspect-square max-w-[650px] mx-auto transform hover:rotate-y-2 transition-transform duration-500">
+                <RotatingDentalImages />
               </div>
             </div>
           </div>
