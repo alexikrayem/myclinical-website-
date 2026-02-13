@@ -5,6 +5,14 @@ import request from 'supertest';
 
 const validUuid = '123e4567-e89b-12d3-a456-426614174000';
 
+// Mock global fetch
+global.fetch = jest.fn(() =>
+    Promise.resolve({
+        json: () => Promise.resolve({}),
+        ok: true,
+    })
+);
+
 // --- ESM Mocking ---
 jest.unstable_mockModule('@supabase/supabase-js', () => ({
     createClient: jest.fn(() => mockSupabaseClient)
@@ -25,6 +33,18 @@ jest.unstable_mockModule('@google/generative-ai', () => ({
     GoogleGenerativeAI: class {
         getGenerativeModel() { return {}; }
     }
+}));
+
+// Mock userAuth middleware
+jest.unstable_mockModule('../middleware/userAuth.js', () => ({
+    optionalAuth: (req, res, next) => {
+        const authHeader = req.headers['authorization'];
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+            req.user = { id: '123e4567-e89b-12d3-a456-426614174000' };
+        }
+        next();
+    },
+    authenticateUser: (req, res, next) => next()
 }));
 
 // Mock pdf-parse to avoid file read errors if not already fixed
@@ -60,6 +80,7 @@ describe('GET /api/articles/:id Access Control', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
+        mockSupabaseClient.single.mockReset(); // Ensure clean slate
         // Default mocks
         mockSupabaseClient.from.mockReturnThis();
         mockSupabaseClient.select.mockReturnThis();

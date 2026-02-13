@@ -31,11 +31,15 @@ export const authenticateUser = async (req, res, next) => {
         // Verify JWT token
         const decoded = jwt.verify(token, JWT_SECRET);
 
+        // Hash token to match database record
+        const tokenHash = Buffer.from(token).toString('base64').substring(0, 64);
+
         // Check if session is still active in database
         const { data: session, error: sessionError } = await supabase
             .from('user_sessions')
             .select('*, users(*)')
             .eq('user_id', decoded.userId)
+            .eq('token_hash', tokenHash) // Match specific token
             .eq('is_active', true)
             .gt('expires_at', new Date().toISOString())
             .single();

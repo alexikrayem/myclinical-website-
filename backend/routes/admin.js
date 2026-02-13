@@ -10,7 +10,7 @@ import { validateArticle, validateResearch } from '../middleware/validation.js';
 import { authenticateToken, trackLoginAttempt, checkLoginAllowed } from '../middleware/auth.js';
 import { authLimiter, uploadLimiter } from '../middleware/rateLimiter.js';
 import { validateUploadedFile } from '../middleware/fileValidation.js';
-import { sanitizeFileName } from '../middleware/inputSanitizer.js';
+import { sanitizeFileName, sanitizeContent } from '../middleware/inputSanitizer.js';
 import { body, validationResult } from 'express-validator';
 
 dotenv.config();
@@ -94,7 +94,7 @@ router.post('/login',
       // Basic email format validation
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email)) {
-        trackLoginAttempt(email, false);
+        await trackLoginAttempt(email, false);
         return res.status(400).json({
           error: 'Invalid email format',
           code: 'INVALID_EMAIL'
@@ -109,7 +109,7 @@ router.post('/login',
 
       if (authError) {
         // Track failed attempt
-        const attemptResult = trackLoginAttempt(email, false);
+        const attemptResult = await trackLoginAttempt(email, false);
 
         if (process.env.NODE_ENV === 'development') {
           console.error('Auth error:', authError.message);
@@ -123,7 +123,7 @@ router.post('/login',
       }
 
       if (!authData.user) {
-        trackLoginAttempt(email, false);
+        await trackLoginAttempt(email, false);
         return res.status(401).json({
           error: 'Authentication failed',
           code: 'AUTH_FAILED'
@@ -142,7 +142,7 @@ router.post('/login',
       console.log('Admin Lookup Result:', { adminData, adminError });
 
       if (adminError || !adminData) {
-        trackLoginAttempt(email, false);
+        await trackLoginAttempt(email, false);
 
         if (process.env.NODE_ENV === 'development') {
           console.error('Admin check error:', adminError);
@@ -155,7 +155,8 @@ router.post('/login',
       }
 
       // Successful login - reset attempts
-      trackLoginAttempt(email, true);
+      // Successful login - reset attempts
+      await trackLoginAttempt(email, true);
 
       // Set secure cookie options
       const cookieOptions = {
@@ -246,7 +247,9 @@ router.post('/articles',
         return res.status(400).json({ error: errors.array()[0].msg });
       }
 
-      const { title, excerpt, content, author, tags, is_featured } = req.body;
+      const { title, author, tags, is_featured } = req.body;
+      const content = sanitizeContent(req.body.content);
+      const excerpt = sanitizeContent(req.body.excerpt);
 
       let cover_image = '';
 
@@ -281,6 +284,7 @@ router.post('/articles',
             author,
             tags: JSON.parse(tags), // Convert JSON string to array
             is_featured: is_featured === 'true',
+            credits_required: parseInt(req.body.credits_required) || 0,
             article_type: req.body.article_type || 'article',
             slug: generateSlug(title),
             publication_date: new Date().toISOString(),
@@ -301,7 +305,9 @@ router.post('/articles',
 router.put('/articles/:id', authenticateToken, uploadLimiter, upload.single('cover_image'), validateUploadedFile(['jpg', 'jpeg', 'png']), validateArticle, async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, excerpt, content, author, tags, is_featured } = req.body;
+    const { title, author, tags, is_featured } = req.body;
+    const content = sanitizeContent(req.body.content);
+    const excerpt = sanitizeContent(req.body.excerpt);
 
     // Get the current article to check if cover image exists
     const { data: existingArticle, error: fetchError } = await supabase
@@ -331,6 +337,7 @@ router.put('/articles/:id', authenticateToken, uploadLimiter, upload.single('cov
         author,
         tags: JSON.parse(tags), // Convert JSON string to array
         is_featured: is_featured === 'true',
+        credits_required: parseInt(req.body.credits_required) || 0,
         article_type: req.body.article_type || 'article', // Add article_type
         updated_at: new Date().toISOString(),
       })
@@ -382,7 +389,8 @@ router.delete('/articles/:id', authenticateToken, async (req, res) => {
 // Create new research
 router.post('/research', authenticateToken, uploadLimiter, upload.single('research_file'), validateUploadedFile(['pdf', 'doc', 'docx']), validateResearch, async (req, res) => {
   try {
-    const { title, abstract, authors, journal, publication_date } = req.body;
+    const { title, authors, journal, publication_date } = req.body;
+    const abstract = sanitizeContent(req.body.abstract);
 
     if (!req.file) {
       return res.status(400).json({ error: 'Research file is required' });
@@ -430,7 +438,8 @@ router.post('/research', authenticateToken, uploadLimiter, upload.single('resear
 router.put('/research/:id', authenticateToken, uploadLimiter, upload.single('research_file'), validateUploadedFile(['pdf', 'doc', 'docx']), validateResearch, async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, abstract, authors, journal, publication_date } = req.body;
+    const { title, authors, journal, publication_date } = req.body;
+    const abstract = sanitizeContent(req.body.abstract);
 
     // Get the current research to check if file exists
     const { data: existingResearch, error: fetchError } = await supabase

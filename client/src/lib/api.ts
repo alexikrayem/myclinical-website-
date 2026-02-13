@@ -11,22 +11,76 @@ const api = axios.create({
   },
 });
 
+export type GlobalSearchType = 'article' | 'research' | 'course';
+
+export interface GlobalSearchResult {
+  id: string;
+  title: string;
+  type: GlobalSearchType;
+  slug?: string;
+  [key: string]: unknown;
+}
+
+interface SearchSourceItem {
+  id: string | number;
+  title: string;
+  slug?: string;
+  [key: string]: unknown;
+}
+
+const isSearchSourceItem = (value: unknown): value is SearchSourceItem => {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Record<string, unknown>;
+  return (typeof candidate.id === 'string' || typeof candidate.id === 'number') && typeof candidate.title === 'string';
+};
+
+const extractSearchItems = (response: unknown): SearchSourceItem[] => {
+  if (!response || typeof response !== 'object') return [];
+  const data = (response as { data?: unknown }).data;
+  if (!Array.isArray(data)) return [];
+  return data.filter(isSearchSourceItem);
+};
+
+const withSearchType = (items: SearchSourceItem[], type: GlobalSearchType): GlobalSearchResult[] => {
+  return items.map((item) => ({ ...item, id: String(item.id), type }));
+};
+
 // Global Search API
 export const searchApi = {
   // Search across all content types
-  searchAll: async (query: string, limit = 5) => {
+  searchAll: async (query: string, limit = 5): Promise<GlobalSearchResult[]> => {
     try {
-      const [articlesData, researchData, coursesData] = await Promise.all([
+      const [articlesResult, researchResult, coursesResult] = await Promise.allSettled([
         articlesApi.search(query, limit),
         researchApi.search(query, limit),
         coursesApi.getAll({ search: query, limit })
       ]);
 
-      const results = [
-        ...(articlesData.data || []).map((item: any) => ({ ...item, type: 'article' })),
-        ...(researchData.data || []).map((item: any) => ({ ...item, type: 'research' })),
-        ...(coursesData.data || []).map((item: any) => ({ ...item, type: 'course' }))
-      ].slice(0, limit);
+      if (articlesResult.status === 'rejected') {
+        console.error('Article search failed:', articlesResult.reason);
+      }
+
+      if (researchResult.status === 'rejected') {
+        console.error('Research search failed:', researchResult.reason);
+      }
+
+      if (coursesResult.status === 'rejected') {
+        console.error('Course search failed:', coursesResult.reason);
+      }
+
+      const articleResults = articlesResult.status === 'fulfilled'
+        ? withSearchType(extractSearchItems(articlesResult.value), 'article')
+        : [];
+
+      const researchResults = researchResult.status === 'fulfilled'
+        ? withSearchType(extractSearchItems(researchResult.value), 'research')
+        : [];
+
+      const courseResults = coursesResult.status === 'fulfilled'
+        ? withSearchType(extractSearchItems(coursesResult.value), 'course')
+        : [];
+
+      const results = [...articleResults, ...researchResults, ...courseResults].slice(0, limit);
 
       return results;
     } catch (error) {

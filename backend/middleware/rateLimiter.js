@@ -21,6 +21,8 @@ const createHybridStore = (prefix) => {
           sendCommand: (...args) => client.sendCommand(args),
           prefix: `rate_limit:${prefix}:`,
         });
+        // Initialize the RedisStore so windowMs is set
+        redisStore.init(options);
       }
     },
     increment: async function (key) {

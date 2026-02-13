@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
@@ -9,9 +10,14 @@ if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
 
-const ADMIN_EMAIL = 'admin@outlook1.com'
-const ADMIN_PASSWORD = 'Admin123'
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD
 const ADMIN_ROLE = 'admin'
+
+if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+    console.error('❌ Missing ADMIN_EMAIL or ADMIN_PASSWORD environment variables')
+    process.exit(1)
+}
 
 async function seedAdmin() {
     // 1️⃣ Look for existing user

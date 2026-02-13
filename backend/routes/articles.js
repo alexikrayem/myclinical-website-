@@ -428,8 +428,8 @@ router.get('/:idOrSlug', async (req, res) => {
     }
 
     // 4. Handle Content Delivery
-    // If article is free (credits_required = 0) everyone has access
-    if (article.credits_required === 0) hasAccess = true;
+    // If article is free (credits_required = 0), grant access only to logged-in users
+    if (article.credits_required === 0 && userId) hasAccess = true;
 
     if (hasAccess) {
       // Return full content

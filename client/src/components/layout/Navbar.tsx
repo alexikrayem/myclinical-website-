@@ -11,6 +11,7 @@ import { User } from 'lucide-react';
 import SearchDropdown from '../common/SearchDropdown';
 import { useDebounce } from '../../hooks/useDebounce';
 import { searchApi } from '../../lib/api';
+import type { GlobalSearchResult } from '../../lib/api';
 
 const Navbar: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -23,9 +24,10 @@ const Navbar: React.FC = () => {
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
 
   // Search State
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<GlobalSearchResult[]>([]);
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
+  const [isSearchExpanded, setIsSearchExpanded] = useState(false);
 
   const { user } = useAuth(); // Assuming AuthContext provides user
 
@@ -52,29 +54,63 @@ const Navbar: React.FC = () => {
     return location.pathname === path;
   };
 
+  const closeSearchResults = () => {
+    setShowSearchResults(false);
+    setIsMenuOpen(false);
+    setShowMobileSearch(false);
+  };
+
+  const handleSearchQueryChange = (value: string) => {
+    setSearchQuery(value);
+    if (value.trim().length >= 2) {
+      setSearchResults([]);
+      setIsSearching(true);
+      setShowSearchResults(true);
+      return;
+    }
+    setIsSearching(false);
+    setSearchResults([]);
+    setShowSearchResults(false);
+  };
+
   // Live Search Logic
   const debouncedSearchTerm = useDebounce(searchQuery, 300);
 
   useEffect(() => {
+    let isCancelled = false;
+
     const performSearch = async () => {
-      if (debouncedSearchTerm.trim().length >= 2) {
+      const trimmedSearchTerm = debouncedSearchTerm.trim();
+      if (trimmedSearchTerm.length >= 2) {
         setIsSearching(true);
         try {
-          const results = await searchApi.searchAll(debouncedSearchTerm);
-          setSearchResults(results);
-          setShowSearchResults(true);
+          const results = await searchApi.searchAll(trimmedSearchTerm);
+          if (!isCancelled) {
+            setSearchResults(results);
+            setShowSearchResults(true);
+          }
         } catch (error) {
           console.error("Search error:", error);
+          if (!isCancelled) {
+            setSearchResults([]);
+          }
         } finally {
-          setIsSearching(false);
+          if (!isCancelled) {
+            setIsSearching(false);
+          }
         }
       } else {
+        setIsSearching(false);
         setSearchResults([]);
         setShowSearchResults(false);
       }
     };
 
     performSearch();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [debouncedSearchTerm]);
 
   return (
@@ -120,7 +156,7 @@ const Navbar: React.FC = () => {
 
 
             {/* Desktop Navigation - CENTERED */}
-            <nav className="hidden md:flex items-center space-x-6 space-x-reverse absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+            <nav className="hidden md:flex items-center space-x-4 space-x-reverse absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
               {[
                 { path: '/', label: 'الرئيسية' },
                 { path: '/articles', label: 'المقالات' },
@@ -131,7 +167,7 @@ const Navbar: React.FC = () => {
                 <Link
                   key={path}
                   to={path}
-                  className={`relative px-4 py-2 rounded-full font-medium transition-all duration-300 ${isActive(path)
+                  className={`relative px-3 py-2 rounded-full font-medium whitespace-nowrap text-sm transition-all duration-300 ${isActive(path)
                     ? 'bg-blue-600 text-white shadow-md'
                     : 'text-gray-700 hover:text-blue-600 hover:bg-blue-50'
                     }`}
@@ -178,8 +214,8 @@ const Navbar: React.FC = () => {
                         placeholder="ابحث في المقالات، الأبحاث، والدورات..."
                         className="w-full py-3 pr-12 pl-12 text-gray-800 bg-white border-2 border-blue-100 rounded-2xl shadow-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-100 focus:outline-none text-lg transition-all"
                         value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        onFocus={() => searchQuery && setShowSearchResults(true)}
+                        onChange={(e) => handleSearchQueryChange(e.target.value)}
+                        onFocus={() => searchQuery.trim().length >= 2 && setShowSearchResults(true)}
                       />
                       <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-blue-500" size={20} />
                       <button
@@ -197,10 +233,10 @@ const Navbar: React.FC = () => {
 
                     <SearchDropdown
                       isOpen={showSearchResults}
-                      onClose={() => setShowSearchResults(false)}
+                      onClose={closeSearchResults}
                       results={searchResults}
                       loading={isSearching}
-                      searchTerm={debouncedSearchTerm}
+                      searchTerm={searchQuery.trim()}
                     />
                   </div>
                 )}
@@ -225,12 +261,6 @@ const Navbar: React.FC = () => {
             </div>
           </div>
 
-          {/* Auth Modal */}
-          <AuthModal
-            isOpen={showAuthModal}
-            onClose={() => setShowAuthModal(false)}
-            initialMode={authMode}
-          />
 
           {/* Mobile Navigation (opened menu overlay) */}
           {isMenuOpen && (
@@ -242,11 +272,19 @@ const Navbar: React.FC = () => {
                     placeholder="ابحث في المقالات..."
                     className="search-input text-gray-700 placeholder-gray-400"
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onChange={(e) => handleSearchQueryChange(e.target.value)}
+                    onFocus={() => searchQuery.trim().length >= 2 && setShowSearchResults(true)}
                   />
                   <button type="submit" className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400">
                     <Search size={18} />
                   </button>
+                  <SearchDropdown
+                    isOpen={showSearchResults}
+                    onClose={closeSearchResults}
+                    results={searchResults}
+                    loading={isSearching}
+                    searchTerm={searchQuery.trim()}
+                  />
                 </div>
               </form>
               <nav className="flex flex-col space-y-2">
@@ -290,7 +328,8 @@ const Navbar: React.FC = () => {
                 placeholder="ابحث في المقالات..."
                 className="w-full text-gray-700 placeholder-gray-400 bg-white/80 backdrop-blur-md rounded-lg border border-black/20 focus:border-black/40 focus:ring-2 focus:ring-blue-400/30 focus:outline-none transition-all duration-300"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => handleSearchQueryChange(e.target.value)}
+                onFocus={() => searchQuery.trim().length >= 2 && setShowSearchResults(true)}
               />
               <button
                 type="submit"
@@ -298,11 +337,25 @@ const Navbar: React.FC = () => {
               >
                 <Search size={18} />
               </button>
+              <SearchDropdown
+                isOpen={showSearchResults}
+                onClose={closeSearchResults}
+                results={searchResults}
+                loading={isSearching}
+                searchTerm={searchQuery.trim()}
+              />
             </form>
           </div>
         )}
 
       </header>
+
+      {/* Auth Modal - rendered outside header to prevent cutoff */}
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        initialMode={authMode}
+      />
 
       {/* Credit Redeem Modal */}
       <CreditRedeemModal

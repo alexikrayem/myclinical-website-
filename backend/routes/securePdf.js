@@ -33,21 +33,18 @@ const supabase = createClient(
  *       404:
  *         description: Research not found
  */
-router.get('/:id/pdf', async (req, res) => {
+import { authenticateUser } from '../middleware/userAuth.js'; // Added import
+
+// ... imports
+
+// ... existing code ...
+
+router.get('/:id/pdf', authenticateUser, async (req, res) => {
     try {
         const { id } = req.params;
-        const authHeader = req.headers['authorization'];
-        const token = authHeader && authHeader.split(' ')[1];
 
-        // 1. Verify user is authenticated
-        if (!token) {
-            return res.status(401).json({ error: 'Authentication required to view PDF' });
-        }
-
-        const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-        if (authError || !user) {
-            return res.status(401).json({ error: 'Invalid or expired token' });
-        }
+        // User is guaranteed to be authenticated and existing by middleware
+        const userId = req.user.id;
 
         // 2. Get research paper details
         const { data: research, error: researchError } = await supabase

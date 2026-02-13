@@ -25,7 +25,10 @@ const ArticleList: React.FC<ArticleListProps> = ({ tag, limit = 12, showFilters 
 
   const { data: response, isLoading: loading } = useArticles(queryParams);
 
-  const articles = useMemo(() => response?.data || response || [], [response]);
+  const articles = useMemo(() => {
+    const raw = response?.data || response;
+    return Array.isArray(raw) ? raw : [];
+  }, [response]);
   const totalResults = response?.pagination?.total || articles.length;
 
   const availableTags = useMemo(() => {

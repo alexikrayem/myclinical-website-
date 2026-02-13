@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Save, X, Upload, Link as LinkIcon, Eye, Image, FileText, User, Tag, Star } from 'lucide-react';
+import { Save, X, Upload, Link as LinkIcon, Eye, Image, FileText, User, Tag, Star, Coins, Sparkles, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import RichTextEditor from '../editor/RichTextEditor';
 import { api } from '../../context/AuthContext';
@@ -22,6 +22,7 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
     is_featured: false,
     cover_image_url: '',
     article_type: 'article', // Default type
+    credits_required: 0,
   });
   const [coverImageFile, setCoverImageFile] = useState<File | null>(null);
   const [tagInput, setTagInput] = useState('');
@@ -32,6 +33,7 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
   const [loadingAuthors, setLoadingAuthors] = useState(true);
   const [categories, setCategories] = useState<string[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
+  const [isSuggestingTags, setIsSuggestingTags] = useState(false);
 
   // Fetch authors on mount
   useEffect(() => {
@@ -77,6 +79,7 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
         is_featured: article.is_featured || false,
         cover_image_url: article.cover_image || '',
         article_type: article.article_type || 'article',
+        credits_required: article.credits_required || 0,
       });
       setUseImageUrl(article.cover_image && !article.cover_image.startsWith('/uploads/'));
     }
@@ -166,6 +169,41 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
     }));
   };
 
+  const handleSuggestTags = async () => {
+    if (!formData.title && !formData.content) {
+      toast.error('يرجى إدخال العنوان أو المحتوى أولاً للحصول على اقتراحات');
+      return;
+    }
+
+    try {
+      setIsSuggestingTags(true);
+      const response = await api.post('/ai/suggest-tags', {
+        title: formData.title,
+        excerpt: formData.excerpt,
+        content: formData.content
+      });
+
+      if (response.data.success && response.data.tags) {
+        const suggestedTags = response.data.tags;
+
+        // Merge suggested tags with existing ones, avoiding duplicates
+        const newTags = [...new Set([...formData.tags, ...suggestedTags])];
+
+        setFormData(prev => ({
+          ...prev,
+          tags: newTags
+        }));
+
+        toast.success('تم تحديث العلامات بناءً على اقتراحات الذكاء الاصطناعي');
+      }
+    } catch (error) {
+      console.error('Error suggesting tags:', error);
+      toast.error('فشل في الحصول على اقتراحات للعلامات');
+    } finally {
+      setIsSuggestingTags(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -186,6 +224,7 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
       submitData.append('tags', JSON.stringify(formData.tags));
       submitData.append('is_featured', formData.is_featured.toString());
       submitData.append('article_type', formData.article_type);
+      submitData.append('credits_required', formData.credits_required.toString());
 
       if (useImageUrl) {
         submitData.append('cover_image_url', formData.cover_image_url);
@@ -466,9 +505,29 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
 
         {/* Tags and Settings */}
         <div className="form-section">
-          <div className="form-section-title">
-            <Tag size={20} className="inline ml-2" />
-            العلامات والإعدادات
+          <div className="form-section-title flex justify-between items-center">
+            <div className="flex items-center">
+              <Tag size={20} className="ml-2" />
+              العلامات والإعدادات
+            </div>
+            <button
+              type="button"
+              onClick={handleSuggestTags}
+              disabled={isSuggestingTags || loadingCategories}
+              className="px-4 py-1.5 bg-blue-50 text-blue-600 rounded-full text-sm font-bold flex items-center hover:bg-blue-100 transition-colors disabled:opacity-50"
+            >
+              {isSuggestingTags ? (
+                <>
+                  <Loader2 size={16} className="ml-2 animate-spin" />
+                  جاري الاقتراح...
+                </>
+              ) : (
+                <>
+                  <Sparkles size={16} className="ml-2" />
+                  اقتراح علامات بالذكاء الاصطناعي
+                </>
+              )}
+            </button>
           </div>
 
           <div className="space-y-6">
@@ -549,6 +608,26 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
                 <Star size={16} className="ml-2 text-yellow-500" />
                 مقال مميز
               </label>
+            </div>
+
+            <div className="pt-4 border-t border-gray-100">
+              <label className="form-label flex items-center">
+                <Coins size={18} className="ml-2 text-blue-500" />
+                الرصيد المطلوب للقراءة *
+              </label>
+              <div className="flex items-center gap-4">
+                <input
+                  type="number"
+                  name="credits_required"
+                  value={formData.credits_required}
+                  onChange={handleInputChange}
+                  min="0"
+                  className="form-input w-32"
+                />
+                <span className="text-sm text-gray-500">
+                  (0 يعني أن المقال متاح لجميع الأعضاء المسجلين مجاناً)
+                </span>
+              </div>
             </div>
           </div>
         </div>

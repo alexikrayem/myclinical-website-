@@ -5,6 +5,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { authenticateToken } from '../middleware/auth.js';
 import { authenticateUser, optionalAuth } from '../middleware/userAuth.js';
 import { getVdoPlaybackInfo } from '../services/vdoService.js';
+import { sanitizeSearchInput } from '../utils/searchUtils.js';
 
 dotenv.config();
 
@@ -24,7 +25,7 @@ router.get('/', async (req, res) => {
         const { category, search, limit = 12, page = 1, featured } = req.query;
         const offset = (page - 1) * limit;
 
-        let query = supabase.from('video_courses').select('*', { count: 'exact' });
+        let query = supabase.from('video_courses').select('id, title, description, cover_image, publication_date, author, categories, is_featured, credits_required, rating, total_students, duration, level', { count: 'exact' });
 
         if (category) {
             query = query.contains('categories', [category]);
@@ -35,7 +36,10 @@ router.get('/', async (req, res) => {
         }
 
         if (search) {
-            query = query.or(`title.ilike.%${search}%,description.ilike.%${search}%,author.ilike.%${search}%`);
+            const sanitizedSearch = sanitizeSearchInput(search);
+            if (sanitizedSearch) {
+                query = query.or(`title.ilike.%${sanitizedSearch}%,description.ilike.%${sanitizedSearch}%,author.ilike.%${sanitizedSearch}%`);
+            }
         }
 
         const { data, error, count } = await query

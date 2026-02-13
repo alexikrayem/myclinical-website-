@@ -112,8 +112,7 @@ npm run dev
 ## 🔐 Admin Access
 
 **Default Admin Credentials:**
-- Email: `admin@arabdental.com`
-- Password: `Admin123!`
+The admin credentials must be set in your `.env` file using `ADMIN_EMAIL` and `ADMIN_PASSWORD` before running the seed script.
 
 ## 🔍 Search Features
 

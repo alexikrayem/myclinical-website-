@@ -69,6 +69,8 @@ export const schemas = {
       is_featured: z.string().optional(), // 'true' or 'false'
       cover_image_url: z.string().optional(),
       content: z.string().optional(), // HTML content
+      credits_required: z.string().optional().default('0'),
+      article_type: z.string().optional().default('article'),
     }),
   }),
 

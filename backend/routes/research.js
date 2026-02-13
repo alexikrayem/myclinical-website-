@@ -1,6 +1,7 @@
 import express from 'express';
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
+import { sanitizeSearchInput } from '../utils/searchUtils.js';
 
 dotenv.config();
 
@@ -16,16 +17,19 @@ router.get('/', async (req, res) => {
     const { journal, search, limit = 12, page = 1 } = req.query;
     const offset = (page - 1) * limit;
 
-    let query = supabase.from('researches').select('*', { count: 'exact' });
+    let query = supabase.from('researches').select('id, title, journal, abstract, publication_date, authors', { count: 'exact' });
 
     // Journal filtering
     if (journal) {
       query = query.eq('journal', journal);
     }
 
-    // Simple search using ilike for better compatibility
+    // Simple search using ilike with sanitized input
     if (search) {
-      query = query.or(`title.ilike.%${search}%,abstract.ilike.%${search}%,journal.ilike.%${search}%`);
+      const sanitizedSearch = sanitizeSearchInput(search);
+      if (sanitizedSearch) {
+        query = query.or(`title.ilike.%${sanitizedSearch}%,abstract.ilike.%${sanitizedSearch}%,journal.ilike.%${sanitizedSearch}%`);
+      }
     }
 
     const { data, error, count } = await query

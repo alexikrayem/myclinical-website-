@@ -4,6 +4,7 @@ import { Helmet } from 'react-helmet-async';
 import { Calendar, User, Tag, ChevronRight, ChevronLeft, Clock, Bookmark, Sparkles, FileText, Lock, Coins } from 'lucide-react';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
+import axios from 'axios';
 import ArticleCard from '../components/article/ArticleCard';
 import AuthorCard from '../components/article/AuthorCard';
 import ShareButtons from '../components/article/ShareButtons';
@@ -12,11 +13,39 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import Skeleton from '../components/ui/Skeleton';
 
+interface ArticleDetail {
+  id: string;
+  slug?: string;
+  title: string;
+  excerpt: string;
+  content: string;
+  cover_image: string;
+  publication_date: string;
+  author: string;
+  tags: string[];
+  is_featured?: boolean;
+  credits_required?: number;
+  has_access?: boolean;
+  is_preview?: boolean;
+}
+
+interface RelatedArticle {
+  id: string;
+  title: string;
+  excerpt: string;
+  cover_image: string;
+  publication_date: string;
+  author: string;
+  tags: string[];
+  article_type?: 'article' | 'clinical_case';
+  score?: number;
+}
+
 const ArticleDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { user, refreshCredits } = useAuth();
-  const [article, setArticle] = useState<any | null>(null);
-  const [relatedArticles, setRelatedArticles] = useState<any[]>([]);
+  const [article, setArticle] = useState<ArticleDetail | null>(null);
+  const [relatedArticles, setRelatedArticles] = useState<RelatedArticle[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasAccess, setHasAccess] = useState(false);
   const [requiresCredits, setRequiresCredits] = useState(0);
@@ -37,26 +66,35 @@ const ArticleDetailPage: React.FC = () => {
         const data = await articlesApi.getById(id);
         setArticle(data);
 
-        // Use server-side access check if available
+        // Always use canonical UUID from API response for endpoints that require article_id
+        const articleId = data?.id || id;
+
+        // Use server-side access check if available; fallback to credits endpoint
         if (typeof data.has_access !== 'undefined') {
           setHasAccess(data.has_access);
-        } else {
-          // Fallback for older API response structure? Or just double check credits?
-          // If user is logged in, double check to be safe or if API didn't return it
-          if (user) {
-            const accessData = await creditsApi.checkArticleAccess(id);
+        } else if (user && articleId) {
+          try {
+            const accessData = await creditsApi.checkArticleAccess(articleId);
             setHasAccess(accessData.has_access);
+          } catch (error) {
+            console.error('Error checking article access:', error);
           }
         }
 
-        // Always fetch requirement 
-        // (Optimally this should be in the article response too, but let's keep it safe)
-        const accessData = await creditsApi.checkArticleAccess(id);
-        setRequiresCredits(accessData.credits_required || 0);
+        // Fetch required credits (does not block rendering the article)
+        if (articleId) {
+          try {
+            const accessData = await creditsApi.checkArticleAccess(articleId);
+            setRequiresCredits(accessData.credits_required || 0);
+          } catch (error) {
+            console.error('Error fetching article credit requirement:', error);
+            setRequiresCredits(data?.credits_required || 0);
+          }
+        }
 
         // Fetch related articles
         try {
-          const relatedData = await articlesApi.getRelated(id, 3);
+          const relatedData = await articlesApi.getRelated(articleId, 3);
           setRelatedArticles(relatedData || []);
         } catch (error) {
           console.error('Error fetching related articles:', error);
@@ -87,8 +125,10 @@ const ArticleDetailPage: React.FC = () => {
         setHasAccess(true);
         refreshCredits();
       }
-    } catch (error: any) {
-      const errorMsg = error.response?.data?.error || 'فشل في فتح المقال';
+    } catch (error: unknown) {
+      const errorMsg = axios.isAxiosError(error)
+        ? (error.response?.data as { error?: string } | undefined)?.error
+        : undefined;
       toast.error(errorMsg);
     } finally {
       setIsUnlocking(false);
@@ -287,44 +327,73 @@ const ArticleDetailPage: React.FC = () => {
                 {article.excerpt}
               </div>
 
-              {!hasAccess && requiresCredits > 0 ? (
-                <div className="relative">
-                  <div className="text-gray-700 leading-relaxed text-lg filter blur-lg select-none pointer-events-none opacity-50">
-                    <p>هذا المحتوى محمي ويتطلب رصيداً للوصول إليه. يمكنك فتح المقال مقابل رصيد واحد فقط من رصيدك الحالي. بمجرد الفتح سيظل المقال متاحاً لك دائماً.</p>
-                    <p>تعتبر المقالات البحثية المتخصصة جزءاً من المحتوى المتميز الذي نقدمه لزبائننا لتطوير مهاراتهم ومعرفتهم العلمية في مجال طب الأسنان.</p>
+              {!hasAccess ? (
+                <div className="relative mt-12 mb-16">
+                  {/* Truncated Content with Gradient Fade */}
+                  <div className="relative overflow-hidden max-h-[400px] select-none pointer-events-none">
+                    <div className="text-gray-700 leading-relaxed text-lg opacity-40">
+                      <p className="mb-6">هذا المحتوى محمي ويتطلب تسجيل الدخول للوصول إليه. بمجرد تسجيل الدخول، ستتمكن من قراءة المقال بالكامل والوصول إلى كافة الميزات الحصرية للمنصة.</p>
+                      <p className="mb-6">تعتبر المنصة مرجعاً طبياً متخصصاً يهدف لتطوير مهارات ومعرفة أطباء الأسنان في الوطن العربي من خلال محتوى علمي رصين ومحدث.</p>
+                      <p className="mb-6">يتضمن هذا المقال المتميز تحليلات عميقة ودراسات سريرية موثقة تساعدك في ممارستك اليومية بمهارة وثقة أكبر.</p>
+                      <p className="mb-6">هذا المحتوى محمي ويتطلب تسجيل الدخول للوصول إليه. بمجرد تسجيل الدخول، ستتمكن من قراءة المقال بالكامل والوصول إلى كافة الميزات الحصرية للمنصة.</p>
+                    </div>
+                    {/* Professional Gradient Overaly */}
+                    <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/40 to-white z-10" />
                   </div>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center p-8 bg-white/40 backdrop-blur-sm rounded-3xl border border-gray-100 shadow-inner">
-                    <div className="bg-white p-8 rounded-3xl shadow-xl text-center max-w-md border border-gray-50">
-                      <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-4 text-blue-600">
-                        <Lock size={32} />
+
+                  {/* Enhanced Lock Interaction Card */}
+                  <div className="relative z-20 -mt-24">
+                    <div className="bg-white/80 backdrop-blur-xl rounded-[2.5rem] p-12 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.14)] border border-white/50 text-center max-w-xl mx-auto transform transition-all hover:translate-y-[-4px]">
+                      <div className="w-24 h-24 bg-gradient-to-tr from-blue-600 to-blue-400 rounded-[2rem] flex items-center justify-center mx-auto mb-8 shadow-2xl shadow-blue-200 rotate-3 animate-float">
+                        <Lock size={40} className="text-white -rotate-3" />
                       </div>
-                      <h3 className="text-xl font-bold text-gray-900 mb-2">هذا المقال مغلق</h3>
-                      <p className="text-gray-600 mb-6">يتطلب هذا المقال المتميز {requiresCredits} رصيد لفتحه بشكل دائم.</p>
-                      <button
-                        onClick={handleUnlock}
-                        disabled={isUnlocking}
-                        className="w-full btn-primary flex items-center justify-center py-3 bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-200"
-                      >
-                        {isUnlocking ? (
-                          <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        ) : (
-                          <>
-                            <Coins size={18} className="ml-2" />
-                            فتح المقال الآن
-                          </>
-                        )}
-                      </button>
-                      {!user && (
-                        <p className="mt-4 text-sm text-gray-500">
-                          الرجاء <Link to="/login" className="text-blue-600 font-semibold">تسجيل الدخول</Link> أولاً
-                        </p>
+
+                      {!user ? (
+                        <>
+                          <h3 className="heading-modern text-3xl text-gray-900 mb-4">سجل دخولك للمتابعة</h3>
+                          <p className="text-gray-600 mb-10 text-lg leading-relaxed">
+                            انضم إلى <span className="text-blue-600 font-bold">+10,000</span> طبيب أسنان يستفيدون من المحتوى العلمي الحصري يومياً.
+                          </p>
+                          <Link
+                            to="/login"
+                            className="w-full btn-primary flex items-center justify-center py-4 bg-blue-600 hover:bg-blue-700 shadow-2xl shadow-blue-200 transition-all active:scale-95"
+                          >
+                            <span className="font-bold text-lg">تسجيل الدخول / إنشاء حساب</span>
+                          </Link>
+                          <div className="mt-8 flex items-center justify-center gap-2 text-sm text-gray-400">
+                            <Sparkles size={16} className="text-blue-400" />
+                            <span>الوصول للمقالات العلمية أسهل مما تتخيل</span>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <h3 className="heading-modern text-3xl text-gray-900 mb-4">فتح محتوى المقال</h3>
+                          <p className="text-gray-600 mb-10 text-lg leading-relaxed">
+                            يتطلب هذا المقال المتميز <span className="text-blue-600 font-bold">{requiresCredits} رصيد</span> لفتحه بشكل دائم والوصول إلى كامل المعلومة.
+                          </p>
+                          <button
+                            onClick={handleUnlock}
+                            disabled={isUnlocking}
+                            className="w-full btn-primary flex items-center justify-center py-4 bg-blue-600 hover:bg-blue-700 shadow-2xl shadow-blue-200 transition-all active:scale-95"
+                          >
+                            {isUnlocking ? (
+                              <div className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full animate-spin"></div>
+                            ) : (
+                              <>
+                                <Coins size={22} className="ml-3 group-hover:rotate-12 transition-transform" />
+                                <span className="font-bold text-lg">فتح المقال الآن</span>
+                              </>
+                            )}
+                          </button>
+                          <p className="mt-6 text-sm text-gray-400">سيتم خصم الرصيد مرة واحدة فقط</p>
+                        </>
                       )}
                     </div>
                   </div>
                 </div>
               ) : (
                 <div
-                  className="text-gray-700 leading-relaxed text-lg"
+                  className="text-gray-700 leading-relaxed text-lg space-y-6 article-body-content"
                   dangerouslySetInnerHTML={{ __html: article.content.replace(/\n/g, '<br>') }}
                 />
               )}
@@ -333,10 +402,16 @@ const ArticleDetailPage: React.FC = () => {
 
           {/* Related Articles */}
           {relatedArticles.length > 0 && (
-            <div className="mb-12">
-              <div className="text-center mb-8">
-                <h2 className="heading-modern text-3xl text-gray-900 mb-4">مقالات ذات صلة</h2>
-                <p className="text-modern">اكتشف المزيد من المقالات المشابهة</p>
+            <div className="mb-24 mt-16 pt-16 border-t border-gray-100">
+              <div className="flex items-end justify-between mb-12">
+                <div>
+                  <h2 className="heading-modern text-3xl text-gray-900 mb-2">مقالات ذات صلة</h2>
+                  <p className="text-gray-500">اخترنا لك مواضيع مشابهة قد تهمك</p>
+                </div>
+                <Link to="/articles" className="text-blue-600 font-bold flex items-center gap-1 hover:gap-2 transition-all">
+                  عرض الكل
+                  <ChevronLeft size={20} />
+                </Link>
               </div>
               <div className="grid-modern">
                 {relatedArticles.map((relatedArticle) => (

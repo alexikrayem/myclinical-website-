@@ -10,6 +10,8 @@ import {
     invalidateAllUserSessions
 } from '../middleware/userAuth.js';
 import { validate, schemas } from '../middleware/validation.js';
+import { authLimiter } from '../middleware/rateLimiter.js';
+import { trackLoginAttempt, checkLoginAllowed } from '../middleware/auth.js';
 
 dotenv.config();
 
@@ -138,7 +140,7 @@ router.post('/register', validate(schemas.register), async (req, res) => {
  * POST /api/auth/login
  * Login with phone + password
  */
-router.post('/login', validate(schemas.login), async (req, res) => {
+router.post('/login', authLimiter, checkLoginAllowed, validate(schemas.login), async (req, res) => {
     try {
         const { phone_number, password } = req.body;
 
@@ -152,9 +154,11 @@ router.post('/login', validate(schemas.login), async (req, res) => {
             .single();
 
         if (findError || !user) {
+            const attemptResult = await trackLoginAttempt(normalizedPhone, false);
             return res.status(401).json({
                 error: 'رقم الهاتف أو كلمة المرور غير صحيحة',
-                code: 'INVALID_CREDENTIALS'
+                code: 'INVALID_CREDENTIALS',
+                remainingAttempts: attemptResult.remainingAttempts
             });
         }
 
@@ -170,11 +174,16 @@ router.post('/login', validate(schemas.login), async (req, res) => {
         const isValidPassword = await bcrypt.compare(password, user.password_hash);
 
         if (!isValidPassword) {
+            const attemptResult = await trackLoginAttempt(normalizedPhone, false);
             return res.status(401).json({
                 error: 'رقم الهاتف أو كلمة المرور غير صحيحة',
-                code: 'INVALID_CREDENTIALS'
+                code: 'INVALID_CREDENTIALS',
+                remainingAttempts: attemptResult.remainingAttempts
             });
         }
+
+        // Successful login
+        await trackLoginAttempt(normalizedPhone, true);
 
         // Generate token and create session
         const token = generateToken(user.id);
