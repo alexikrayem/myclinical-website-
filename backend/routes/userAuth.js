@@ -97,8 +97,31 @@ router.post('/register', validate(schemas.register), async (req, res) => {
             });
         }
 
-        // Initialize user credits
-        await supabase
+        if (!newUser || !newUser.id) {
+            console.error('User creation returned no data');
+            return res.status(500).json({
+                error: 'فشل إنشاء الحساب',
+                code: 'CREATE_FAILED'
+            });
+        }
+
+        // Verify the user actually exists in the database before proceeding
+        const { data: verifyUser, error: verifyError } = await supabase
+            .from('users')
+            .select('id')
+            .eq('id', newUser.id)
+            .single();
+
+        if (verifyError || !verifyUser) {
+            console.error('User verification failed after insert:', verifyError);
+            return res.status(500).json({
+                error: 'فشل إنشاء الحساب',
+                code: 'CREATE_FAILED'
+            });
+        }
+
+        // Initialize user credits (custom_user_id only, user_id is for auth.users)
+        const { error: creditsError } = await supabase
             .from('user_credits')
             .insert({
                 custom_user_id: newUser.id,
@@ -108,6 +131,11 @@ router.post('/register', validate(schemas.register), async (req, res) => {
                 video_watch_minutes: 0,
                 article_credits: 0
             });
+
+        if (creditsError) {
+            console.error('Error creating user credits (non-fatal):', creditsError);
+            // Non-fatal: user can still use the app, credits will be created on first use
+        }
 
         // Generate token and create session
         const token = generateToken(newUser.id);

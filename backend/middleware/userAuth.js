@@ -143,13 +143,31 @@ export const generateToken = (userId) => {
 
 /**
  * Create session in database
+ * @param {string} userId - The user ID
+ * @param {string} token - The JWT token
+ * @param {string|null} deviceInfo - Device info from user-agent
+ * @param {string|null} ipAddress - IP address
+ * @param {object|null} supabaseClient - Optional Supabase client to use (ensures same client as caller)
  */
-export const createSession = async (userId, token, deviceInfo = null, ipAddress = null) => {
+export const createSession = async (userId, token, deviceInfo = null, ipAddress = null, supabaseClient = null) => {
+    const client = supabaseClient || supabase;
     const tokenHash = Buffer.from(token).toString('base64').substring(0, 64);
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7); // 7 days
 
-    const { data, error } = await supabase
+    // Verify the user actually exists before creating a session
+    const { data: userExists, error: userCheckError } = await client
+        .from('users')
+        .select('id')
+        .eq('id', userId)
+        .single();
+
+    if (userCheckError || !userExists) {
+        console.error('User not found when creating session:', { userId, error: userCheckError });
+        throw new Error(`Cannot create session: user ${userId} does not exist in the users table`);
+    }
+
+    const { data, error } = await client
         .from('user_sessions')
         .insert({
             user_id: userId,
