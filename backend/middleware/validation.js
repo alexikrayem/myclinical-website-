@@ -39,7 +39,10 @@ export const schemas = {
   register: z.object({
     body: z.object({
       phone_number: z.string().min(10, 'رقم الهاتف يجب أن يكون 10 أرقام على الأقل'),
-      password: z.string().min(6, 'كلمة المرور يجب أن تكون 6 أحرف على الأقل'),
+      password: z.string()
+        .min(8, 'كلمة المرور يجب أن تكون 8 أحرف على الأقل')
+        .regex(/[a-zA-Z]/, 'كلمة المرور يجب أن تحتوي على حرف واحد على الأقل')
+        .regex(/\d/, 'كلمة المرور يجب أن تحتوي على رقم واحد على الأقل'),
       display_name: z.string().min(2, 'الاسم يجب أن يكون حرفين على الأقل').optional(),
     }),
   }),

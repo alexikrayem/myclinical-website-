@@ -91,30 +91,81 @@ router.post('/register', validate(schemas.register), async (req, res) => {
 
         if (createError) {
             console.error('Error creating user:', createError);
+            
+            // Check if it's a unique violation (phone number already exists)
+            if (createError.code === '23505') { // PostgreSQL unique violation code
+                return res.status(409).json({
+                    error: 'رقم الهاتف مسجل مسبقاً',
+                    code: 'PHONE_EXISTS'
+                });
+            }
+            
             return res.status(500).json({
                 error: 'فشل إنشاء الحساب',
                 code: 'CREATE_FAILED'
             });
         }
 
-        // Initialize user credits
-        await supabase
-            .from('user_credits')
-            .insert({
-                custom_user_id: newUser.id,
-                balance: 0,
-                total_earned: 0,
-                total_spent: 0,
-                video_watch_minutes: 0,
-                article_credits: 0
+        if (!newUser || !newUser.id) {
+            console.error('User creation returned no data');
+            return res.status(500).json({
+                error: 'فشل إنشاء الحساب',
+                code: 'CREATE_FAILED'
             });
+        }
+
+        // Verify the user actually exists in the database before proceeding
+        const { data: verifyUser, error: verifyError } = await supabase
+            .from('users')
+            .select('id')
+            .eq('id', newUser.id)
+            .single();
+
+        if (verifyError || !verifyUser) {
+            console.error('User verification failed after insert:', verifyError);
+            return res.status(500).json({
+                error: 'فشل إنشاء الحساب',
+                code: 'CREATE_FAILED'
+            });
+        }
+
+        try {
+            // Initialize user credits (custom_user_id only, user_id is for auth.users)
+            const { error: creditsError } = await supabase
+                .from('user_credits')
+                .insert({
+                    custom_user_id: newUser.id,
+                    balance: 0,
+                    total_earned: 0,
+                    total_spent: 0,
+                    video_watch_minutes: 0,
+                    article_credits: 0
+                });
+
+            if (creditsError) {
+                console.error('Error creating user credits (non-fatal):', creditsError);
+                // Non-fatal: user can still use the app, credits will be created on first use
+            }
+        } catch (creditsError) {
+            console.error('Exception creating user credits (non-fatal):', creditsError);
+            // Still allow registration to succeed even if credits creation fails
+        }
 
         // Generate token and create session
         const token = generateToken(newUser.id);
         const deviceInfo = req.headers['user-agent'] || null;
         const ipAddress = req.ip || req.connection.remoteAddress;
 
-        await createSession(newUser.id, token, deviceInfo, ipAddress);
+        try {
+            await createSession(newUser.id, token, deviceInfo, ipAddress);
+        } catch (sessionError) {
+            console.error('Error creating session:', sessionError);
+            // If session creation fails, we should return an error
+            return res.status(500).json({
+                error: 'فشل إنشاء الجلسة',
+                code: 'SESSION_CREATE_FAILED'
+            });
+        }
 
         res.status(201).json({
             success: true,
@@ -129,6 +180,11 @@ router.post('/register', validate(schemas.register), async (req, res) => {
 
     } catch (error) {
         console.error('Registration error:', error);
+        console.error('Error details:', {
+            message: error.message,
+            stack: error.stack,
+            code: error.code
+        });
         res.status(500).json({
             error: 'حدث خطأ أثناء التسجيل',
             code: 'SERVER_ERROR'
