@@ -325,7 +325,7 @@ export const authApi = {
       const response = await api.post('/auth/register', {
         phone_number: phoneNumber,
         password,
-        display_name: displayName
+        display_name: displayName || undefined
       });
       return response.data;
     } catch (error) {

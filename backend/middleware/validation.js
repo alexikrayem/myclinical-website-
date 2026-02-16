@@ -3,6 +3,11 @@ import { z } from 'zod';
 
 // Generic middleware to validate request against a Zod schema
 export const validate = (schema) => async (req, res, next) => {
+
+  if (req.method === 'OPTIONS') {
+    return next();
+  }
+
   try {
     const result = await schema.parseAsync({
       body: req.body,
@@ -10,15 +15,15 @@ export const validate = (schema) => async (req, res, next) => {
       params: req.params,
     });
 
-    // Assign validated data back to request
-    // This strips unknown keys if the schema is 'strict', or keeps them if not
-    // Usually safer to assume req.body is now trusted
-    // We can merge back to be safe, or just trust validation passed
+    req.body = result.body;
+    req.query = result.query;
+    req.params = result.params;
 
     return next();
+
   } catch (error) {
     if (error instanceof z.ZodError) {
-      const errors = error.errors.map((e) => ({
+      const errors = error.issues.map((e) => ({
         path: e.path.join('.'),
         message: e.message,
       }));
