@@ -249,7 +249,7 @@ const HomePage: React.FC = () => {
                   {/* Content */}
                   <div className="absolute inset-0 p-6 flex flex-col justify-end text-right">
                     <div className="transform transition-transform duration-500 translate-y-2 group-hover:translate-y-0">
-                      <div className="w-10 h-1 bg-blue-500 rounded-full mb-4 w-0 group-hover:w-12 transition-all duration-500 delay-100"></div>
+                      <div className="w-12 h-1 bg-blue-500 rounded-full mb-4 w-0 group-hover:w-12 transition-all duration-500 delay-100"></div>
                       <h3 className="text-2xl font-bold text-white mb-2 drop-shadow-md">{category.name}</h3>
                       <p className="text-gray-200 text-sm opacity-0 group-hover:opacity-100 transition-opacity duration-500 delay-100 transform translate-y-4 group-hover:translate-y-0 mb-4">
                         تصفح جميع المقالات
