@@ -33,7 +33,7 @@ export const initSentry = (): void => {
 /**
  * Capture an exception manually
  */
-export const captureException = (error: Error, context?: Record<string, any>): void => {
+export const captureException = (error: Error, context?: Record<string, unknown>): void => {
     Sentry.captureException(error, { extra: context });
 };
 

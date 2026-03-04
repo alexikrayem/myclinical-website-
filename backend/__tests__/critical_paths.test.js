@@ -140,13 +140,17 @@ describe('Critical Paths Integration Tests (Mocked)', () => {
                 error: null
             });
 
-            // 3. insert credits: .insert(...) -> awaited directly (using thenable)
-            // No .single() call here.
-            // FIX: await expects then(resolve, reject) to call resolve!
-            mockSupabase.then = jest.fn();
-            mockSupabase.then.mockImplementationOnce((resolve) => resolve({ data: {}, error: null })); // For credits insert
+            // 3. For awaited chain calls (credits insert, etc. that use .insert().then())
+            // use a persistent thenable that always resolves
+            mockSupabase.then = jest.fn().mockImplementation((resolve) => resolve({ data: {}, error: null }));
 
-            // 4. createSession -> .insert(...).select().single()
+            // 4. Verify user exists: .from('users').select('id').eq('id', ...).single()
+            mockSupabase.single.mockResolvedValueOnce({
+                data: { id: testUserId },
+                error: null
+            });
+
+            // 5. createSession -> .from('user_sessions').insert(...).select().single()
             mockSupabase.single.mockResolvedValueOnce({
                 data: { id: 'session-123', token_hash: 'hash' },
                 error: null

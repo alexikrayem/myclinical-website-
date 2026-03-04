@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, MapPin, GraduationCap, Calendar, Award, Mail, Globe } from 'lucide-react';
+import { MapPin, GraduationCap, Calendar, Award, Mail, Globe } from 'lucide-react';
 import { authorsApi } from '../../lib/api';
 
 interface AuthorCardProps {
@@ -84,14 +84,14 @@ const AuthorCard: React.FC<AuthorCardProps> = ({ authorName, className = '' }) =
             <Award size={16} className="text-white" />
           </div>
         </div>
-        
+
         <div className="flex-1">
           <div className="mb-4">
             <h3 className="text-xl font-bold text-gray-900 mb-1">{author.name}</h3>
             <p className="text-blue-600 font-semibold mb-2">{author.specialization}</p>
             <p className="text-gray-600 leading-relaxed">{author.bio}</p>
           </div>
-          
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 text-sm">
             <div className="flex items-center text-gray-500">
               <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center ml-3">
@@ -99,21 +99,21 @@ const AuthorCard: React.FC<AuthorCardProps> = ({ authorName, className = '' }) =
               </div>
               <span>{author.education}</span>
             </div>
-            
+
             <div className="flex items-center text-gray-500">
               <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center ml-3">
                 <Calendar size={16} className="text-green-600" />
               </div>
               <span>{author.experience_years} سنوات خبرة</span>
             </div>
-            
+
             <div className="flex items-center text-gray-500">
               <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center ml-3">
                 <MapPin size={16} className="text-purple-600" />
               </div>
               <span>{author.location}</span>
             </div>
-            
+
             {author.email && (
               <div className="flex items-center text-gray-500">
                 <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center ml-3">
@@ -124,15 +124,15 @@ const AuthorCard: React.FC<AuthorCardProps> = ({ authorName, className = '' }) =
                 </a>
               </div>
             )}
-            
+
             {author.website && (
               <div className="flex items-center text-gray-500 lg:col-span-2">
                 <div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center ml-3">
                   <Globe size={16} className="text-indigo-600" />
                 </div>
-                <a 
-                  href={author.website} 
-                  target="_blank" 
+                <a
+                  href={author.website}
+                  target="_blank"
                   rel="noopener noreferrer"
                   className="hover:text-blue-600 transition-colors"
                 >

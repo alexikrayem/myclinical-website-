@@ -59,6 +59,7 @@ const LoginPage: React.FC = () => {
               onChange={(e) => setEmail(e.target.value)}
               required
               disabled={loading}
+              data-testid="login-email"
             />
           </div>
           
@@ -76,6 +77,7 @@ const LoginPage: React.FC = () => {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 disabled={loading}
+                data-testid="login-password"
               />
               <button
                 type="button"
@@ -92,6 +94,7 @@ const LoginPage: React.FC = () => {
             type="submit"
             className="w-full bg-[#005CB9] hover:bg-[#0047A0] text-white py-3 px-4 rounded-lg transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={loading}
+            data-testid="login-submit"
           >
             {loading ? (
               <span className="flex items-center justify-center">

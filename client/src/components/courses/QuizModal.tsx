@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, CheckCircle, AlertCircle, Award } from 'lucide-react';
+import { X, AlertCircle, Award } from 'lucide-react';
 import { coursesApi } from '../../lib/api';
 import toast from 'react-hot-toast';
 
@@ -57,7 +57,7 @@ const QuizModal: React.FC<QuizModalProps> = ({ isOpen, onClose, courseId, quizId
             } else {
                 toast.error('للأسف، لم تجتز الاختبار. حاول مرة أخرى.');
             }
-        } catch (error) {
+        } catch {
             toast.error('حدث خطأ أثناء إرسال الإجابات');
         } finally {
             setIsSubmitting(false);
@@ -124,8 +124,8 @@ const QuizModal: React.FC<QuizModalProps> = ({ isOpen, onClose, courseId, quizId
                                 key={index}
                                 onClick={() => handleOptionSelect(index)}
                                 className={`w-full text-right p-4 rounded-xl border-2 transition-all ${answers[currentQuestion] === index
-                                        ? 'border-blue-500 bg-blue-50 text-blue-700'
-                                        : 'border-gray-100 hover:border-blue-200 hover:bg-gray-50'
+                                    ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                    : 'border-gray-100 hover:border-blue-200 hover:bg-gray-50'
                                     }`}
                             >
                                 <div className="flex items-center">
@@ -146,8 +146,8 @@ const QuizModal: React.FC<QuizModalProps> = ({ isOpen, onClose, courseId, quizId
                         onClick={handlePrevious}
                         disabled={currentQuestion === 0}
                         className={`px-6 py-2 rounded-xl font-medium ${currentQuestion === 0
-                                ? 'text-gray-300 cursor-not-allowed'
-                                : 'text-gray-600 hover:bg-gray-200'
+                            ? 'text-gray-300 cursor-not-allowed'
+                            : 'text-gray-600 hover:bg-gray-200'
                             }`}
                     >
                         السابق

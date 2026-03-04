@@ -1,5 +1,17 @@
-import React, { useState } from 'react';
-import { Printer, RefreshCw, CreditCard, Copy, Check, Video, FileText, Coins } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import {
+  Printer,
+  RefreshCw,
+  CreditCard,
+  Copy,
+  Check,
+  Video,
+  FileText,
+  Coins,
+  History,
+  ArrowLeft,
+  ArrowRight
+} from 'lucide-react';
 import AdminLayout from '../components/layout/AdminLayout';
 import { codeService, GeneratedCode } from '../services/codeService';
 import toast from 'react-hot-toast';
@@ -7,318 +19,385 @@ import toast from 'react-hot-toast';
 type CreditType = 'universal' | 'video' | 'article' | 'both';
 
 const GenerateCodes: React.FC = () => {
-    const [loading, setLoading] = useState(false);
-    const [generatedCodes, setGeneratedCodes] = useState<GeneratedCode[]>([]);
-    const [formData, setFormData] = useState({
-        amount: 10,
-        creditValue: 100, // For universal type
-        videoMinutes: 60, // For video type
-        articleCount: 5,  // For article type
-        prefix: 'GIFT',
-        creditType: 'universal' as CreditType
-    });
+  const [loading, setLoading] = useState(false);
+  const [generatedCodes, setGeneratedCodes] = useState<GeneratedCode[]>([]);
 
-    const handleGenerate = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setLoading(true);
-        try {
-            const response = await codeService.generate(
-                formData.amount,
-                formData.creditType === 'universal' ? formData.creditValue : 0,
-                formData.prefix,
-                formData.creditType,
-                formData.creditType === 'video' || formData.creditType === 'both' ? formData.videoMinutes : 0,
-                formData.creditType === 'article' || formData.creditType === 'both' ? formData.articleCount : 0
-            );
-            setGeneratedCodes(response.codes);
-            toast.success('تم توليد الأكواد بنجاح');
-        } catch (error) {
-            console.error('Error generating codes:', error);
-            toast.error('فشل توليد الأكواد');
-        } finally {
-            setLoading(false);
-        }
-    };
+  // History state
+  const [history, setHistory] = useState<GeneratedCode[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
-    const handlePrint = () => {
-        window.print();
-    };
+  const [formData, setFormData] = useState({
+    amount: 10,
+    creditValue: 100,
+    videoMinutes: 60,
+    articleCount: 5,
+    prefix: 'GIFT',
+    creditType: 'universal' as CreditType
+  });
 
-    const copyToClipboard = (code: string) => {
-        navigator.clipboard.writeText(code);
-        toast.success('تم نسخ الكود');
-    };
+  // Fetch history
+  const fetchHistory = async (pageNumber = 1) => {
+    setHistoryLoading(true);
+    try {
+      const response = await codeService.getHistory(pageNumber, 10);
+      setHistory(response.data);
+      setTotalPages(response.pagination.pages);
+      setPage(pageNumber);
+    } catch (error) {
+      console.error(error);
+      toast.error('فشل تحميل سجل الأكواد');
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
 
-    const getCreditTypeLabel = (type: CreditType) => {
-        switch (type) {
-            case 'video': return 'دقائق مشاهدة';
-            case 'article': return 'مقالات';
-            case 'both': return 'مشاهدة + مقالات';
-            default: return 'رصيد عام';
-        }
-    };
+  useEffect(() => {
+    fetchHistory();
+  }, []);
 
-    const getCreditTypeIcon = (type: CreditType) => {
-        switch (type) {
-            case 'video': return <Video size={16} className="text-blue-400" />;
-            case 'article': return <FileText size={16} className="text-green-400" />;
-            case 'both': return <CreditCard size={16} className="text-purple-400" />;
-            default: return <Coins size={16} className="text-yellow-400" />;
-        }
-    };
+  const handleGenerate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
 
-    const getValueDisplay = () => {
-        switch (formData.creditType) {
-            case 'video':
-                return `${formData.videoMinutes} دقيقة`;
-            case 'article':
-                return `${formData.articleCount} مقال`;
-            case 'both':
-                return `${formData.videoMinutes} دقيقة + ${formData.articleCount} مقال`;
-            default:
-                return `${formData.creditValue} رصيد`;
-        }
-    };
+    try {
+      const response = await codeService.generate(
+        formData.amount,
+        formData.creditType === 'universal' ? formData.creditValue : 0,
+        formData.prefix,
+        formData.creditType,
+        formData.creditType === 'video' || formData.creditType === 'both'
+          ? formData.videoMinutes
+          : 0,
+        formData.creditType === 'article' || formData.creditType === 'both'
+          ? formData.articleCount
+          : 0
+      );
 
-    return (
-        <AdminLayout>
-            <div className="space-y-8 print:hidden">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-900 mb-2">توليد بطاقات الرصيد</h1>
-                    <p className="text-gray-600">قم بتوليد وطباعة أكواد شحن الرصيد للمستخدمين</p>
-                </div>
+      setGeneratedCodes(response.codes);
+      toast.success('تم توليد الأكواد بنجاح');
 
-                <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-                    <form onSubmit={handleGenerate} className="space-y-6">
-                        {/* Credit Type Selection */}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-3">نوع الرصيد</label>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                {[
-                                    { value: 'universal', label: 'رصيد عام', icon: Coins, color: 'yellow' },
-                                    { value: 'video', label: 'دقائق مشاهدة', icon: Video, color: 'blue' },
-                                    { value: 'article', label: 'مقالات', icon: FileText, color: 'green' },
-                                    { value: 'both', label: 'مشاهدة + مقالات', icon: CreditCard, color: 'purple' },
-                                ].map(({ value, label, icon: Icon, color }) => (
-                                    <button
-                                        key={value}
-                                        type="button"
-                                        onClick={() => setFormData({ ...formData, creditType: value as CreditType })}
-                                        className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 ${formData.creditType === value
-                                                ? `border-${color}-500 bg-${color}-50 text-${color}-700`
-                                                : 'border-gray-200 hover:border-gray-300 text-gray-600'
-                                            }`}
-                                    >
-                                        <Icon size={24} className={formData.creditType === value ? `text-${color}-500` : 'text-gray-400'} />
-                                        <span className="text-sm font-medium">{label}</span>
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
+      // refresh history
+      fetchHistory(1);
+    } catch (error) {
+      console.error(error);
+      toast.error('فشل توليد الأكواد');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-                        {/* Value Inputs based on type */}
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">عدد البطاقات</label>
-                                <input
-                                    type="number"
-                                    min="1"
-                                    max="100"
-                                    required
-                                    className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
-                                    value={formData.amount}
-                                    onChange={e => setFormData({ ...formData, amount: parseInt(e.target.value) })}
-                                />
-                            </div>
+  const copyToClipboard = (code: string) => {
+    navigator.clipboard.writeText(code);
+    toast.success('تم نسخ الكود');
+  };
 
-                            {/* Universal Credits */}
-                            {formData.creditType === 'universal' && (
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">قيمة الرصيد</label>
-                                    <input
-                                        type="number"
-                                        min="1"
-                                        required
-                                        className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
-                                        value={formData.creditValue}
-                                        onChange={e => setFormData({ ...formData, creditValue: parseInt(e.target.value) })}
-                                    />
-                                </div>
-                            )}
+  const getCreditTypeLabel = (type: CreditType) => {
+    switch (type) {
+      case 'video':
+        return 'دقائق مشاهدة';
+      case 'article':
+        return 'مقالات';
+      case 'both':
+        return 'مشاهدة + مقالات';
+      default:
+        return 'رصيد عام';
+    }
+  };
 
-                            {/* Video Minutes */}
-                            {(formData.creditType === 'video' || formData.creditType === 'both') && (
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">دقائق المشاهدة</label>
-                                    <input
-                                        type="number"
-                                        min="1"
-                                        required
-                                        className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
-                                        value={formData.videoMinutes}
-                                        onChange={e => setFormData({ ...formData, videoMinutes: parseInt(e.target.value) })}
-                                    />
-                                </div>
-                            )}
+  const getCreditTypeIcon = (type: CreditType) => {
+    switch (type) {
+      case 'video':
+        return <Video size={16} className="text-blue-400" />;
+      case 'article':
+        return <FileText size={16} className="text-green-400" />;
+      case 'both':
+        return <CreditCard size={16} className="text-purple-400" />;
+      default:
+        return <Coins size={16} className="text-yellow-400" />;
+    }
+  };
 
-                            {/* Article Count */}
-                            {(formData.creditType === 'article' || formData.creditType === 'both') && (
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">عدد المقالات</label>
-                                    <input
-                                        type="number"
-                                        min="1"
-                                        required
-                                        className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
-                                        value={formData.articleCount}
-                                        onChange={e => setFormData({ ...formData, articleCount: parseInt(e.target.value) })}
-                                    />
-                                </div>
-                            )}
+  const getValueDisplay = () => {
+    switch (formData.creditType) {
+      case 'video':
+        return `${formData.videoMinutes} دقيقة`;
+      case 'article':
+        return `${formData.articleCount} مقال`;
+      case 'both':
+        return `${formData.videoMinutes} دقيقة + ${formData.articleCount} مقال`;
+      default:
+        return `${formData.creditValue} رصيد`;
+    }
+  };
 
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">بادئة الكود</label>
-                                <input
-                                    type="text"
-                                    placeholder="مثال: SUMMER"
-                                    className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all uppercase"
-                                    value={formData.prefix}
-                                    onChange={e => setFormData({ ...formData, prefix: e.target.value.toUpperCase() })}
-                                />
-                            </div>
+  return (
+    <AdminLayout>
+      <div className="space-y-8 print:hidden">
+        {/* Header */}
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">
+            توليد بطاقات الرصيد
+          </h1>
+          <p className="text-gray-600">
+            قم بتوليد وطباعة أكواد شحن الرصيد للمستخدمين
+          </p>
+        </div>
 
-                            <button
-                                type="submit"
-                                disabled={loading}
-                                className="px-6 py-2.5 rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 h-[42px]"
-                            >
-                                {loading ? (
-                                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                ) : (
-                                    <>
-                                        <RefreshCw size={20} />
-                                        توليد الأكواد
-                                    </>
-                                )}
-                            </button>
-                        </div>
-                    </form>
-                </div>
+        {/* Form */}
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+          <form onSubmit={handleGenerate} className="space-y-6">
+            {/* credit type */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-3">
+                نوع الرصيد
+              </label>
 
-                {generatedCodes.length > 0 && (
-                    <div className="flex justify-between items-center bg-blue-50 p-4 rounded-xl border border-blue-100">
-                        <div className="flex items-center gap-2 text-blue-800">
-                            <Check size={20} />
-                            <span className="font-medium">
-                                تم توليد {generatedCodes.length} كود | النوع: {getCreditTypeLabel(formData.creditType)} | القيمة: {getValueDisplay()}
-                            </span>
-                        </div>
-                        <button
-                            onClick={handlePrint}
-                            className="flex items-center gap-2 bg-white text-gray-700 px-4 py-2 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors shadow-sm"
-                        >
-                            <Printer size={18} />
-                            طباعة البطاقات
-                        </button>
-                    </div>
-                )}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {[
+                  { value: 'universal', label: 'رصيد عام', icon: Coins, color: 'yellow' },
+                  { value: 'video', label: 'دقائق مشاهدة', icon: Video, color: 'blue' },
+                  { value: 'article', label: 'مقالات', icon: FileText, color: 'green' },
+                  { value: 'both', label: 'مشاهدة + مقالات', icon: CreditCard, color: 'purple' }
+                ].map(({ value, label, icon: Icon, color }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() =>
+                      setFormData({ ...formData, creditType: value as CreditType })
+                    }
+                    className={`p-4 rounded-xl border-2 flex flex-col items-center gap-2 ${
+                      formData.creditType === value
+                        ? `border-${color}-500 bg-${color}-50 text-${color}-700`
+                        : 'border-gray-200 text-gray-600'
+                    }`}
+                  >
+                    <Icon size={24} />
+                    <span className="text-sm font-medium">{label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {/* Printable Area */}
-            {generatedCodes.length > 0 && (
-                <div className="mt-8 print:mt-0">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 print:grid-cols-2 print:gap-4">
-                        {generatedCodes.map((item, index) => (
-                            <div key={index} className="bg-gradient-to-br from-gray-900 to-gray-800 text-white p-6 rounded-xl shadow-lg print:shadow-none print:border print:border-gray-300 print:break-inside-avoid relative overflow-hidden">
-                                {/* Background Pattern */}
-                                <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-16 -mt-16 blur-2xl"></div>
-                                <div className="absolute bottom-0 left-0 w-24 h-24 bg-blue-500/10 rounded-full -ml-12 -mb-12 blur-xl"></div>
+            {/* inputs */}
+            <div className="grid md:grid-cols-4 gap-6 items-end">
+              <div>
+                <label className="block text-sm mb-2">عدد البطاقات</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="100"
+                  className="w-full border rounded-xl px-4 py-2"
+                  value={formData.amount}
+                  onChange={e =>
+                    setFormData({ ...formData, amount: parseInt(e.target.value) })
+                  }
+                />
+              </div>
 
-                                <div className="relative z-10">
-                                    <div className="flex justify-between items-start mb-6">
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
-                                                {getCreditTypeIcon(formData.creditType)}
-                                            </div>
-                                            <div>
-                                                <h3 className="font-bold text-sm">بطاقة شحن رصيد</h3>
-                                                <p className="text-xs text-gray-400">{getCreditTypeLabel(formData.creditType)}</p>
-                                            </div>
-                                        </div>
-                                        <div className="text-right">
-                                            {formData.creditType === 'universal' && (
-                                                <>
-                                                    <span className="block text-2xl font-bold text-yellow-400">{formData.creditValue}</span>
-                                                    <span className="text-xs text-gray-400">رصيد</span>
-                                                </>
-                                            )}
-                                            {formData.creditType === 'video' && (
-                                                <>
-                                                    <span className="block text-2xl font-bold text-blue-400">{formData.videoMinutes}</span>
-                                                    <span className="text-xs text-gray-400">دقيقة</span>
-                                                </>
-                                            )}
-                                            {formData.creditType === 'article' && (
-                                                <>
-                                                    <span className="block text-2xl font-bold text-green-400">{formData.articleCount}</span>
-                                                    <span className="text-xs text-gray-400">مقال</span>
-                                                </>
-                                            )}
-                                            {formData.creditType === 'both' && (
-                                                <div className="flex gap-3">
-                                                    <div>
-                                                        <span className="block text-lg font-bold text-blue-400">{formData.videoMinutes}</span>
-                                                        <span className="text-xs text-gray-400">دق</span>
-                                                    </div>
-                                                    <div>
-                                                        <span className="block text-lg font-bold text-green-400">{formData.articleCount}</span>
-                                                        <span className="text-xs text-gray-400">مقال</span>
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    <div className="bg-white/10 rounded-lg p-3 backdrop-blur-sm border border-white/10 mb-4">
-                                        <p className="text-center font-mono text-lg tracking-wider font-bold dir-ltr select-all">
-                                            {item.code}
-                                        </p>
-                                    </div>
-
-                                    <div className="flex justify-between items-end">
-                                        <p className="text-[10px] text-gray-400 max-w-[70%]">
-                                            قم بإدخال هذا الكود في صفحة "شحن الرصيد" للحصول على النقاط فوراً.
-                                        </p>
-                                        <button
-                                            onClick={() => copyToClipboard(item.code)}
-                                            className="print:hidden p-1.5 hover:bg-white/10 rounded-md transition-colors text-gray-400 hover:text-white"
-                                            title="نسخ الكود"
-                                        >
-                                            <Copy size={14} />
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
+              {formData.creditType === 'universal' && (
+                <div>
+                  <label className="block text-sm mb-2">قيمة الرصيد</label>
+                  <input
+                    type="number"
+                    className="w-full border rounded-xl px-4 py-2"
+                    value={formData.creditValue}
+                    onChange={e =>
+                      setFormData({
+                        ...formData,
+                        creditValue: parseInt(e.target.value)
+                      })
+                    }
+                  />
                 </div>
-            )}
+              )}
 
-            {/* Print Styles */}
-            <style>{`
-        @media print {
-          @page { margin: 1cm; }
-          body * { visibility: hidden; }
-          #root { visibility: visible; }
-          .print\\:hidden { display: none !important; }
-          .sidebar, header { display: none !important; }
-          .admin-layout-content { margin: 0 !important; padding: 0 !important; }
-          .card-shadow { box-shadow: none !important; border: 1px solid #eee; }
-          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-        }
-      `}</style>
-        </AdminLayout>
-    );
+              {(formData.creditType === 'video' ||
+                formData.creditType === 'both') && (
+                <div>
+                  <label className="block text-sm mb-2">دقائق المشاهدة</label>
+                  <input
+                    type="number"
+                    className="w-full border rounded-xl px-4 py-2"
+                    value={formData.videoMinutes}
+                    onChange={e =>
+                      setFormData({
+                        ...formData,
+                        videoMinutes: parseInt(e.target.value)
+                      })
+                    }
+                  />
+                </div>
+              )}
+
+              {(formData.creditType === 'article' ||
+                formData.creditType === 'both') && (
+                <div>
+                  <label className="block text-sm mb-2">عدد المقالات</label>
+                  <input
+                    type="number"
+                    className="w-full border rounded-xl px-4 py-2"
+                    value={formData.articleCount}
+                    onChange={e =>
+                      setFormData({
+                        ...formData,
+                        articleCount: parseInt(e.target.value)
+                      })
+                    }
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm mb-2">بادئة الكود</label>
+                <input
+                  type="text"
+                  className="w-full border rounded-xl px-4 py-2 uppercase"
+                  value={formData.prefix}
+                  onChange={e =>
+                    setFormData({ ...formData, prefix: e.target.value.toUpperCase() })
+                  }
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="bg-blue-600 text-white rounded-xl px-6 py-2 flex items-center justify-center gap-2"
+              >
+                {loading ? (
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <RefreshCw size={18} /> توليد الأكواد
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+
+        {/* Generated result banner */}
+        {generatedCodes.length > 0 && (
+          <div className="flex justify-between items-center bg-blue-50 p-4 rounded-xl border border-blue-100">
+            <div className="flex items-center gap-2 text-blue-800">
+              <Check size={20} />
+              <span className="font-medium">
+                تم توليد {generatedCodes.length} كود | النوع:{' '}
+                {getCreditTypeLabel(formData.creditType)} | القيمة:{' '}
+                {getValueDisplay()}
+              </span>
+            </div>
+            <button
+              onClick={() => window.print()}
+              className="flex items-center gap-2 bg-white px-4 py-2 rounded-lg border"
+            >
+              <Printer size={18} /> طباعة البطاقات
+            </button>
+          </div>
+        )}
+
+        {/* HISTORY TABLE */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="p-6 border-b flex justify-between items-center">
+            <h2 className="text-lg font-bold flex items-center gap-2">
+              <History size={20} /> سجل الأكواد
+            </h2>
+            <button
+              onClick={() => fetchHistory(page)}
+              className="text-blue-600 text-sm"
+            >
+              تحديث
+            </button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-right">
+              <thead className="bg-gray-50 text-sm">
+                <tr>
+                  <th className="px-6 py-4">الكود</th>
+                  <th className="px-6 py-4">النوع</th>
+                  <th className="px-6 py-4">القيمة</th>
+                  <th className="px-6 py-4">الحالة</th>
+                  <th className="px-6 py-4">التاريخ</th>
+                  <th className="px-6 py-4">نسخ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {historyLoading ? (
+                  <tr>
+                    <td colSpan={6} className="py-8 text-center">
+                      جاري التحميل...
+                    </td>
+                  </tr>
+                ) : history.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-8 text-center">
+                      لا يوجد سجل
+                    </td>
+                  </tr>
+                ) : (
+                  history.map(item => (
+                    <tr key={item.id} className="border-t">
+                      <td className="px-6 py-4 font-mono dir-ltr">{item.code}</td>
+                      <td className="px-6 py-4">
+                        {getCreditTypeLabel(
+                          (item.credit_type as CreditType) || 'universal'
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-sm">
+                        {item.credit_type === 'universal' &&
+                          `${item.credit_amount} رصيد`}
+                        {item.credit_type === 'video' &&
+                          `${item.video_minutes} دقيقة`}
+                        {item.credit_type === 'article' &&
+                          `${item.article_count} مقال`}
+                        {item.credit_type === 'both' &&
+                          `${item.video_minutes}د / ${item.article_count}م`}
+                      </td>
+                      <td className="px-6 py-4">
+                        {item.is_redeemed ? 'مستخدم' : 'نشط'}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-500">
+                        {new Date(item.created_at).toLocaleDateString('ar-SA')}
+                      </td>
+                      <td className="px-6 py-4">
+                        <button onClick={() => copyToClipboard(item.code)}>
+                          <Copy size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* pagination */}
+          <div className="p-4 flex justify-between bg-gray-50">
+            <button
+              onClick={() => fetchHistory(page - 1)}
+              disabled={page === 1}
+              className="border p-2 rounded"
+            >
+              <ArrowRight size={16} />
+            </button>
+            <span>
+              صفحة {page} من {totalPages}
+            </span>
+            <button
+              onClick={() => fetchHistory(page + 1)}
+              disabled={page === totalPages}
+              className="border p-2 rounded"
+            >
+              <ArrowLeft size={16} />
+            </button>
+          </div>
+        </div>
+      </div>
+    </AdminLayout>
+  );
 };
 
 export default GenerateCodes;

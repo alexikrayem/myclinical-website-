@@ -1,11 +1,13 @@
 import express from 'express';
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { authenticateToken } from '../middleware/auth.js';
 import { authenticateUser, optionalAuth } from '../middleware/userAuth.js';
-import { getVdoPlaybackInfo } from '../services/vdoService.js';
-import { sanitizeSearchInput } from '../utils/searchUtils.js';
+import { listPublicCourses, getPublicCourseById, COURSE_PUBLIC_SELECT } from '../services/courses/courseCatalogService.js';
+import { createPlaybackSession } from '../services/courses/coursePlaybackService.js';
+import { consumePlaybackHeartbeat } from '../services/courses/courseBillingService.js';
+import { buildSignedManifest } from '../services/courses/hlsService.js';
 
 dotenv.config();
 
@@ -17,58 +19,25 @@ const supabase = createClient(
 
 // Initialize Gemini AI
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
-// Get all courses
+// Get all courses (public)
 router.get('/', async (req, res) => {
     try {
-        const { category, search, limit = 12, page = 1, featured } = req.query;
-        const offset = (page - 1) * limit;
-
-        let query = supabase.from('video_courses').select('id, title, description, cover_image, publication_date, author, categories, is_featured, credits_required, rating, total_students, duration, level', { count: 'exact' });
-
-        if (category) {
-            query = query.contains('categories', [category]);
-        }
-
-        if (featured === 'true') {
-            query = query.eq('is_featured', true);
-        }
-
-        if (search) {
-            const sanitizedSearch = sanitizeSearchInput(search);
-            if (sanitizedSearch) {
-                query = query.or(`title.ilike.%${sanitizedSearch}%,description.ilike.%${sanitizedSearch}%,author.ilike.%${sanitizedSearch}%`);
-            }
-        }
-
-        const { data, error, count } = await query
-            .order('publication_date', { ascending: false })
-            .range(offset, offset + parseInt(limit) - 1);
-
-        if (error) throw error;
-
-        res.json({
-            data,
-            pagination: {
-                total: count,
-                page: parseInt(page),
-                limit: parseInt(limit),
-                pages: Math.ceil(count / limit)
-            }
-        });
+        const result = await listPublicCourses(supabase, req.query);
+        res.json(result);
     } catch (error) {
         console.error('Error fetching courses:', error);
         res.status(500).json({ error: 'Failed to fetch courses' });
     }
 });
 
-// Get featured courses
+// Get featured courses (public)
 router.get('/featured', async (req, res) => {
     try {
         const { data, error } = await supabase
-            .from('video_courses')
-            .select('*')
+            .from('courses_public')
+            .select(COURSE_PUBLIC_SELECT)
             .eq('is_featured', true)
             .limit(5);
 
@@ -80,72 +49,162 @@ router.get('/featured', async (req, res) => {
     }
 });
 
-// Get single course details
+// Get single course details (public metadata + access flags)
 router.get('/:id', optionalAuth, async (req, res) => {
     try {
         const { id } = req.params;
+        const course = await getPublicCourseById(supabase, id);
 
-        // 1. Fetch course data
-        const { data: course, error } = await supabase
-            .from('video_courses')
-            .select('*')
-            .eq('id', id)
-            .single();
+        if (!course) {
+            return res.status(404).json({ error: 'Course not found' });
+        }
 
-        if (error) throw error;
+        let hasAccess = course.billing_model !== 'per_course';
+        const requiresAuth = !req.user;
 
-        // 2. Check access permissions
-        let hasAccess = false;
+        if (course.billing_model === 'per_course') {
+            hasAccess = false;
+            if (req.user) {
+                const { data: access } = await supabase
+                    .from('course_access')
+                    .select('id')
+                    .eq('custom_user_id', req.user.id)
+                    .eq('course_id', id)
+                    .single();
 
-        if (req.user) {
-            const { data: access } = await supabase
-                .from('course_access')
-                .select('id')
-                .eq('custom_user_id', req.user.id)
-                .eq('course_id', id)
-                .single();
-
-            if (access) {
-                hasAccess = true;
+                if (access) {
+                    hasAccess = true;
+                }
             }
+        } else if (!req.user) {
+            hasAccess = false;
         }
 
-        // 3. Filter sensitive data if no access
-        if (!hasAccess) {
-            // Remove video_url and transcript from response
-            const { video_url, transcript, ...publicData } = course;
-            return res.json({ ...publicData, has_access: false });
-        }
-
-        // 4. If has access, get VdoCipher playback info if video_url looks like an ID
-        let vdoPlayback = null;
-        if (course.video_url && !course.video_url.startsWith('http')) {
-            try {
-                vdoPlayback = await getVdoPlaybackInfo(course.video_url, { user: req.user });
-            } catch (vdoError) {
-                console.error('VdoCipher Error:', vdoError.message);
-                // Continue without vdoPlayback, frontend will handle the error
-            }
-        }
-
-        // Return full data if access granted
         res.json({
             ...course,
-            has_access: true,
-            vdo_playback: vdoPlayback
+            has_access: hasAccess,
+            requires_auth: requiresAuth
         });
-
     } catch (error) {
         console.error('Error fetching course:', error);
         res.status(500).json({ error: 'Failed to fetch course' });
     }
 });
 
-// Purchase/Request Access
+// Create playback session and return descriptor
+router.post('/:id/playback', authenticateUser, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const result = await createPlaybackSession({
+            supabase,
+            courseId: id,
+            user: req.user,
+            baseUrl
+        });
+
+        if (result?.error) {
+            return res.status(result.status || 400).json({ error: result.error });
+        }
+
+        res.json(result);
+    } catch (error) {
+        console.error('Error creating playback session:', error);
+        res.status(500).json({ error: 'Failed to start playback' });
+    }
+});
+
+// Heartbeat for per-minute billing
+router.post('/:id/heartbeat', authenticateUser, async (req, res) => {
+    try {
+        const { session_id, seconds_delta, idempotency_key } = req.body || {};
+        const seconds = Number(seconds_delta);
+        if (!session_id || !Number.isFinite(seconds) || seconds <= 0) {
+            return res.status(400).json({ error: 'session_id and seconds_delta are required' });
+        }
+
+        const result = await consumePlaybackHeartbeat({
+            supabase,
+            sessionId: session_id,
+            secondsDelta: seconds,
+            idempotencyKey: idempotency_key,
+            customUserId: req.user.id
+        });
+
+        if (!result?.success) {
+            return res.status(400).json({ error: result?.message || 'Failed to consume credits' });
+        }
+
+        res.json(result);
+    } catch (error) {
+        console.error('Error consuming playback heartbeat:', error);
+        res.status(500).json({ error: 'Failed to consume credits' });
+    }
+});
+
+// Signed HLS manifest endpoint
+router.get('/:id/hls/manifest', authenticateUser, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { session_id, playlist } = req.query;
+
+        if (!session_id) {
+            return res.status(400).json({ error: 'session_id is required' });
+        }
+
+        const { data: session } = await supabase
+            .from('course_playback_sessions')
+            .select('id, course_id, custom_user_id, expires_at, status')
+            .eq('id', session_id)
+            .single();
+
+        if (!session || session.course_id !== id || session.custom_user_id !== req.user.id) {
+            return res.status(403).json({ error: 'Invalid playback session' });
+        }
+
+        if (session.status !== 'active' || new Date(session.expires_at) < new Date()) {
+            return res.status(403).json({ error: 'Playback session expired' });
+        }
+
+        const { data: course } = await supabase
+            .from('video_courses')
+            .select('playback_source, playback_provider')
+            .eq('id', id)
+            .single();
+
+        if (!course || course.playback_provider !== 'hls') {
+            return res.status(400).json({ error: 'HLS playback not available' });
+        }
+
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const manifestResult = await buildSignedManifest({
+            supabase,
+            playbackSource: course.playback_source,
+            playlistPath: typeof playlist === 'string' ? playlist : null,
+            sessionId: session_id,
+            courseId: id,
+            baseUrl
+        });
+
+        if (manifestResult?.error) {
+            return res.status(manifestResult.status || 400).json({ error: manifestResult.error });
+        }
+
+        res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+        res.setHeader('Cache-Control', 'no-store');
+        res.send(manifestResult.manifest);
+    } catch (error) {
+        console.error('Error generating HLS manifest:', error);
+        res.status(500).json({ error: 'Failed to generate HLS manifest' });
+    }
+});
+
+// Purchase/Request Access (per-course billing)
 router.post('/:id/access', authenticateUser, async (req, res) => {
     try {
         const { id } = req.params;
         const userId = req.user.id;
+        const idempotencyKey = req.body?.idempotency_key;
 
         // Check if already has access
         const { data: existingAccess } = await supabase
@@ -159,14 +218,32 @@ router.post('/:id/access', authenticateUser, async (req, res) => {
             return res.json({ success: true, message: 'لديك صلاحية الوصول بالفعل' });
         }
 
-        // Get course cost
+        if (idempotencyKey) {
+            const { data: existingTx } = await supabase
+                .from('credit_transactions')
+                .select('id')
+                .eq('custom_user_id', userId)
+                .eq('related_entity_type', 'course_access')
+                .eq('related_entity_id', id)
+                .contains('metadata', { idempotency_key: idempotencyKey })
+                .maybeSingle();
+
+            if (existingTx) {
+                return res.json({ success: true, message: 'تمت معالجة الطلب مسبقاً' });
+            }
+        }
+
+        // Get course cost + billing model
         const { data: course } = await supabase
             .from('video_courses')
-            .select('credits_required, title')
+            .select('credits_required, title, billing_model')
             .eq('id', id)
             .single();
 
         if (!course) return res.status(404).json({ error: 'Course not found' });
+        if (course.billing_model !== 'per_course') {
+            return res.status(400).json({ error: 'This course uses per-minute billing' });
+        }
 
         // Check user balance
         const { data: userCredits } = await supabase
@@ -174,6 +251,18 @@ router.post('/:id/access', authenticateUser, async (req, res) => {
             .select('balance, total_spent')
             .eq('custom_user_id', userId)
             .single();
+
+        if (!userCredits) {
+            await supabase.from('user_credits').upsert({
+                custom_user_id: userId,
+                balance: 0,
+                total_earned: 0,
+                total_spent: 0,
+                video_watch_minutes: 0,
+                article_credits: 0,
+                updated_at: new Date()
+            }, { onConflict: 'custom_user_id' });
+        }
 
         const balance = userCredits?.balance || 0;
 
@@ -220,7 +309,8 @@ router.post('/:id/access', authenticateUser, async (req, res) => {
             balance_before: balance,
             balance_after: balance - course.credits_required,
             related_entity_type: 'course_access',
-            related_entity_id: id
+            related_entity_id: id,
+            metadata: idempotencyKey ? { idempotency_key: idempotencyKey } : undefined
         });
 
         res.json({ success: true, message: 'تم شراء الكورس بنجاح' });
@@ -235,9 +325,6 @@ router.post('/:id/access', authenticateUser, async (req, res) => {
 router.post('/:id/generate-quiz', authenticateToken, async (req, res) => {
     try {
         const { id } = req.params;
-
-        // Check admin permissions (optional, for now allow authenticated users to trigger for demo)
-        // if (!req.admin) return res.status(403).json({ error: 'Unauthorized' });
 
         const { data: course } = await supabase
             .from('video_courses')

@@ -39,7 +39,7 @@ const ShareButtons: React.FC<ShareButtonsProps> = ({ url, title, description }) 
                     text: description,
                     url,
                 });
-            } catch (err) {
+            } catch {
                 // User cancelled or error
             }
         } else {

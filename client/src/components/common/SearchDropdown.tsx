@@ -27,6 +27,9 @@ interface SearchDropdownProps {
 const SearchDropdown: React.FC<SearchDropdownProps> = ({ results, loading, isOpen, onClose, searchTerm }) => {
     if (!isOpen || !searchTerm) return null;
 
+    const ENABLE_COURSES = import.meta.env.VITE_ENABLE_COURSES !== 'false';
+    const displayResults = ENABLE_COURSES ? results : results.filter(r => r.type !== 'course');
+
     const getResultHref = (result: SearchResult) => {
         if (result.type === 'research') return `/research/${result.id}`;
         if (result.type === 'course') return `/courses/${result.id}`;
@@ -73,58 +76,58 @@ const SearchDropdown: React.FC<SearchDropdownProps> = ({ results, loading, isOpe
                     </div>
                     <p className="text-xs text-gray-400 mt-3">جاري تجهيز أفضل النتائج...</p>
                 </div>
-            ) : results.length > 0 ? (
+            ) : displayResults.length > 0 ? (
                 <div className="py-1">
                     <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/70 flex items-center justify-between">
                         <span className="text-xs font-semibold text-gray-500">نتائج البحث المقترحة</span>
-                        <span className="text-[11px] text-gray-400">{results.length} نتيجة</span>
+                        <span className="text-[11px] text-gray-400">{displayResults.length} نتيجة</span>
                     </div>
                     <div className="max-h-[24rem] overflow-y-auto">
-                        {results.map((result) => (
-                        <Link
-                            key={`${result.type}-${result.id}`}
-                            to={getResultHref(result)}
-                            onClick={onClose}
-                            className="flex items-start gap-3 px-4 py-3 hover:bg-blue-50/70 transition-colors group border-b border-gray-50 last:border-b-0"
-                        >
-                            <div className="w-16 h-16 rounded-xl overflow-hidden bg-gray-100 border border-gray-200 shrink-0">
-                                {result.cover_image ? (
-                                    <img
-                                        src={result.cover_image}
-                                        alt={result.title}
-                                        className="w-full h-full object-cover"
-                                        loading="lazy"
-                                    />
-                                ) : (
-                                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200 text-gray-500">
-                                        {result.type === 'research' && <BookOpen size={18} />}
-                                        {result.type === 'course' && <GraduationCap size={18} />}
-                                        {result.type === 'article' && <FileText size={18} />}
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${getTypeBadgeClass(result.type)}`}>
-                                        {getResultTypeLabel(result.type)}
-                                    </span>
-                                    <span className="text-[11px] text-gray-400 truncate">{getResultMeta(result)}</span>
+                        {displayResults.map((result) => (
+                            <Link
+                                key={`${result.type}-${result.id}`}
+                                to={getResultHref(result)}
+                                onClick={onClose}
+                                className="flex items-start gap-3 px-4 py-3 hover:bg-blue-50/70 transition-colors group border-b border-gray-50 last:border-b-0"
+                            >
+                                <div className="w-16 h-16 rounded-xl overflow-hidden bg-gray-100 border border-gray-200 shrink-0">
+                                    {result.cover_image ? (
+                                        <img
+                                            src={result.cover_image}
+                                            alt={result.title}
+                                            className="w-full h-full object-cover"
+                                            loading="lazy"
+                                        />
+                                    ) : (
+                                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200 text-gray-500">
+                                            {result.type === 'research' && <BookOpen size={18} />}
+                                            {result.type === 'course' && <GraduationCap size={18} />}
+                                            {result.type === 'article' && <FileText size={18} />}
+                                        </div>
+                                    )}
                                 </div>
 
-                                <h4 className="text-sm font-semibold text-gray-800 line-clamp-1 group-hover:text-blue-700 transition-colors">
-                                    {result.title}
-                                </h4>
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${getTypeBadgeClass(result.type)}`}>
+                                            {getResultTypeLabel(result.type)}
+                                        </span>
+                                        <span className="text-[11px] text-gray-400 truncate">{getResultMeta(result)}</span>
+                                    </div>
 
-                                {getResultPreview(result) && (
-                                    <p className="text-xs text-gray-500 line-clamp-2 mt-1 leading-relaxed">
-                                        {getResultPreview(result)}
-                                    </p>
-                                )}
-                            </div>
+                                    <h4 className="text-sm font-semibold text-gray-800 line-clamp-1 group-hover:text-blue-700 transition-colors">
+                                        {result.title}
+                                    </h4>
 
-                            <ChevronLeft size={14} className="self-center text-gray-300 group-hover:text-blue-400 opacity-0 group-hover:opacity-100 transition-all transform group-hover:-translate-x-1 mt-1" />
-                        </Link>
+                                    {getResultPreview(result) && (
+                                        <p className="text-xs text-gray-500 line-clamp-2 mt-1 leading-relaxed">
+                                            {getResultPreview(result)}
+                                        </p>
+                                    )}
+                                </div>
+
+                                <ChevronLeft size={14} className="self-center text-gray-300 group-hover:text-blue-400 opacity-0 group-hover:opacity-100 transition-all transform group-hover:-translate-x-1 mt-1" />
+                            </Link>
                         ))}
                     </div>
 

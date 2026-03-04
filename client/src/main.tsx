@@ -5,6 +5,7 @@ import { HelmetProvider } from 'react-helmet-async';
 import App from './App.tsx';
 import ErrorBoundary from './components/common/ErrorBoundary.tsx';
 import { initSentry } from './lib/sentry.ts';
+import 'plyr/dist/plyr.css';
 import './index.css';
 
 // Initialize Sentry before anything else
@@ -30,4 +31,3 @@ createRoot(document.getElementById('root')!).render(
     </ErrorBoundary>
   </StrictMode>
 );
-

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowRight, Upload, Video, FileText, BrainCircuit } from 'lucide-react';
+import { ArrowRight, Upload, Video, BrainCircuit } from 'lucide-react';
 import AdminLayout from '../components/layout/AdminLayout';
 import { courseService } from '../services/courseService';
 import toast from 'react-hot-toast';
@@ -14,9 +14,14 @@ const EditCourse: React.FC = () => {
         title: '',
         description: '',
         author: '',
-        video_url: '',
+        playback_source: '',
+        playback_provider: 'vdocipher',
+        billing_model: 'per_minute',
+        minute_cost: 1,
+        preview_source: '',
+        preview_seconds: 0,
         transcript: '',
-        credits_required: 100,
+        credits_required: 0,
         duration: 0,
         categories: '',
         is_featured: false
@@ -33,9 +38,14 @@ const EditCourse: React.FC = () => {
                     title: data.title,
                     description: data.description,
                     author: data.author,
-                    video_url: data.video_url,
+                    playback_source: data.playback_source,
+                    playback_provider: data.playback_provider || 'vdocipher',
+                    billing_model: data.billing_model || 'per_minute',
+                    minute_cost: data.minute_cost ?? 1,
+                    preview_source: data.preview_source || '',
+                    preview_seconds: data.preview_seconds || 0,
                     transcript: data.transcript || '',
-                    credits_required: data.credits_required,
+                    credits_required: data.credits_required || 0,
                     duration: data.duration || 0,
                     categories: data.categories.join(', '),
                     is_featured: data.is_featured
@@ -71,7 +81,12 @@ const EditCourse: React.FC = () => {
             data.append('title', formData.title);
             data.append('description', formData.description);
             data.append('author', formData.author);
-            data.append('video_url', formData.video_url);
+            data.append('playback_source', formData.playback_source);
+            data.append('playback_provider', formData.playback_provider);
+            data.append('billing_model', formData.billing_model);
+            data.append('minute_cost', formData.minute_cost.toString());
+            data.append('preview_source', formData.preview_source);
+            data.append('preview_seconds', formData.preview_seconds.toString());
             data.append('transcript', formData.transcript);
             data.append('credits_required', formData.credits_required.toString());
             data.append('duration', formData.duration.toString());
@@ -173,14 +188,28 @@ const EditCourse: React.FC = () => {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">رابط الفيديو (YouTube)</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">مزود التشغيل</label>
+                                <select
+                                    className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                                    value={formData.playback_provider}
+                                    onChange={e => setFormData({ ...formData, playback_provider: e.target.value })}
+                                >
+                                    <option value="vdocipher">VdoCipher</option>
+                                    <option value="hls">HLS</option>
+                                    <option value="youtube">YouTube</option>
+                                    <option value="mp4">MP4</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">مصدر التشغيل</label>
                                 <input
-                                    type="url"
+                                    type="text"
                                     required
-                                    placeholder="https://www.youtube.com/watch?v=..."
+                                    placeholder="vdocipher-id أو رابط HLS/MP4/YouTube"
                                     className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all dir-ltr"
-                                    value={formData.video_url}
-                                    onChange={e => setFormData({ ...formData, video_url: e.target.value })}
+                                    value={formData.playback_source}
+                                    onChange={e => setFormData({ ...formData, playback_source: e.target.value })}
                                 />
                             </div>
 
@@ -196,14 +225,65 @@ const EditCourse: React.FC = () => {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">الرصيد المطلوب</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">نموذج الفوترة</label>
+                                <select
+                                    className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                                    value={formData.billing_model}
+                                    onChange={e => setFormData({ ...formData, billing_model: e.target.value })}
+                                >
+                                    <option value="per_minute">بالدقيقة</option>
+                                    <option value="per_course">بالكورس</option>
+                                    <option value="free">مجاني</option>
+                                </select>
+                            </div>
+
+                            {formData.billing_model === 'per_minute' && (
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">تكلفة الدقيقة</label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        required
+                                        className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                                        value={formData.minute_cost}
+                                        onChange={e => setFormData({ ...formData, minute_cost: parseInt(e.target.value) || 0 })}
+                                    />
+                                </div>
+                            )}
+
+                            {formData.billing_model === 'per_course' && (
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">الرصيد المطلوب</label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        required
+                                        className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                                        value={formData.credits_required}
+                                        onChange={e => setFormData({ ...formData, credits_required: parseInt(e.target.value) || 0 })}
+                                    />
+                                </div>
+                            )}
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">مصدر المعاينة (اختياري)</label>
+                                <input
+                                    type="text"
+                                    placeholder="رابط معاينة أو نفس المصدر"
+                                    className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all dir-ltr"
+                                    value={formData.preview_source}
+                                    onChange={e => setFormData({ ...formData, preview_source: e.target.value })}
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">مدة المعاينة (ثواني)</label>
                                 <input
                                     type="number"
                                     min="0"
-                                    required
                                     className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
-                                    value={formData.credits_required}
-                                    onChange={e => setFormData({ ...formData, credits_required: parseInt(e.target.value) })}
+                                    value={formData.preview_seconds}
+                                    onChange={e => setFormData({ ...formData, preview_seconds: parseInt(e.target.value) || 0 })}
                                 />
                             </div>
 

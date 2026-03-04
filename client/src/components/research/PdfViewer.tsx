@@ -19,7 +19,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ researchId }) => {
 
     // Create new plugin instance
     const defaultLayoutPluginInstance = defaultLayoutPlugin({
-        sidebarTabs: (defaultTabs) => [], // Hide sidebar
+        sidebarTabs: () => [], // Hide sidebar
         renderToolbar: (Toolbar) => (
             <Toolbar>
                 {(slots) => {
@@ -94,11 +94,12 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ researchId }) => {
                 } else {
                     setError('لم يتم العثور على ملف PDF');
                 }
-            } catch (err: any) {
+            } catch (err: unknown) {
+                const errorResponse = err as { response?: { status?: number } };
                 console.error('Error fetching PDF URL:', err);
-                if (err.response?.status === 401) {
+                if (errorResponse.response?.status === 401) {
                     setError('عذراً، يجب تسجيل الدخول لعرض هذا البحث');
-                } else if (err.response?.status === 404) {
+                } else if (errorResponse.response?.status === 404) {
                     setError('ملف البحث غير متوفر حالياً');
                 } else {
                     setError('حدث خطأ أثناء تحميل ملف البحث');
@@ -118,7 +119,10 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ researchId }) => {
 
     if (!user) {
         return (
-            <div className="flex flex-col items-center justify-center p-12 bg-gray-50 rounded-2xl border border-gray-200">
+            <div
+                className="flex flex-col items-center justify-center p-12 bg-gray-50 rounded-2xl border border-gray-200"
+                data-testid="research-pdf-login-required"
+            >
                 <Lock className="w-16 h-16 text-gray-400 mb-4" />
                 <h3 className="text-xl font-bold text-gray-900 mb-2">تسجيل الدخول مطلوب</h3>
                 <p className="text-gray-600 text-center mb-6">
@@ -133,7 +137,10 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ researchId }) => {
 
     if (loading) {
         return (
-            <div className="flex justify-center items-center h-96 bg-gray-50 rounded-2xl border border-gray-200">
+            <div
+                className="flex justify-center items-center h-96 bg-gray-50 rounded-2xl border border-gray-200"
+                data-testid="research-pdf-loading"
+            >
                 <Loader className="w-8 h-8 text-blue-600 animate-spin" />
                 <span className="mr-3 text-gray-600 font-medium">جاري تحميل البحث...</span>
             </div>
@@ -142,7 +149,10 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ researchId }) => {
 
     if (error) {
         return (
-            <div className="flex flex-col items-center justify-center p-12 bg-red-50 rounded-2xl border border-red-100">
+            <div
+                className="flex flex-col items-center justify-center p-12 bg-red-50 rounded-2xl border border-red-100"
+                data-testid="research-pdf-error"
+            >
                 <AlertTriangle className="w-12 h-12 text-red-500 mb-4" />
                 <h3 className="text-lg font-bold text-red-700 mb-2">تعذر تحميل الملف</h3>
                 <p className="text-red-600 text-center">{error}</p>
@@ -154,6 +164,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ researchId }) => {
         <div
             className="h-[800px] w-full bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden relative"
             onContextMenu={handleContextMenu}
+            data-testid="research-pdf-container"
         >
             {/* Watermark overlay */}
             <div className="absolute inset-0 pointer-events-none z-10 flex items-center justify-center opacity-5 overflow-hidden select-none">

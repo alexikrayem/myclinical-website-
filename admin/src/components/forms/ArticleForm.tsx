@@ -353,6 +353,7 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
                 onChange={handleInputChange}
                 className={`form-input ${errors.title ? 'border-red-500' : ''}`}
                 placeholder="أدخل عنوان المقال"
+                data-testid="article-title"
               />
               {errors.title && <p className="form-error">{errors.title}</p>}
             </div>
@@ -370,6 +371,7 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
                 }}
                 className={`form-input ${errors.author ? 'border-red-500' : ''}`}
                 disabled={loadingAuthors}
+                data-testid="article-author"
               >
                 <option value="">
                   {loadingAuthors ? 'جارٍ التحميل...' : 'اختر المؤلف'}
@@ -393,6 +395,7 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
               rows={3}
               className={`form-textarea ${errors.excerpt ? 'border-red-500' : ''}`}
               placeholder="أدخل مقدمة المقال"
+              data-testid="article-excerpt"
             />
             {errors.excerpt && <p className="form-error">{errors.excerpt}</p>}
           </div>
@@ -407,7 +410,7 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
 
           <div>
             <label className="form-label">المحتوى *</label>
-            <div className={`rich-editor ${errors.content ? 'border-red-500' : ''}`}>
+            <div className={`rich-editor ${errors.content ? 'border-red-500' : ''}`} data-testid="article-content">
               <RichTextEditor
                 value={formData.content}
                 onChange={handleContentChange}
@@ -434,6 +437,7 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
                   checked={!useImageUrl}
                   onChange={() => setUseImageUrl(false)}
                   className="ml-2"
+                  data-testid="article-image-upload-option"
                 />
                 <Upload size={16} className="ml-1" />
                 رفع ملف
@@ -444,6 +448,7 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
                   checked={useImageUrl}
                   onChange={() => setUseImageUrl(true)}
                   className="ml-2"
+                  data-testid="article-image-url-option"
                 />
                 <LinkIcon size={16} className="ml-1" />
                 رابط صورة
@@ -459,6 +464,7 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
                   onChange={handleInputChange}
                   className={`form-input ${errors.cover_image_url ? 'border-red-500' : ''}`}
                   placeholder="أدخل رابط الصورة"
+                  data-testid="article-cover-url"
                 />
                 {errors.cover_image_url && <p className="form-error">{errors.cover_image_url}</p>}
               </div>
@@ -470,6 +476,7 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
                   onChange={handleFileChange}
                   className="hidden"
                   id="cover-image-upload"
+                  data-testid="article-cover-upload"
                 />
                 <label htmlFor="cover-image-upload" className="cursor-pointer">
                   <Upload size={48} className="mx-auto mb-4 text-gray-400" />
@@ -567,6 +574,7 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
                           }
                         }}
                         className="ml-2 w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                        data-testid={`article-tag-${encodeURIComponent(category)}`}
                       />
                       <span className="text-sm font-medium text-gray-700">{category}</span>
                     </label>
@@ -597,13 +605,14 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
             </div>
 
             <div className="flex items-center">
-              <input
-                type="checkbox"
-                name="is_featured"
-                checked={formData.is_featured}
-                onChange={handleInputChange}
-                className="ml-3 w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-              />
+            <input
+              type="checkbox"
+              name="is_featured"
+              checked={formData.is_featured}
+              onChange={handleInputChange}
+              className="ml-3 w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+              data-testid="article-featured"
+            />
               <label className="flex items-center text-sm font-semibold text-gray-700">
                 <Star size={16} className="ml-2 text-yellow-500" />
                 مقال مميز
@@ -623,6 +632,7 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
                   onChange={handleInputChange}
                   min="0"
                   className="form-input w-32"
+                  data-testid="article-credits"
                 />
                 <span className="text-sm text-gray-500">
                   (0 يعني أن المقال متاح لجميع الأعضاء المسجلين مجاناً)
@@ -638,6 +648,7 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
             type="button"
             onClick={() => navigate('/articles')}
             className="btn-secondary"
+            data-testid="article-cancel"
           >
             <X size={20} className="ml-2" />
             إلغاء
@@ -646,6 +657,7 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
             type="submit"
             disabled={loading}
             className="btn-primary"
+            data-testid="article-submit"
           >
             <Save size={20} className="ml-2" />
             {loading ? 'جاري الحفظ...' : (isEditing ? 'تحديث المقال' : 'نشر المقال')}

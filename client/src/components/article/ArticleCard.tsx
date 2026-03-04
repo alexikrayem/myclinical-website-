@@ -48,6 +48,7 @@ const ArticleCard: React.FC<ArticleCardProps> = ({ article, featured = false }) 
       <div
         className="relative overflow-hidden rounded-3xl card-shadow-lg group cursor-pointer transition-modern hover:scale-[1.02]"
         onClick={handleCardClick}
+        data-testid={`article-card-${article.id}`}
       >
         <div className="relative h-[500px]">
           <img
@@ -67,7 +68,12 @@ const ArticleCard: React.FC<ArticleCardProps> = ({ article, featured = false }) 
           </div>
 
           <div className="absolute bottom-0 left-0 right-0 p-8 text-white">
-            <h2 className="text-2xl lg:text-3xl font-bold mb-3 line-clamp-2 leading-tight">{article.title}</h2>
+            <h2
+              className="text-2xl lg:text-3xl font-bold mb-3 line-clamp-2 leading-tight"
+              data-testid={`article-card-title-${article.id}`}
+            >
+              {article.title}
+            </h2>
             <p className="mb-4 text-blue-100 line-clamp-2 text-lg leading-relaxed">{article.excerpt}</p>
 
             <div className="flex items-center justify-between">
@@ -114,6 +120,7 @@ const ArticleCard: React.FC<ArticleCardProps> = ({ article, featured = false }) 
     <div
       className="bg-white rounded-2xl overflow-hidden card-shadow group cursor-pointer transition-modern hover:scale-[1.02] animate-scaleIn"
       onClick={handleCardClick}
+      data-testid={`article-card-${article.id}`}
     >
       <div className="relative overflow-hidden">
         <img
@@ -170,7 +177,10 @@ const ArticleCard: React.FC<ArticleCardProps> = ({ article, featured = false }) 
           )}
         </div>
 
-        <h3 className="text-xl font-bold text-gray-900 mb-3 line-clamp-2 leading-tight group-hover:text-blue-600 transition-colors">
+        <h3
+          className="text-xl font-bold text-gray-900 mb-3 line-clamp-2 leading-tight group-hover:text-blue-600 transition-colors"
+          data-testid={`article-card-title-${article.id}`}
+        >
           {article.title}
         </h3>
 

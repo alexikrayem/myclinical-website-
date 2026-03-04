@@ -36,7 +36,7 @@ router.get('/sitemap.xml', async (req, res) => {
 
         // Fetch all courses
         const { data: courses, error: coursesError } = await supabase
-            .from('courses')
+            .from('video_courses')
             .select('id, updated_at')
             .order('updated_at', { ascending: false });
 
@@ -47,11 +47,12 @@ router.get('/sitemap.xml', async (req, res) => {
         xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
 
         // Static pages
+        const ENABLE_COURSES = process.env.ENABLE_COURSES !== 'false';
         const staticPages = [
             { loc: '/', priority: '1.0' },
             { loc: '/articles', priority: '0.9' },
             { loc: '/clinical-cases', priority: '0.9' },
-            { loc: '/courses', priority: '0.9' },
+            ...(ENABLE_COURSES ? [{ loc: '/courses', priority: '0.9' }] : []),
             { loc: '/research-topics', priority: '0.8' },
             { loc: '/about', priority: '0.5' },
         ];
@@ -86,14 +87,16 @@ router.get('/sitemap.xml', async (req, res) => {
         });
 
         // Courses
-        courses?.forEach(course => {
-            xml += '  <url>\n';
-            xml += `    <loc>${SITE_URL}/courses/${course.id}</loc>\n`;
-            xml += `    <lastmod>${new Date(course.updated_at).toISOString().split('T')[0]}</lastmod>\n`;
-            xml += '    <priority>0.8</priority>\n';
-            xml += '    <changefreq>monthly</changefreq>\n';
-            xml += '  </url>\n';
-        });
+        if (ENABLE_COURSES) {
+            courses?.forEach(course => {
+                xml += '  <url>\n';
+                xml += `    <loc>${SITE_URL}/courses/${course.id}</loc>\n`;
+                xml += `    <lastmod>${new Date(course.updated_at).toISOString().split('T')[0]}</lastmod>\n`;
+                xml += '    <priority>0.8</priority>\n';
+                xml += '    <changefreq>monthly</changefreq>\n';
+                xml += '  </url>\n';
+            });
+        }
 
         xml += '</urlset>';
 

@@ -36,8 +36,12 @@ const createSupabaseMock = () => {
             error: null
         }),
         auth: {
-            getUser: jest.fn().mockImplementation(() => {
-                throw new Error('Should not call supabase.auth.getUser');
+            // The articles route calls supabase.auth.getUser(token) directly,
+            // bypassing the mocked optionalAuth middleware.
+            // Return a non-error response so the route doesn't crash.
+            getUser: jest.fn().mockResolvedValue({
+                data: { user: null },
+                error: { message: 'Invalid token' }
             })
         }
     };

@@ -13,6 +13,8 @@ import { useDebounce } from '../../hooks/useDebounce';
 import { searchApi } from '../../lib/api';
 import type { GlobalSearchResult } from '../../lib/api';
 
+const ENABLE_COURSES = import.meta.env.VITE_ENABLE_COURSES !== 'false';
+
 const Navbar: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -161,7 +163,7 @@ const Navbar: React.FC = () => {
                 { path: '/', label: 'الرئيسية' },
                 { path: '/articles', label: 'المقالات' },
                 { path: '/clinical-cases', label: 'حالات سريرية' },
-                { path: '/courses', label: 'الدورات' },
+                ...(ENABLE_COURSES ? [{ path: '/courses', label: 'الدورات' }] : []),
                 { path: '/research-topics', label: 'أبحاث علمية' },
               ].map(({ path, label }) => (
                 <Link
@@ -292,7 +294,7 @@ const Navbar: React.FC = () => {
                   { path: '/', label: 'الرئيسية' },
                   { path: '/articles', label: 'المقالات' },
                   { path: '/clinical-cases', label: 'حالات سريرية' },
-                  { path: '/courses', label: 'الدورات' },
+                  ...(ENABLE_COURSES ? [{ path: '/courses', label: 'الدورات' }] : []),
                   { path: '/research-topics', label: 'أبحاث علمية' },
                 ].map(({ path, label }) => (
                   <Link

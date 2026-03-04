@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Search, Filter, BookOpen } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Search, BookOpen } from 'lucide-react';
 import { coursesApi } from '../lib/api';
 import CourseList from '../components/courses/CourseList';
 import VideoCourseCard from '../components/courses/CourseCard';
@@ -72,6 +72,7 @@ const CoursesPage = () => {
                         </h2>
                     </div>
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                         {featuredCourses.slice(0, 2).map((course: any) => (
                             <VideoCourseCard key={course.id} course={course} featured={true} />
                         ))}
@@ -90,6 +91,7 @@ const CoursesPage = () => {
                             className="w-full pr-12 pl-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
+                            data-testid="courses-search-input"
                         />
                     </div>
                     <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 no-scrollbar">
@@ -99,6 +101,7 @@ const CoursesPage = () => {
                                 ? 'bg-blue-600 text-white shadow-lg shadow-blue-200'
                                 : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
                                 }`}
+                            data-testid="courses-category-all"
                         >
                             الكل
                         </button>
@@ -110,6 +113,7 @@ const CoursesPage = () => {
                                     ? 'bg-blue-600 text-white shadow-lg shadow-blue-200'
                                     : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
                                     }`}
+                                data-testid={`courses-category-${encodeURIComponent(cat)}`}
                             >
                                 {cat}
                             </button>

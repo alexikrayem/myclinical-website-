@@ -21,68 +21,22 @@ export interface GlobalSearchResult {
   [key: string]: unknown;
 }
 
-interface SearchSourceItem {
-  id: string | number;
-  title: string;
-  slug?: string;
-  [key: string]: unknown;
-}
 
-const isSearchSourceItem = (value: unknown): value is SearchSourceItem => {
-  if (!value || typeof value !== 'object') return false;
-  const candidate = value as Record<string, unknown>;
-  return (typeof candidate.id === 'string' || typeof candidate.id === 'number') && typeof candidate.title === 'string';
-};
-
-const extractSearchItems = (response: unknown): SearchSourceItem[] => {
-  if (!response || typeof response !== 'object') return [];
-  const data = (response as { data?: unknown }).data;
-  if (!Array.isArray(data)) return [];
-  return data.filter(isSearchSourceItem);
-};
-
-const withSearchType = (items: SearchSourceItem[], type: GlobalSearchType): GlobalSearchResult[] => {
-  return items.map((item) => ({ ...item, id: String(item.id), type }));
-};
 
 // Global Search API
 export const searchApi = {
   // Search across all content types
   searchAll: async (query: string, limit = 5): Promise<GlobalSearchResult[]> => {
     try {
-      const [articlesResult, researchResult, coursesResult] = await Promise.allSettled([
-        articlesApi.search(query, limit),
-        researchApi.search(query, limit),
-        coursesApi.getAll({ search: query, limit })
-      ]);
-
-      if (articlesResult.status === 'rejected') {
-        console.error('Article search failed:', articlesResult.reason);
-      }
-
-      if (researchResult.status === 'rejected') {
-        console.error('Research search failed:', researchResult.reason);
-      }
-
-      if (coursesResult.status === 'rejected') {
-        console.error('Course search failed:', coursesResult.reason);
-      }
-
-      const articleResults = articlesResult.status === 'fulfilled'
-        ? withSearchType(extractSearchItems(articlesResult.value), 'article')
-        : [];
-
-      const researchResults = researchResult.status === 'fulfilled'
-        ? withSearchType(extractSearchItems(researchResult.value), 'research')
-        : [];
-
-      const courseResults = coursesResult.status === 'fulfilled'
-        ? withSearchType(extractSearchItems(coursesResult.value), 'course')
-        : [];
-
-      const results = [...articleResults, ...researchResults, ...courseResults].slice(0, limit);
-
-      return results;
+      const response = await api.get('/search', { params: { q: query, limit } });
+      const results = response.data.results || [];
+      return results.map((item: Record<string, unknown>) => ({
+        ...item,
+        id: String(item.id),
+        type: item.type === 'articles' ? 'article' :
+          item.type === 'researches' ? 'research' :
+            item.type === 'courses' ? 'course' : item.type
+      }));
     } catch (error) {
       console.error('Error in global search:', error);
       return [];
@@ -161,6 +115,21 @@ export const articlesApi = {
     } catch (error) {
       console.error('Error searching articles:', error);
       throw error;
+    }
+  },
+
+  // Get latest articles grouped by tags
+  getByTags: async (tags?: string[], limit = 5) => {
+    try {
+      const params: Record<string, string | number> = { limit };
+      if (tags && tags.length > 0) {
+        params.tags = tags.join(',');
+      }
+      const response = await api.get('/articles/by-tags', { params });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching articles by tags:', error);
+      return {};
     }
   },
 };
@@ -275,10 +244,39 @@ export const coursesApi = {
     }
   },
 
+  getPlayback: async (id: string) => {
+    try {
+      const token = getUserToken();
+      const response = await api.post(`/courses/${id}/playback`, {}, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error starting playback:', error);
+      throw error;
+    }
+  },
+
+  sendHeartbeat: async (id: string, payload: { session_id: string; seconds_delta: number; idempotency_key?: string }) => {
+    try {
+      const token = getUserToken();
+      const response = await api.post(`/courses/${id}/heartbeat`, payload, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error sending heartbeat:', error);
+      throw error;
+    }
+  },
+
   purchaseAccess: async (id: string) => {
     try {
       const token = getUserToken();
-      const response = await api.post(`/courses/${id}/access`, {}, {
+      const idempotencyKey = typeof crypto?.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const response = await api.post(`/courses/${id}/access`, { idempotency_key: idempotencyKey }, {
         headers: { Authorization: `Bearer ${token}` }
       });
       return response.data;

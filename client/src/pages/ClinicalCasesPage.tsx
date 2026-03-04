@@ -5,6 +5,7 @@ import { Search, Filter, Stethoscope } from 'lucide-react';
 import ArticleListSkeleton from '../components/loaders/ArticleListSkeleton';
 
 const ClinicalCasesPage: React.FC = () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [cases, setCases] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
@@ -12,7 +13,7 @@ const ClinicalCasesPage: React.FC = () => {
     const [allTags, setAllTags] = useState<string[]>([]);
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
-    const [totalCases, setTotalCases] = useState(0);
+
 
     useEffect(() => {
         // Fetch unique tags for filtering
@@ -44,7 +45,7 @@ const ClinicalCasesPage: React.FC = () => {
 
                 setCases(response.data.data || []);
                 setTotalPages(response.data.pagination.pages);
-                setTotalCases(response.data.pagination.total);
+
             } catch (error) {
                 console.error('Error fetching cases:', error);
             } finally {

@@ -16,7 +16,7 @@ const LoginPage: React.FC = () => {
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Get redirect URL from state or default to home
-    const from = (location.state as any)?.from?.pathname || '/';
+    const from = (location.state as { from?: { pathname?: string } })?.from?.pathname || '/';
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -27,8 +27,8 @@ const LoginPage: React.FC = () => {
             await login(phoneNumber, password);
             toast.success('تم تسجيل الدخول بنجاح!');
             navigate(from, { replace: true });
-        } catch (err: any) {
-            setError(err.message || 'فشل تسجيل الدخول');
+        } catch (err: unknown) {
+            setError((err as Error).message || 'فشل تسجيل الدخول');
         } finally {
             setIsSubmitting(false);
         }
@@ -57,7 +57,10 @@ const LoginPage: React.FC = () => {
                     <form onSubmit={handleSubmit} className="space-y-6">
                         {/* Error Alert */}
                         {error && (
-                            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl flex items-center gap-3 animate-fadeIn">
+                            <div
+                                className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl flex items-center gap-3 animate-fadeIn"
+                                data-testid="login-error"
+                            >
                                 <AlertCircle size={20} />
                                 <span>{error}</span>
                             </div>
@@ -78,6 +81,7 @@ const LoginPage: React.FC = () => {
                                     className="w-full px-4 py-3 pr-12 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-left"
                                     dir="ltr"
                                     required
+                                    data-testid="login-phone"
                                 />
                                 <Phone size={20} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400" />
                             </div>
@@ -96,6 +100,7 @@ const LoginPage: React.FC = () => {
                                     placeholder="••••••••"
                                     className="w-full px-4 py-3 pr-12 pl-12 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                                     required
+                                    data-testid="login-password"
                                 />
                                 <Lock size={20} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400" />
                                 <button
@@ -113,6 +118,7 @@ const LoginPage: React.FC = () => {
                             type="submit"
                             disabled={isSubmitting || isLoading}
                             className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white font-medium py-3 px-6 rounded-xl hover:from-blue-700 hover:to-blue-800 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            data-testid="login-submit"
                         >
                             {isSubmitting ? (
                                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />

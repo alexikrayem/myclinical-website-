@@ -12,6 +12,7 @@ import {
 import { validate, schemas } from '../middleware/validation.js';
 import { authLimiter } from '../middleware/rateLimiter.js';
 import { trackLoginAttempt, checkLoginAllowed } from '../middleware/auth.js';
+import { normalizePhoneNumber } from '../utils/phone.js';
 
 dotenv.config();
 
@@ -22,28 +23,6 @@ const supabase = createClient(
 );
 
 const SALT_ROUNDS = 12;
-
-// Validate phone number format (Syrian/Arabic format)
-const isValidPhoneNumber = (phone) => {
-    // Remove spaces and dashes
-    const cleaned = phone.replace(/[\s-]/g, '');
-    // Accept Syrian format: 09xxxxxxxx or +963xxxxxxxxx or 963xxxxxxxxx
-    const syrianRegex = /^(\+?963|0)?9\d{8}$/;
-    return syrianRegex.test(cleaned);
-};
-
-// Normalize phone number to standard format
-const normalizePhoneNumber = (phone) => {
-    const cleaned = phone.replace(/[\s-]/g, '');
-    // Convert all to 09xxxxxxxx format
-    if (cleaned.startsWith('+963')) {
-        return '0' + cleaned.substring(4);
-    }
-    if (cleaned.startsWith('963')) {
-        return '0' + cleaned.substring(3);
-    }
-    return cleaned;
-};
 
 // Validate password strength
 const isValidPassword = (password) => {

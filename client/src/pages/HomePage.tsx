@@ -1,16 +1,31 @@
-import React, { useRef, useMemo } from 'react';
+import React, { useRef, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, BookOpen, FileText, Sparkles, TrendingUp, ChevronLeft, ChevronRight, Video } from 'lucide-react';
 import FeaturedArticles from '../components/article/FeaturedArticles';
 import ArticleList from '../components/article/ArticleList';
 import { useTags } from '../hooks/useArticles';
+import { useUserSpecialties } from '../hooks/useUserSpecialties';
 import RotatingDentalImages from '../components/home/RotatingDentalImages';
+import SpecialtySelector from '../components/home/SpecialtySelector';
+import ArticlesByCategorySection from '../components/home/ArticlesByCategorySection';
+import LatestResearchSection from '../components/home/LatestResearchSection';
+
+const ENABLE_COURSES = import.meta.env.VITE_ENABLE_COURSES !== 'false';
 
 const HomePage: React.FC = () => {
   const { data: tags = [] } = useTags();
+  const { specialties, save: saveSpecialties } = useUserSpecialties();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  const getTagImage = (tag: string) => {
+  // Order tags: selected specialties first, the rest after
+  const orderedTags = useMemo(() => {
+    if (!tags.length) return [];
+    const prioritized = specialties.filter((s: string) => tags.includes(s));
+    const rest = tags.filter((t: string) => !specialties.includes(t));
+    return [...prioritized, ...rest];
+  }, [tags, specialties]);
+
+  const getTagImage = useCallback((tag: string) => {
     // Map tags to specific high-quality images
     const imageMap: { [key: string]: string } = {
       'جراحة': 'https://images.pexels.com/photos/3845729/pexels-photo-3845729.jpeg?auto=compress&cs=tinysrgb&w=800',
@@ -40,7 +55,7 @@ const HomePage: React.FC = () => {
 
     // Deterministic random based on tag string length
     return defaults[tag.length % defaults.length];
-  };
+  }, []);
 
   const categories = useMemo(() => {
     if (!tags.length) return [];
@@ -51,7 +66,7 @@ const HomePage: React.FC = () => {
     }));
   }, [tags]);
 
-  const scroll = (direction: 'left' | 'right') => {
+  const scroll = useCallback((direction: 'left' | 'right') => {
     if (scrollContainerRef.current) {
       const scrollAmount = 320; // Approximate card width + gap
       const newScrollLeft = scrollContainerRef.current.scrollLeft + (direction === 'left' ? -scrollAmount : scrollAmount);
@@ -60,7 +75,7 @@ const HomePage: React.FC = () => {
         behavior: 'smooth'
       });
     }
-  };
+  }, []);
 
   return (
     <div className="layout-modern">
@@ -100,7 +115,7 @@ const HomePage: React.FC = () => {
               <div className="grid grid-cols-2 gap-4 mt-8">
                 {[
                   { to: '/research-topics', icon: BookOpen, title: 'المكتبة البحثية', desc: 'أحدث الأبحاث والدراسات', color: 'bg-blue-50 text-blue-600' },
-                  { to: '/courses', icon: Video, title: 'الدورات التدريبية', desc: 'تطوير مهاراتك العملية', color: 'bg-purple-50 text-purple-600' },
+                  ...(ENABLE_COURSES ? [{ to: '/courses', icon: Video, title: 'الدورات التدريبية', desc: 'تطوير مهاراتك العملية', color: 'bg-purple-50 text-purple-600' }] : []),
                   { to: '/clinical-cases', icon: Sparkles, title: 'حالات سريرية', desc: 'مناقشة حالات واقعية', color: 'bg-green-50 text-green-600' },
                   { to: '/articles', icon: FileText, title: 'المقالات العلمية', desc: 'محتوى متجدد يومياً', color: 'bg-orange-50 text-orange-600' },
                 ].map((item, idx) => (
@@ -138,14 +153,15 @@ const HomePage: React.FC = () => {
               <TrendingUp className="w-4 h-4 ml-2" />
               <span className="text-sm font-medium">المحتوى المميز</span>
             </div>
-            <h2 className="text-4xl lg:text-5xl font-extrabold text-gray-900 mb-4 leading-tight">المقالات المميزة</h2> {/* Updated heading style */}
-            <p className="text-lg text-gray-600 max-w-2xl ml-auto"> {/* Updated paragraph style */}
+            <h2 className="text-4xl lg:text-5xl font-extrabold text-gray-900 mb-4 leading-tight">المقالات المميزة</h2>
+            <p className="text-lg text-gray-600 max-w-2xl ml-auto">
               اكتشف أحدث وأهم المقالات في مجال طب الأسنان من خبراء ومختصين معتمدين
             </p>
           </div>
           <FeaturedArticles />
         </div>
       </section>
+
 
       {/* Categories Section */}
       <section className="py-16 bg-white relative overflow-hidden">
@@ -222,6 +238,7 @@ const HomePage: React.FC = () => {
                     <img
                       src={category.image}
                       alt={category.name}
+                      loading="lazy"
                       className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                     />
                     {/* Gradient Overlay - Lighter */}
@@ -232,7 +249,7 @@ const HomePage: React.FC = () => {
                   {/* Content */}
                   <div className="absolute inset-0 p-6 flex flex-col justify-end text-right">
                     <div className="transform transition-transform duration-500 translate-y-2 group-hover:translate-y-0">
-                      <div className="w-12 h-1 bg-blue-500 rounded-full mb-4 w-0 group-hover:w-12 transition-all duration-500 delay-100"></div>
+                      <div className="w-10 h-1 bg-blue-500 rounded-full mb-4 w-0 group-hover:w-12 transition-all duration-500 delay-100"></div>
                       <h3 className="text-2xl font-bold text-white mb-2 drop-shadow-md">{category.name}</h3>
                       <p className="text-gray-200 text-sm opacity-0 group-hover:opacity-100 transition-opacity duration-500 delay-100 transform translate-y-4 group-hover:translate-y-0 mb-4">
                         تصفح جميع المقالات
@@ -257,26 +274,29 @@ const HomePage: React.FC = () => {
         </div>
       </section>
 
+      {/* Latest Research */}
+      <LatestResearchSection />
+
       {/* Latest Articles */}
       <section className="py-12 bg-gray-50">
         <div className="container-modern">
-          <div className="flex flex-col md:flex-row justify-between items-center mb-12 text-center md:text-right"> {/* Adjusted for RTL and responsiveness */}
+          <div className="flex flex-col md:flex-row justify-between items-center mb-12 text-center md:text-right">
             <div>
-              <h2 className="text-4xl lg:text-5xl font-extrabold text-gray-900 mb-4 leading-tight">أحدث المقالات</h2> {/* Updated heading style */}
-              <p className="text-lg text-gray-600">آخر المقالات والموضوعات المنشورة على المنصة</p> {/* Updated paragraph style */}
+              <h2 className="text-4xl lg:text-5xl font-extrabold text-gray-900 mb-4 leading-tight">أحدث المقالات</h2>
+              <p className="text-lg text-gray-600">آخر المقالات والموضوعات المنشورة على المنصة</p>
             </div>
             <Link
               to="/articles"
-              className="inline-flex items-center btn-secondary mt-6 md:mt-0" // Responsive margin
+              className="inline-flex items-center btn-secondary mt-6 md:mt-0"
             >
               عرض جميع المقالات
               <ArrowLeft size={18} className="mr-2" />
             </Link>
           </div>
 
-          <ArticleList limit={6} showFilters={false} />
+          <ArticleList limit={6} showFilters={false} lazy={true} />
 
-          <div className="text-center mt-8 md:hidden"> {/* Hide on medium and up, show on small */}
+          <div className="text-center mt-8 md:hidden">
             <Link
               to="/articles"
               className="btn-primary inline-flex items-center"
@@ -287,6 +307,22 @@ const HomePage: React.FC = () => {
           </div>
         </div>
       </section>
+
+      {/* Specialty Selection Section */}
+      <section className="py-16 bg-gray-50 border-t border-gray-100">
+        <div className="container-modern">
+          <SpecialtySelector selectedSpecialties={specialties} onSave={saveSpecialties} />
+        </div>
+      </section>
+
+      {/* Specific Category Sections — each section lazy-loads independently */}
+      {orderedTags.map((tag: string) => (
+        <ArticlesByCategorySection
+          key={tag}
+          tag={tag}
+          isPriority={specialties.includes(tag)}
+        />
+      ))}
 
       {/* Newsletter Section */}
 

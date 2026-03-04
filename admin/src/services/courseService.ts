@@ -5,7 +5,12 @@ export interface Course {
     title: string;
     description: string;
     cover_image: string;
-    video_url: string;
+    playback_source: string;
+    playback_provider: 'vdocipher' | 'hls' | 'youtube' | 'mp4';
+    billing_model: 'free' | 'per_course' | 'per_minute';
+    minute_cost: number;
+    preview_source?: string | null;
+    preview_seconds?: number;
     transcript?: string;
     author: string;
     categories: string[];
@@ -17,17 +22,17 @@ export interface Course {
 
 export const courseService = {
     getAll: async (params?: { search?: string; page?: number; limit?: number }) => {
-        const response = await api.get('/courses', { params });
+        const response = await api.get('/admin/courses', { params });
         return response.data;
     },
 
     getById: async (id: string) => {
-        const response = await api.get(`/courses/${id}`);
+        const response = await api.get(`/admin/courses/${id}`);
         return response.data;
     },
 
     create: async (data: FormData) => {
-        const response = await api.post('/courses', data, {
+        const response = await api.post('/admin/courses', data, {
             headers: {
                 'Content-Type': 'multipart/form-data',
             },
@@ -36,7 +41,7 @@ export const courseService = {
     },
 
     update: async (id: string, data: FormData) => {
-        const response = await api.put(`/courses/${id}`, data, {
+        const response = await api.put(`/admin/courses/${id}`, data, {
             headers: {
                 'Content-Type': 'multipart/form-data',
             },
@@ -45,7 +50,7 @@ export const courseService = {
     },
 
     delete: async (id: string) => {
-        const response = await api.delete(`/courses/${id}`);
+        const response = await api.delete(`/admin/courses/${id}`);
         return response.data;
     },
 

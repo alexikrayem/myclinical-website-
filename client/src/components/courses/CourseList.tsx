@@ -28,7 +28,7 @@ const CourseList: React.FC<CourseListProps> = ({
 
     if (courses.length === 0) {
         return (
-            <div className="text-center py-16 bg-white rounded-3xl card-shadow">
+            <div className="text-center py-16 bg-white rounded-3xl card-shadow" data-testid="courses-empty">
                 <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                     <Loader2 className="text-gray-400 animate-spin-slow" size={32} />
                 </div>
@@ -39,7 +39,7 @@ const CourseList: React.FC<CourseListProps> = ({
     }
 
     return (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8" data-testid="courses-list">
             {courses.map((course) => (
                 <VideoCourseCard key={course.id} course={course} />
             ))}

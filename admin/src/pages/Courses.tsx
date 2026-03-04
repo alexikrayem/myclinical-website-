@@ -137,7 +137,11 @@ const Courses: React.FC = () => {
                                             </td>
                                             <td className="px-6 py-4">
                                                 <span className="inline-flex items-center gap-1 bg-yellow-50 text-yellow-700 px-2.5 py-1 rounded-full text-xs font-medium">
-                                                    {course.credits_required} رصيد
+                                                    {course.billing_model === 'per_minute'
+                                                        ? `${course.minute_cost} رصيد/دقيقة`
+                                                        : course.billing_model === 'free'
+                                                            ? 'مجاني'
+                                                            : `${course.credits_required} رصيد`}
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4">

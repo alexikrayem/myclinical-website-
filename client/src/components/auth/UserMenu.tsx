@@ -41,6 +41,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ onRedeemClick }) => {
             <button
                 onClick={() => setIsOpen(!isOpen)}
                 className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
+                data-testid="user-menu-button"
             >
                 <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center">
                     <User size={16} className="text-white" />
@@ -60,13 +61,16 @@ const UserMenu: React.FC<UserMenuProps> = ({ onRedeemClick }) => {
                     />
 
                     {/* Dropdown */}
-                    <div className="absolute left-0 top-full mt-2 w-72 bg-white rounded-2xl shadow-xl border border-gray-100 z-50 overflow-hidden animate-fadeIn">
+                    <div
+                        className="absolute left-0 top-full mt-2 w-72 bg-white rounded-2xl shadow-xl border border-gray-100 z-50 overflow-hidden animate-fadeIn"
+                        data-testid="user-menu-dropdown"
+                    >
                         {/* User Info */}
                         <div className="p-4 border-b border-gray-100 bg-gray-50">
                             <div className="font-medium text-gray-900">
                                 {user?.display_name || 'مستخدم'}
                             </div>
-                            <div className="text-sm text-gray-500 mt-1" dir="ltr">
+                            <div className="text-sm text-gray-500 mt-1" dir="ltr" data-testid="user-menu-phone">
                                 {user?.phone_number}
                             </div>
                         </div>
@@ -111,6 +115,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ onRedeemClick }) => {
                                     else navigate('/profile?tab=redeem');
                                 }}
                                 className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 rounded-xl transition-colors"
+                                data-testid="user-menu-redeem"
                             >
                                 <CreditCard size={18} className="text-gray-400" />
                                 <span className="text-gray-700">شحن رصيد</span>
@@ -119,6 +124,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ onRedeemClick }) => {
                             <button
                                 onClick={handleLogout}
                                 className="w-full flex items-center gap-3 px-4 py-3 hover:bg-red-50 rounded-xl transition-colors text-red-600"
+                                data-testid="user-menu-logout"
                             >
                                 <LogOut size={18} />
                                 <span>تسجيل الخروج</span>

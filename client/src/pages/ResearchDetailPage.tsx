@@ -7,11 +7,12 @@ import { ar } from 'date-fns/locale';
 import { researchApi } from '../lib/api';
 import PdfViewer from '../components/research/PdfViewer';
 import ShareButtons from '../components/article/ShareButtons';
-import { useAuth } from '../context/AuthContext';
 
 const ResearchDetailPage: React.FC = () => {
     const { id } = useParams<{ id: string }>();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [research, setResearch] = useState<any | null>(null);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [relatedPapers, setRelatedPapers] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [viewMode, setViewMode] = useState<'abstract' | 'full'>('abstract');
@@ -109,7 +110,10 @@ const ResearchDetailPage: React.FC = () => {
                                 </span>
                             </div>
 
-                            <h1 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-6 leading-tight">
+                            <h1
+                                className="text-3xl lg:text-4xl font-bold text-gray-900 mb-6 leading-tight"
+                                data-testid="research-detail-title"
+                            >
                                 {research.title}
                             </h1>
 
@@ -147,6 +151,7 @@ const ResearchDetailPage: React.FC = () => {
                                         ? 'bg-blue-600 text-white shadow-lg'
                                         : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
                                         }`}
+                                    data-testid="research-view-abstract"
                                 >
                                     نظرة عامة
                                 </button>
@@ -156,6 +161,7 @@ const ResearchDetailPage: React.FC = () => {
                                         ? 'bg-blue-600 text-white shadow-lg'
                                         : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
                                         }`}
+                                    data-testid="research-view-full"
                                 >
                                     عرض البحث الكامل
                                 </button>
@@ -178,6 +184,7 @@ const ResearchDetailPage: React.FC = () => {
                                 <button
                                     onClick={() => setViewMode('full')}
                                     className="w-full btn-primary flex items-center justify-center"
+                                    data-testid="research-view-full-action"
                                 >
                                     <Eye size={18} className="ml-2" />
                                     قراءة البحث

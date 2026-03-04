@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Clock, Tag, User, ArrowLeft, Play, Coins } from 'lucide-react';
 import { formatDistance } from 'date-fns';
 import { ar } from 'date-fns/locale';
@@ -14,6 +14,8 @@ interface VideoCourseCardProps {
         author: string;
         categories: string[];
         credits_required: number;
+        billing_model?: 'free' | 'per_course' | 'per_minute';
+        minute_cost?: number;
         duration: number; // in seconds
         is_featured?: boolean;
     };
@@ -49,11 +51,18 @@ const VideoCourseCard: React.FC<VideoCourseCardProps> = ({ course, featured = fa
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
+    const billingLabel = () => {
+        if (course.billing_model === 'free') return 'مجاني';
+        if (course.billing_model === 'per_minute') return `${course.minute_cost ?? 1} رصيد/دقيقة`;
+        return `${course.credits_required} رصيد`;
+    };
+
     if (featured) {
         return (
             <div
                 className="relative overflow-hidden rounded-3xl card-shadow-lg group cursor-pointer transition-modern hover:scale-[1.02]"
                 onClick={handleCardClick}
+                data-testid={`course-card-featured-${course.id}`}
             >
                 <div className="relative h-[500px]">
                     <img
@@ -72,7 +81,12 @@ const VideoCourseCard: React.FC<VideoCourseCardProps> = ({ course, featured = fa
                     </div>
 
                     <div className="absolute bottom-0 left-0 right-0 p-8 text-white">
-                        <h2 className="text-2xl lg:text-3xl font-bold mb-3 line-clamp-2 leading-tight">{course.title}</h2>
+                        <h2
+                            className="text-2xl lg:text-3xl font-bold mb-3 line-clamp-2 leading-tight"
+                            data-testid={`course-card-title-${course.id}`}
+                        >
+                            {course.title}
+                        </h2>
                         <p className="mb-4 text-blue-100 line-clamp-2 text-lg leading-relaxed">{course.description}</p>
 
                         <div className="flex items-center justify-between">
@@ -87,7 +101,7 @@ const VideoCourseCard: React.FC<VideoCourseCardProps> = ({ course, featured = fa
                                 </div>
                                 <div className="flex items-center">
                                     <Coins size={16} className="ml-1" />
-                                    <span>{course.credits_required} رصيد</span>
+                                    <span>{billingLabel()}</span>
                                 </div>
                             </div>
 
@@ -98,6 +112,7 @@ const VideoCourseCard: React.FC<VideoCourseCardProps> = ({ course, featured = fa
                                     window.scrollTo({ top: 0, behavior: 'smooth' });
                                 }}
                                 className="btn-primary inline-flex items-center bg-white/20 hover:bg-white/30 backdrop-blur-sm border border-white/30"
+                                data-testid={`course-card-open-${course.id}`}
                             >
                                 عرض التفاصيل
                                 <ArrowLeft size={18} className="mr-2" />
@@ -113,6 +128,7 @@ const VideoCourseCard: React.FC<VideoCourseCardProps> = ({ course, featured = fa
         <div
             className="bg-white rounded-2xl overflow-hidden card-shadow group cursor-pointer transition-modern hover:scale-[1.02] animate-scaleIn"
             onClick={handleCardClick}
+            data-testid={`course-card-${course.id}`}
         >
             <div className="relative overflow-hidden">
                 <img
@@ -154,12 +170,15 @@ const VideoCourseCard: React.FC<VideoCourseCardProps> = ({ course, featured = fa
                 </div>
 
                 <div className="flex justify-between items-start mb-2">
-                    <h3 className="text-xl font-bold text-gray-900 mb-3 line-clamp-2 leading-tight group-hover:text-blue-600 transition-colors flex-grow">
+                    <h3
+                        className="text-xl font-bold text-gray-900 mb-3 line-clamp-2 leading-tight group-hover:text-blue-600 transition-colors flex-grow"
+                        data-testid={`course-card-title-${course.id}`}
+                    >
                         {course.title}
                     </h3>
                     <div className="flex items-center bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded mr-2 whitespace-nowrap">
                         <Coins size={12} className="ml-1" />
-                        {course.credits_required} رصيد
+                        {billingLabel()}
                     </div>
                 </div>
 

@@ -9,6 +9,7 @@ import cookieParser from 'cookie-parser';
 import compression from 'compression';
 import logger from './config/logger.js';
 import { requestLogger } from './middleware/requestLogger.js';
+import promBundle from 'express-prom-bundle';
 
 // Routes
 import articlesRoutes from './routes/articles.js';
@@ -22,6 +23,7 @@ import userAuthRoutes from './routes/userAuth.js';
 import uploadRoutes from './routes/upload.js';
 import sitemapRoutes from './routes/sitemap.js';
 import securePdfRoutes from './routes/securePdf.js';
+import searchRoutes from './routes/search.js';
 import { setupSwagger } from './config/swagger.js';
 
 // Security Middleware
@@ -49,6 +51,19 @@ const PORT = process.env.PORT || 5001;
 initSentry(app);
 app.use(sentryRequestHandler);
 app.use(sentryTracingHandler);
+
+// Prometheus metrics collection
+const metricsMiddleware = promBundle({
+  includeMethod: true,
+  includePath: true,
+  includeStatusCode: true,
+  includeUp: true,
+  customLabels: { project_name: 'myclinical' },
+  promClient: {
+    collectDefaultMetrics: {}
+  }
+});
+app.use(metricsMiddleware);
 
 // Trust proxy (important for rate limiting and security when behind a proxy)
 app.set('trust proxy', 1);
@@ -165,10 +180,14 @@ app.use('/api/research', securePdfRoutes); // Secure PDF viewing
 app.use('/api/admin', adminRoutes);
 app.use('/api/authors', authorsRoutes);
 app.use('/api/ai', aiRoutes);
-app.use('/api/courses', coursesRoutes);
+const ENABLE_COURSES = process.env.ENABLE_COURSES !== 'false';
+if (ENABLE_COURSES) {
+  app.use('/api/courses', coursesRoutes);
+}
 app.use('/api/credits', creditsRoutes);
 app.use('/api/auth', userAuthRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/search', searchRoutes);
 
 // SEO Routes (no /api prefix)
 app.use('/', sitemapRoutes);

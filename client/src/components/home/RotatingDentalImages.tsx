@@ -1,5 +1,5 @@
 import React from 'react';
-import { Video, Award, Star, Users, Sparkles, CheckCircle2 } from 'lucide-react';
+import { Video, Award, Star, Users, Sparkles } from 'lucide-react';
 
 const RotatingDentalImages: React.FC = () => {
     return (

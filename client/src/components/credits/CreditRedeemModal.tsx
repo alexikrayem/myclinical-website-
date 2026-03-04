@@ -42,8 +42,9 @@ const CreditRedeemModal: React.FC<CreditRedeemModalProps> = ({ isOpen, onClose }
             toast.success('تم شحن الرصيد بنجاح!');
             await refreshCredits();
             setCode('');
-        } catch (error: any) {
-            const errorMessage = error.response?.data?.error || 'فشل في استخدام الكود';
+        } catch (error: unknown) {
+            const err = error as { response?: { data?: { error?: string } } };
+            const errorMessage = err.response?.data?.error || 'فشل في استخدام الكود';
             setResult({
                 success: false,
                 message: errorMessage
@@ -64,14 +65,7 @@ const CreditRedeemModal: React.FC<CreditRedeemModalProps> = ({ isOpen, onClose }
         setResult(null);
     };
 
-    const getCreditTypeLabel = (type?: string) => {
-        switch (type) {
-            case 'video': return 'دقائق مشاهدة';
-            case 'article': return 'مقالات';
-            case 'both': return 'مشاهدة + مقالات';
-            default: return 'رصيد عام';
-        }
-    };
+
 
     if (!isOpen) return null;
 
@@ -84,12 +78,16 @@ const CreditRedeemModal: React.FC<CreditRedeemModalProps> = ({ isOpen, onClose }
             />
 
             {/* Modal */}
-            <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-scaleIn">
+            <div
+                className="relative bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-scaleIn"
+                data-testid="credits-modal"
+            >
                 {/* Header */}
                 <div className="relative bg-gradient-to-r from-blue-600 to-purple-600 p-6 text-white">
                     <button
                         onClick={onClose}
                         className="absolute top-4 left-4 w-8 h-8 flex items-center justify-center rounded-full bg-white/20 hover:bg-white/30 transition-colors"
+                        data-testid="credits-modal-close"
                     >
                         <X size={18} />
                     </button>
@@ -122,6 +120,7 @@ const CreditRedeemModal: React.FC<CreditRedeemModalProps> = ({ isOpen, onClose }
                                     dir="ltr"
                                     maxLength={20}
                                     autoFocus
+                                    data-testid="credits-code-input"
                                 />
                                 <CreditCard size={20} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400" />
                             </div>
@@ -129,10 +128,13 @@ const CreditRedeemModal: React.FC<CreditRedeemModalProps> = ({ isOpen, onClose }
 
                         {/* Result Message */}
                         {result && (
-                            <div className={`p-4 rounded-xl flex items-start gap-3 ${result.success
+                            <div
+                                className={`p-4 rounded-xl flex items-start gap-3 ${result.success
                                     ? 'bg-green-50 border border-green-200 text-green-700'
                                     : 'bg-red-50 border border-red-200 text-red-700'
-                                }`}>
+                                    }`}
+                                data-testid="credits-result"
+                            >
                                 {result.success ? (
                                     <CheckCircle size={20} className="flex-shrink-0 mt-0.5" />
                                 ) : (
@@ -168,6 +170,7 @@ const CreditRedeemModal: React.FC<CreditRedeemModalProps> = ({ isOpen, onClose }
                             type="submit"
                             disabled={isLoading || !code.trim()}
                             className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-medium py-3 px-6 rounded-xl hover:from-blue-700 hover:to-purple-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            data-testid="credits-submit"
                         >
                             {isLoading ? (
                                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />

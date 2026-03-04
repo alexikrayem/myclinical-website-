@@ -97,9 +97,8 @@ describe('Courses Routes Integration Tests', () => {
             const course = {
                 id: 'c1',
                 title: 'Course 1',
-                video_url: 'secret-video',
-                transcript: 'secret-text',
-                price: 100
+                billing_model: 'per_course',
+                credits_required: 100
             };
 
             // 1. Fetch course
@@ -113,7 +112,7 @@ describe('Courses Routes Integration Tests', () => {
 
             expect(res.status).toBe(200);
             expect(res.body.title).toBe('Course 1');
-            expect(res.body).not.toHaveProperty('video_url');
+            expect(res.body).not.toHaveProperty('playback_source');
             expect(res.body).not.toHaveProperty('transcript');
             expect(res.body.has_access).toBe(false);
         });
@@ -122,8 +121,8 @@ describe('Courses Routes Integration Tests', () => {
             const course = {
                 id: 'c1',
                 title: 'Course 1',
-                video_url: 'secret-video',
-                transcript: 'secret-text'
+                billing_model: 'per_course',
+                credits_required: 100
             };
 
             // 1. Check access (mocking existing access)
@@ -147,7 +146,7 @@ describe('Courses Routes Integration Tests', () => {
                 .set('Authorization', `Bearer ${validToken}`);
 
             expect(res.status).toBe(200);
-            expect(res.body.video_url).toBe('secret-video');
+            expect(res.body).not.toHaveProperty('playback_source');
             expect(res.body.has_access).toBe(true);
         });
     });

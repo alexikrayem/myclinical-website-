@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { articlesApi } from '../lib/api';
+import { articlesApi, researchApi } from '../lib/api';
 
 export const useArticles = (params?: { tag?: string; search?: string; limit?: number; page?: number }) => {
     return useQuery({
@@ -38,5 +38,21 @@ export const useRelatedArticles = (id: string, limit = 3) => {
         queryKey: ['related-articles', id, limit],
         queryFn: () => articlesApi.getRelated(id, limit),
         enabled: !!id,
+    });
+};
+
+export const useArticlesByTags = (tags?: string[], limit = 5) => {
+    return useQuery({
+        queryKey: ['articles-by-tags', tags, limit],
+        queryFn: () => articlesApi.getByTags(tags, limit),
+        staleTime: 1000 * 60 * 5,
+    });
+};
+
+export const useLatestResearch = (limit = 4) => {
+    return useQuery({
+        queryKey: ['latest-research', limit],
+        queryFn: () => researchApi.getAll({ limit }),
+        staleTime: 1000 * 60 * 5,
     });
 };

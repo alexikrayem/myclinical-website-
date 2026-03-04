@@ -17,7 +17,7 @@ const RegisterPage: React.FC = () => {
     const [error, setError] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const from = (location.state as any)?.from?.pathname || '/';
+    const from = (location.state as { from?: { pathname?: string } })?.from?.pathname || '/';
 
     // Password validation
     const hasMinLength = password.length >= 8;
@@ -25,10 +25,16 @@ const RegisterPage: React.FC = () => {
     const hasNumber = /\d/.test(password);
     const passwordsMatch = password === confirmPassword && password.length > 0;
     const isPasswordValid = hasMinLength && hasLetter && hasNumber;
+    const isPhoneValid = /^09\d{8}$/.test(phoneNumber);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
+
+        if (!isPhoneValid) {
+            setError('رقم الهاتف يجب أن يكون بالصيغة 09xxxxxxxx');
+            return;
+        }
 
         if (!isPasswordValid) {
             setError('كلمة المرور يجب أن تكون 8 أحرف على الأقل وتحتوي على حرف ورقم');
@@ -46,15 +52,20 @@ const RegisterPage: React.FC = () => {
             await register(phoneNumber, password, displayName || undefined);
             toast.success('تم إنشاء الحساب بنجاح!');
             navigate(from, { replace: true });
-        } catch (err: any) {
-            setError(err.message || 'فشل إنشاء الحساب');
+        } catch (err: unknown) {
+            setError((err as Error).message || 'فشل إنشاء الحساب');
         } finally {
             setIsSubmitting(false);
         }
     };
 
     const formatPhoneNumber = (value: string) => {
-        const digits = value.replace(/\D/g, '').slice(0, 10);
+        const cleaned = value.replace(/[^\d+]/g, '');
+        let digits = cleaned.startsWith('+') ? cleaned.slice(1) : cleaned;
+        if (digits.startsWith('963')) {
+            digits = `0${digits.slice(3)}`;
+        }
+        digits = digits.replace(/\D/g, '').slice(0, 10);
         setPhoneNumber(digits);
     };
 
@@ -82,7 +93,10 @@ const RegisterPage: React.FC = () => {
                     <form onSubmit={handleSubmit} className="space-y-5">
                         {/* Error Alert */}
                         {error && (
-                            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl flex items-center gap-3 animate-fadeIn">
+                            <div
+                                className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl flex items-center gap-3 animate-fadeIn"
+                                data-testid="register-error"
+                            >
                                 <AlertCircle size={20} />
                                 <span>{error}</span>
                             </div>
@@ -100,6 +114,7 @@ const RegisterPage: React.FC = () => {
                                     onChange={(e) => setDisplayName(e.target.value)}
                                     placeholder="اسمك الكريم"
                                     className="w-full px-4 py-3 pr-12 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                    data-testid="register-display-name"
                                 />
                                 <User size={20} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400" />
                             </div>
@@ -120,6 +135,7 @@ const RegisterPage: React.FC = () => {
                                     className="w-full px-4 py-3 pr-12 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-left"
                                     dir="ltr"
                                     required
+                                    data-testid="register-phone"
                                 />
                                 <Phone size={20} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400" />
                             </div>
@@ -138,6 +154,7 @@ const RegisterPage: React.FC = () => {
                                     placeholder="••••••••"
                                     className="w-full px-4 py-3 pr-12 pl-12 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                                     required
+                                    data-testid="register-password"
                                 />
                                 <Lock size={20} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400" />
                                 <button
@@ -171,12 +188,13 @@ const RegisterPage: React.FC = () => {
                                     onChange={(e) => setConfirmPassword(e.target.value)}
                                     placeholder="••••••••"
                                     className={`w-full px-4 py-3 pr-12 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${confirmPassword.length > 0 && !passwordsMatch
-                                            ? 'border-red-300 bg-red-50'
-                                            : confirmPassword.length > 0 && passwordsMatch
-                                                ? 'border-green-300 bg-green-50'
-                                                : 'border-gray-200'
+                                        ? 'border-red-300 bg-red-50'
+                                        : confirmPassword.length > 0 && passwordsMatch
+                                            ? 'border-green-300 bg-green-50'
+                                            : 'border-gray-200'
                                         }`}
                                     required
+                                    data-testid="register-confirm-password"
                                 />
                                 <Lock size={20} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400" />
                                 {confirmPassword.length > 0 && (
@@ -193,6 +211,7 @@ const RegisterPage: React.FC = () => {
                             type="submit"
                             disabled={isSubmitting || isLoading || !isPasswordValid || !passwordsMatch}
                             className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white font-medium py-3 px-6 rounded-xl hover:from-blue-700 hover:to-blue-800 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            data-testid="register-submit"
                         >
                             {isSubmitting ? (
                                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />

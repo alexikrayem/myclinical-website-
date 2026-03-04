@@ -38,6 +38,7 @@ const defaultCredits: Credits = {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => {
     const context = useContext(AuthContext);
     if (!context) {
@@ -64,7 +65,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                     const response = await authApi.getProfile();
                     setUser(response.user);
                     setCredits(response.credits || defaultCredits);
-                } catch (error) {
+                } catch {
                     // Token invalid, clear it
                     localStorage.removeItem('user_token');
                     setUser(null);
@@ -77,6 +78,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         checkSession();
     }, []);
 
+    const getApiErrorMessage = (error: unknown, fallback: string) => {
+        const err = error as {
+            response?: {
+                data?: {
+                    message?: string;
+                    error?: string;
+                    details?: { message?: string }[];
+                };
+            };
+        };
+        const data = err.response?.data;
+        return data?.message || data?.details?.[0]?.message || data?.error || fallback;
+    };
+
     const login = async (phoneNumber: string, password: string) => {
         try {
             const response = await authApi.login(phoneNumber, password);
@@ -88,8 +103,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 // Fetch credits after login
                 await refreshCredits();
             }
-        } catch (error: any) {
-            throw new Error(error.response?.data?.error || 'فشل تسجيل الدخول');
+        } catch (error: unknown) {
+            throw new Error(getApiErrorMessage(error, 'فشل تسجيل الدخول'));
         }
     };
 
@@ -102,15 +117,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 setUser(response.user);
                 setCredits(defaultCredits);
             }
-        } catch (error: any) {
-            throw new Error(error.response?.data?.error || 'فشل إنشاء الحساب');
+        } catch (error: unknown) {
+            throw new Error(getApiErrorMessage(error, 'فشل إنشاء الحساب'));
         }
     };
 
     const logout = async () => {
         try {
             await authApi.logout();
-        } catch (error) {
+        } catch {
             // Ignore logout errors
         } finally {
             localStorage.removeItem('user_token');
@@ -132,8 +147,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         try {
             const response = await authApi.updateProfile(displayName);
             setUser(response.user);
-        } catch (error: any) {
-            throw new Error(error.response?.data?.error || 'فشل تحديث الملف الشخصي');
+        } catch (error: unknown) {
+            throw new Error(getApiErrorMessage(error, 'فشل تحديث الملف الشخصي'));
         }
     };
 

@@ -2,6 +2,7 @@ import express from 'express';
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import { sanitizeSearchInput } from '../utils/searchUtils.js';
+import { meiliSearch, orderByIdList } from '../services/search/searchService.js';
 
 dotenv.config();
 
@@ -24,8 +25,51 @@ router.get('/', async (req, res) => {
       query = query.eq('journal', journal);
     }
 
-    // Simple search using ilike with sanitized input
+    // Search with Meilisearch if available, fallback to ilike
     if (search) {
+      const meiliResult = await meiliSearch('researches', search, {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        filters: {
+          ...(journal ? { journal } : {})
+        }
+      });
+
+      if (meiliResult) {
+        const ids = meiliResult.hits.map(hit => hit.id);
+        const total = meiliResult.estimatedTotalHits || 0;
+
+        if (!ids.length) {
+          return res.json({
+            data: [],
+            pagination: {
+              total,
+              page: parseInt(page),
+              limit: parseInt(limit),
+              pages: Math.ceil(total / limit)
+            }
+          });
+        }
+
+        const { data: rows, error: fetchError } = await supabase
+          .from('researches')
+          .select('id, title, journal, abstract, publication_date, authors')
+          .in('id', ids);
+
+        if (fetchError) throw fetchError;
+
+        const ordered = orderByIdList(rows, ids);
+        return res.json({
+          data: ordered,
+          pagination: {
+            total,
+            page: parseInt(page),
+            limit: parseInt(limit),
+            pages: Math.ceil(total / limit)
+          }
+        });
+      }
+
       const sanitizedSearch = sanitizeSearchInput(search);
       if (sanitizedSearch) {
         query = query.or(`title.ilike.%${sanitizedSearch}%,abstract.ilike.%${sanitizedSearch}%,journal.ilike.%${sanitizedSearch}%`);

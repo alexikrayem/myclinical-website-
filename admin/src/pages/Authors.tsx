@@ -4,6 +4,7 @@ import { Plus, Edit, Trash2, Search, X, User, Mail, Globe } from 'lucide-react';
 import toast from 'react-hot-toast';
 import AdminLayout from '../components/layout/AdminLayout';
 import { api } from '../context/AuthContext';
+import { filterAuthors } from '../utils/filters';
 
 const Authors: React.FC = () => {
   const [authors, setAuthors] = useState<any[]>([]);
@@ -17,16 +18,7 @@ const Authors: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (searchTerm.trim() === '') {
-      setFilteredAuthors(authors);
-    } else {
-      const filtered = authors.filter(author =>
-        author.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        author.specialization.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        author.location.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-      setFilteredAuthors(filtered);
-    }
+    setFilteredAuthors(filterAuthors(authors, searchTerm));
   }, [authors, searchTerm]);
 
   const fetchAuthors = async () => {
@@ -121,6 +113,7 @@ const Authors: React.FC = () => {
               className="w-full px-4 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#005CB9] focus:border-transparent"
               value={searchTerm}
               onChange={handleSearchChange}
+              data-testid="admin-authors-search"
             />
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500" size={20} />
             {searchTerm && (
@@ -134,7 +127,7 @@ const Authors: React.FC = () => {
           </div>
           
           {/* Results counter */}
-          <div className="mt-2 text-sm text-gray-600">
+          <div className="mt-2 text-sm text-gray-600" data-testid="admin-authors-results">
             {searchTerm ? (
               `عرض ${filteredAuthors.length} من أصل ${totalAuthors} مؤلف`
             ) : (

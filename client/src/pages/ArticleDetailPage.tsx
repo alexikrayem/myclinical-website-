@@ -254,7 +254,10 @@ const ArticleDetailPage: React.FC = () => {
               </div>
             )}
 
-            <h1 className="heading-modern text-4xl lg:text-5xl text-gray-900 mb-6 leading-tight">
+            <h1
+              className="heading-modern text-4xl lg:text-5xl text-gray-900 mb-6 leading-tight"
+              data-testid="article-detail-title"
+            >
               {article.title}
             </h1>
 
@@ -343,7 +346,10 @@ const ArticleDetailPage: React.FC = () => {
 
                   {/* Enhanced Lock Interaction Card */}
                   <div className="relative z-20 -mt-24">
-                    <div className="bg-white/80 backdrop-blur-xl rounded-[2.5rem] p-12 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.14)] border border-white/50 text-center max-w-xl mx-auto transform transition-all hover:translate-y-[-4px]">
+                    <div
+                      className="bg-white/80 backdrop-blur-xl rounded-[2.5rem] p-12 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.14)] border border-white/50 text-center max-w-xl mx-auto transform transition-all hover:translate-y-[-4px]"
+                      data-testid="article-lock-card"
+                    >
                       <div className="w-24 h-24 bg-gradient-to-tr from-blue-600 to-blue-400 rounded-[2rem] flex items-center justify-center mx-auto mb-8 shadow-2xl shadow-blue-200 rotate-3 animate-float">
                         <Lock size={40} className="text-white -rotate-3" />
                       </div>
@@ -375,6 +381,7 @@ const ArticleDetailPage: React.FC = () => {
                             onClick={handleUnlock}
                             disabled={isUnlocking}
                             className="w-full btn-primary flex items-center justify-center py-4 bg-blue-600 hover:bg-blue-700 shadow-2xl shadow-blue-200 transition-all active:scale-95"
+                            data-testid="article-unlock-button"
                           >
                             {isUnlocking ? (
                               <div className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full animate-spin"></div>
@@ -395,6 +402,7 @@ const ArticleDetailPage: React.FC = () => {
                 <div
                   className="text-gray-700 leading-relaxed text-lg space-y-6 article-body-content"
                   dangerouslySetInnerHTML={{ __html: article.content.replace(/\n/g, '<br>') }}
+                  data-testid="article-full-content"
                 />
               )}
             </div>

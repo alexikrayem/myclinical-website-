@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import ArticleCard from './ArticleCard';
 import { useArticles } from '../../hooks/useArticles';
@@ -8,22 +8,44 @@ interface ArticleListProps {
   tag?: string;
   limit?: number;
   showFilters?: boolean;
+  lazy?: boolean;
 }
 
-const ArticleList: React.FC<ArticleListProps> = ({ tag, limit = 12, showFilters = true }) => {
+const ArticleList: React.FC<ArticleListProps> = ({ tag, limit = 12, showFilters = true, lazy = false }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || '');
   const [selectedTags, setSelectedTags] = useState<string[]>(tag ? [tag] : []);
   const [showTagFilter, setShowTagFilter] = useState(false);
+  const [isVisible, setIsVisible] = useState(!lazy);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!lazy || isVisible) return;
+    const el = sentinelRef.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '200px' }
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [lazy, isVisible]);
 
   const queryParams = useMemo(() => {
-    const params: any = { limit };
+    const params: Record<string, string | number> = { limit };
     if (selectedTags.length > 0) params.tag = selectedTags[0];
     if (searchTerm) params.search = searchTerm;
     return params;
   }, [limit, selectedTags, searchTerm]);
 
-  const { data: response, isLoading: loading } = useArticles(queryParams);
+  const { data: response, isLoading: loading } = useArticles(isVisible ? queryParams : undefined);
 
   const articles = useMemo(() => {
     const raw = response?.data || response;
@@ -34,9 +56,10 @@ const ArticleList: React.FC<ArticleListProps> = ({ tag, limit = 12, showFilters 
   const availableTags = useMemo(() => {
     if (articles.length > 0) {
       const allTags: string[] = [];
-      articles.forEach((article: any) => {
-        if (Array.isArray(article.tags)) {
-          article.tags.forEach((tag: any) => {
+      articles.forEach((article: Record<string, unknown>) => {
+        const tags = article.tags;
+        if (Array.isArray(tags)) {
+          tags.forEach((tag: unknown) => {
             if (typeof tag === 'string') {
               allTags.push(tag);
             }
@@ -82,9 +105,13 @@ const ArticleList: React.FC<ArticleListProps> = ({ tag, limit = 12, showFilters 
     setShowTagFilter(!showTagFilter);
   };
 
+  if (!isVisible) {
+    return <div ref={sentinelRef} className="py-8 min-h-[200px]" />;
+  }
+
   if (loading) {
     return (
-      <div className="space-y-8">
+      <div className="space-y-8" ref={sentinelRef}>
         {showFilters && (
           <div className="form-modern">
             <div className="skeleton h-12 rounded-xl"></div>
@@ -119,6 +146,7 @@ const ArticleList: React.FC<ArticleListProps> = ({ tag, limit = 12, showFilters 
                 className="input-modern pr-12"
                 value={searchTerm}
                 onChange={handleSearchInputChange}
+                data-testid="articles-search-input"
               />
               <Search className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
               {searchTerm && (
@@ -138,6 +166,7 @@ const ArticleList: React.FC<ArticleListProps> = ({ tag, limit = 12, showFilters 
                 onClick={toggleTagFilter}
                 className={`btn-secondary inline-flex items-center ${showTagFilter ? 'bg-blue-50 border-blue-300 text-blue-700' : ''
                   }`}
+                data-testid="articles-filter-toggle"
               >
                 <Filter size={18} className="ml-2" />
                 تصفية
@@ -148,6 +177,7 @@ const ArticleList: React.FC<ArticleListProps> = ({ tag, limit = 12, showFilters 
                   type="button"
                   onClick={clearSearch}
                   className="btn-secondary inline-flex items-center text-red-600 border-red-200 hover:bg-red-50"
+                  data-testid="articles-clear"
                 >
                   <X size={18} className="ml-2" />
                   مسح
@@ -200,6 +230,7 @@ const ArticleList: React.FC<ArticleListProps> = ({ tag, limit = 12, showFilters 
                       ? 'bg-blue-500 text-white shadow-lg'
                       : 'bg-white text-gray-700 hover:bg-blue-50 hover:text-blue-600 border border-gray-200'
                       }`}
+                    data-testid={`tag-filter-${encodeURIComponent(tagName)}`}
                   >
                     {tagName}
                   </button>
@@ -209,7 +240,7 @@ const ArticleList: React.FC<ArticleListProps> = ({ tag, limit = 12, showFilters 
           )}
 
           {/* Results counter */}
-          <div className="mt-4 flex items-center justify-between text-sm">
+          <div className="mt-4 flex items-center justify-between text-sm" data-testid="articles-results-count">
             <div className="text-gray-600">
               {loading ? (
                 <div className="flex items-center">
@@ -248,9 +279,10 @@ const ArticleList: React.FC<ArticleListProps> = ({ tag, limit = 12, showFilters 
         </div>
       ) : (
         <div className="grid-modern">
-          {articles.map((article: any, index: number) => (
-            <div key={article.id} style={{ animationDelay: `${index * 0.1}s` }}>
-              <ArticleCard article={article} />
+          {articles.map((article: Record<string, unknown>, index: number) => (
+            <div key={String(article.id)} style={{ animationDelay: `${index * 0.1}s` }}>
+              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+              <ArticleCard article={article as any} />
             </div>
           ))}
         </div>

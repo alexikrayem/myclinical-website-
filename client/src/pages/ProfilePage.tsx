@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
     User, Phone, Edit2, Check, X, CreditCard, History,
-    Coins, Video, FileText, Lock, LogOut, ChevronLeft
+    Coins, Video, FileText, Lock, LogOut
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { creditsApi, authApi } from '../lib/api';
@@ -19,6 +19,7 @@ const ProfilePage: React.FC = () => {
     const [displayName, setDisplayName] = useState('');
     const [isSaving, setIsSaving] = useState(false);
     const [showRedeemModal, setShowRedeemModal] = useState(false);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [transactions, setTransactions] = useState<any[]>([]);
     const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
 
@@ -64,8 +65,8 @@ const ProfilePage: React.FC = () => {
             await updateProfile(displayName);
             toast.success('تم تحديث الملف الشخصي');
             setIsEditing(false);
-        } catch (error: any) {
-            toast.error(error.message || 'فشل التحديث');
+        } catch (error: unknown) {
+            toast.error((error as Error).message || 'فشل التحديث');
         } finally {
             setIsSaving(false);
         }
@@ -91,8 +92,9 @@ const ProfilePage: React.FC = () => {
             setCurrentPassword('');
             setNewPassword('');
             setConfirmNewPassword('');
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'فشل تغيير كلمة المرور');
+        } catch (error: unknown) {
+            const err = error as { response?: { data?: { error?: string } } };
+            toast.error(err.response?.data?.error || 'فشل تغيير كلمة المرور');
         } finally {
             setIsChangingPassword(false);
         }
@@ -199,8 +201,8 @@ const ProfilePage: React.FC = () => {
                                 key={id}
                                 onClick={() => setActiveTab(id)}
                                 className={`flex-1 py-4 px-4 flex items-center justify-center gap-2 font-medium transition-colors ${activeTab === id
-                                        ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50'
-                                        : 'text-gray-500 hover:text-gray-700'
+                                    ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50'
+                                    : 'text-gray-500 hover:text-gray-700'
                                     }`}
                             >
                                 <Icon size={18} />

@@ -125,11 +125,14 @@ const Sidebar: React.FC = () => {
       <nav className="sidebar-nav flex-1">
         {menuItems.map((item) => {
           const Icon = item.icon;
+          const normalizedPath = item.path.replace(/\//g, '-').replace(/^-+/, '');
+          const testId = item.path === '/' ? 'sidebar-link-dashboard' : `sidebar-link-${normalizedPath}`;
           return (
             <Link
               key={item.path}
               to={item.path}
               className={`sidebar-item ${isActive(item.path) ? 'active' : ''}`}
+              data-testid={testId}
             >
               <Icon size={20} className="sidebar-icon" />
               <span>{item.label}</span>
@@ -143,6 +146,7 @@ const Sidebar: React.FC = () => {
         <button
           onClick={handleLogout}
           className="sidebar-item w-full text-red-600 hover:bg-red-50"
+          data-testid="sidebar-logout"
         >
           <LogOut size={20} className="sidebar-icon" />
           <span>تسجيل الخروج</span>

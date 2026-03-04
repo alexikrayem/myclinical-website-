@@ -6,6 +6,7 @@ import { researchApi } from '../lib/api';
 
 const ResearchTopicsPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [researches, setResearches] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || '');
@@ -18,13 +19,13 @@ const ResearchTopicsPage: React.FC = () => {
     const fetchResearches = async () => {
       try {
         setLoading(true);
-        
-        const params: any = {};
-        
+
+        const params: Record<string, string> = {};
+
         if (selectedJournals.length > 0) {
           params.journal = selectedJournals[0];
         }
-        
+
         if (searchTerm) {
           params.search = searchTerm;
         }
@@ -70,9 +71,9 @@ const ResearchTopicsPage: React.FC = () => {
   };
 
   const toggleJournal = (journal: string) => {
-    setSelectedJournals(prev => 
-      prev.includes(journal) 
-        ? prev.filter(j => j !== journal) 
+    setSelectedJournals(prev =>
+      prev.includes(journal)
+        ? prev.filter(j => j !== journal)
         : [journal]
     );
   };
@@ -96,11 +97,11 @@ const ResearchTopicsPage: React.FC = () => {
             <BookOpen className="w-4 h-4 ml-2" />
             <span className="text-sm font-medium">الأبحاث العلمية</span>
           </div>
-          
+
           <h1 className="heading-modern text-4xl lg:text-5xl text-gray-900 mb-4">
             مكتبة الأبحاث العلمية
           </h1>
-          
+
           <p className="text-modern text-lg max-w-3xl mx-auto">
             استكشف أحدث الأبحاث والدراسات العلمية في مجال طب الأسنان من أشهر المجلات والدوريات العلمية المحكمة
           </p>
@@ -115,7 +116,7 @@ const ResearchTopicsPage: React.FC = () => {
             <div className="text-3xl font-bold text-gray-900 mb-2">{totalResults}</div>
             <p className="text-gray-600">بحث علمي</p>
           </div>
-          
+
           <div className="form-modern text-center">
             <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
               <Award className="w-8 h-8 text-white" />
@@ -123,7 +124,7 @@ const ResearchTopicsPage: React.FC = () => {
             <div className="text-3xl font-bold text-gray-900 mb-2">{availableJournals.length}</div>
             <p className="text-gray-600">مجلة علمية</p>
           </div>
-          
+
           <div className="form-modern text-center">
             <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
               <Users className="w-8 h-8 text-white" />
@@ -143,6 +144,7 @@ const ResearchTopicsPage: React.FC = () => {
                 className="input-modern pr-12"
                 value={searchTerm}
                 onChange={handleSearchInputChange}
+                data-testid="research-search-input"
               />
               <Search className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
               {searchTerm && (
@@ -155,24 +157,25 @@ const ResearchTopicsPage: React.FC = () => {
                 </button>
               )}
             </div>
-            
+
             <div className="flex gap-3">
               <button
                 type="button"
                 onClick={toggleJournalFilter}
-                className={`btn-secondary inline-flex items-center ${
-                  showJournalFilter ? 'bg-blue-50 border-blue-300 text-blue-700' : ''
-                }`}
+                className={`btn-secondary inline-flex items-center ${showJournalFilter ? 'bg-blue-50 border-blue-300 text-blue-700' : ''
+                  }`}
+                data-testid="research-filter-toggle"
               >
                 <Filter size={18} className="ml-2" />
                 تصفية حسب المجلة
               </button>
-              
+
               {(searchTerm || selectedJournals.length > 0) && (
                 <button
                   type="button"
                   onClick={clearSearch}
                   className="btn-secondary inline-flex items-center text-red-600 border-red-200 hover:bg-red-50"
+                  data-testid="research-clear"
                 >
                   <X size={18} className="ml-2" />
                   مسح
@@ -221,11 +224,11 @@ const ResearchTopicsPage: React.FC = () => {
                   <button
                     key={journal}
                     onClick={() => toggleJournal(journal)}
-                    className={`px-4 py-2 rounded-full text-sm font-medium transition-modern ${
-                      selectedJournals.includes(journal)
+                    className={`px-4 py-2 rounded-full text-sm font-medium transition-modern ${selectedJournals.includes(journal)
                         ? 'bg-blue-500 text-white shadow-lg'
                         : 'bg-white text-gray-700 hover:bg-blue-50 hover:text-blue-600 border border-gray-200'
-                    }`}
+                      }`}
+                    data-testid={`research-journal-${encodeURIComponent(journal)}`}
                   >
                     {journal}
                   </button>
@@ -235,7 +238,7 @@ const ResearchTopicsPage: React.FC = () => {
           )}
 
           {/* Results counter */}
-          <div className="mt-4 text-sm text-gray-600">
+          <div className="mt-4 text-sm text-gray-600" data-testid="research-results-count">
             {loading ? (
               <div className="flex items-center">
                 <Loader className="animate-spin ml-2 w-4 h-4" />
@@ -267,13 +270,13 @@ const ResearchTopicsPage: React.FC = () => {
             ))}
           </div>
         ) : researches.length === 0 ? (
-          <div className="text-center py-16 bg-white rounded-3xl card-shadow">
+          <div className="text-center py-16 bg-white rounded-3xl card-shadow" data-testid="research-empty">
             <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
               <FileText size={32} className="text-gray-400" />
             </div>
             <h3 className="text-xl font-bold text-gray-700 mb-2">لا توجد أبحاث متطابقة</h3>
             <p className="text-gray-500 mb-6 max-w-md mx-auto">
-              {searchTerm || selectedJournals.length > 0 
+              {searchTerm || selectedJournals.length > 0
                 ? 'لم نتمكن من العثور على أبحاث تطابق معايير البحث. جرب كلمات مختلفة أو امسح المرشحات.'
                 : 'لا توجد أبحاث متاحة حالياً.'
               }
@@ -288,7 +291,7 @@ const ResearchTopicsPage: React.FC = () => {
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8" data-testid="research-list">
             {researches.map((research, index) => (
               <div key={research.id} style={{ animationDelay: `${index * 0.1}s` }}>
                 <ResearchCard research={research} />

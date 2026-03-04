@@ -7,6 +7,11 @@ export default defineConfig({
   css: {
     postcss: './postcss.config.js',
   },
+  test: {
+    environment: 'jsdom',
+    setupFiles: './src/test/setup.ts',
+    exclude: ['e2e/**', 'node_modules/**'],
+  },
   server: {
     port: 5174, // Different port from main frontend
   },

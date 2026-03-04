@@ -9,36 +9,15 @@ const Research: React.FC = () => {
   const [researches, setResearches] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filteredResearches, setFilteredResearches] = useState<any[]>([]);
   const [totalResearches, setTotalResearches] = useState(0);
-
-  useEffect(() => {
-    fetchResearches();
-  }, []);
-
-  useEffect(() => {
-    if (searchTerm.trim() === '') {
-      setFilteredResearches(researches);
-    } else {
-      const filtered = researches.filter(research =>
-        research.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        research.journal.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        research.abstract.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (research.authors && research.authors.some((author: string) => 
-          author.toLowerCase().includes(searchTerm.toLowerCase())
-        ))
-      );
-      setFilteredResearches(filtered);
-    }
-  }, [researches, searchTerm]);
 
   const fetchResearches = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/research');
+      const response = await api.get('/research', { params: { search: searchTerm } });
       const researchData = response.data.data || response.data || [];
       setResearches(researchData);
-      setTotalResearches(researchData.length);
+      setTotalResearches(response.data.pagination?.total || researchData.length);
     } catch (error) {
       console.error('Error fetching researches:', error);
       toast.error('فشل في تحميل الأبحاث');
@@ -47,6 +26,13 @@ const Research: React.FC = () => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const debounce = setTimeout(() => {
+      fetchResearches();
+    }, 500);
+    return () => clearTimeout(debounce);
+  }, [searchTerm]);
 
   const handleDelete = async (id: string) => {
     if (!confirm('هل أنت متأكد من حذف هذا البحث؟')) {
@@ -126,11 +112,10 @@ const Research: React.FC = () => {
               </button>
             )}
           </div>
-          
-          {/* Results counter */}
+
           <div className="mt-2 text-sm text-gray-600">
             {searchTerm ? (
-              `عرض ${filteredResearches.length} من أصل ${totalResearches} بحث`
+              `عرض ${researches.length} من أصل ${totalResearches} بحث`
             ) : (
               `إجمالي ${totalResearches} بحث`
             )}
@@ -161,7 +146,7 @@ const Research: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredResearches.map((research) => (
+                {researches.map((research) => (
                   <tr key={research.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4">
                       <div className="text-sm font-medium text-gray-900 line-clamp-2">
@@ -214,7 +199,7 @@ const Research: React.FC = () => {
             </table>
           </div>
 
-          {filteredResearches.length === 0 && (
+          {researches.length === 0 && (
             <div className="text-center py-8">
               {searchTerm ? (
                 <div>

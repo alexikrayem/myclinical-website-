@@ -12,6 +12,7 @@ import { aiLimiter, searchLimiter, uploadLimiter } from '../middleware/rateLimit
 import { cacheMiddleware } from '../middleware/cache.js';
 import { validateUploadedFile } from '../middleware/fileValidation.js';
 import { body, query, validationResult } from 'express-validator';
+import { meiliSearch, orderByIdList } from '../services/search/searchService.js';
 
 dotenv.config();
 
@@ -177,6 +178,55 @@ router.get('/tags', async (req, res) => {
   }
 });
 
+// Get latest articles grouped by tags
+// GET /articles/by-tags?tags=tag1,tag2&limit=5
+// If tags omitted, returns for ALL known tags
+router.get('/by-tags', cacheMiddleware(300), async (req, res) => {
+  try {
+    const { limit = 5 } = req.query;
+    const parsedLimit = Math.min(parseInt(limit) || 5, 10);
+
+    // Determine which tags to fetch
+    let tagsToFetch;
+    if (req.query.tags) {
+      tagsToFetch = req.query.tags.split(',').map(t => t.trim()).filter(Boolean);
+    } else {
+      // Fetch all known tags
+      const { data: tagData, error: tagError } = await supabase
+        .from('articles')
+        .select('tags');
+      if (tagError) throw tagError;
+      const allTags = tagData.flatMap(a => a.tags);
+      tagsToFetch = [...new Set(allTags)].sort();
+    }
+
+    // Fetch latest articles for each tag in parallel
+    const results = {};
+    await Promise.all(
+      tagsToFetch.map(async (tag) => {
+        const { data, error } = await supabase
+          .from('articles')
+          .select('id, title, slug, excerpt, cover_image, publication_date, author, tags, article_type')
+          .contains('tags', [tag])
+          .order('publication_date', { ascending: false })
+          .limit(parsedLimit);
+
+        if (error) {
+          console.error(`Error fetching articles for tag "${tag}":`, error);
+          results[tag] = [];
+        } else {
+          results[tag] = data || [];
+        }
+      })
+    );
+
+    res.json(results);
+  } catch (error) {
+    console.error('Error fetching articles by tags:', error);
+    res.status(500).json({ error: 'Failed to fetch articles by tags' });
+  }
+});
+
 /**
  * @swagger
  * /articles:
@@ -269,14 +319,54 @@ router.get('/',
       // Full-text search using Postgres textSearch
       // Falls back to trigram similarity for Arabic text
       if (search) {
-        // Use Supabase textSearch for full-text search
-        // Also add ilike as fallback for partial matches
+        const meiliResult = await meiliSearch('articles', search, {
+          page,
+          limit,
+          filters: {
+            ...(tag ? { tags: tag } : {}),
+            ...(req.query.type ? { article_type: req.query.type } : {})
+          }
+        });
+
+        if (meiliResult) {
+          const ids = meiliResult.hits.map(hit => hit.id);
+          const total = meiliResult.estimatedTotalHits || 0;
+
+          if (!ids.length) {
+            return res.json({
+              data: [],
+              pagination: {
+                total,
+                page: parseInt(page),
+                limit: parseInt(limit),
+                pages: Math.ceil(total / limit)
+              }
+            });
+          }
+
+          const { data: rows, error: fetchError } = await supabase
+            .from('articles')
+            .select('*')
+            .in('id', ids);
+
+          if (fetchError) throw fetchError;
+
+          const ordered = orderByIdList(rows, ids);
+          return res.json({
+            data: ordered,
+            pagination: {
+              total,
+              page: parseInt(page),
+              limit: parseInt(limit),
+              pages: Math.ceil(total / limit)
+            }
+          });
+        }
+
+        // Fallback: Use Supabase ilike for partial matches
         query = query.or(
           `title.ilike.%${search}%,excerpt.ilike.%${search}%,author.ilike.%${search}%`
         );
-
-        // For better results, we can also use the search_vector column if available
-        // This requires the fulltext_search migration to be applied
       }
 
       const { data, error, count } = await query
@@ -428,8 +518,8 @@ router.get('/:idOrSlug', async (req, res) => {
     }
 
     // 4. Handle Content Delivery
-    // If article is free (credits_required = 0), grant access only to logged-in users
-    if (article.credits_required === 0 && userId) hasAccess = true;
+    // If article is free (credits_required = 0), grant access to everyone
+    if (article.credits_required === 0) hasAccess = true;
 
     if (hasAccess) {
       // Return full content

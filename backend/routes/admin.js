@@ -11,7 +11,8 @@ import { authenticateToken, trackLoginAttempt, checkLoginAllowed } from '../midd
 import { authLimiter, uploadLimiter } from '../middleware/rateLimiter.js';
 import { validateUploadedFile } from '../middleware/fileValidation.js';
 import { sanitizeFileName, sanitizeContent } from '../middleware/inputSanitizer.js';
-import { body, validationResult } from 'express-validator';
+import { body, validationResult, query } from 'express-validator';
+import { indexArticle, indexResearch, removeArticle, removeResearch, indexCourse, removeCourse } from '../services/search/indexer.js';
 
 dotenv.config();
 
@@ -131,7 +132,9 @@ router.post('/login',
       }
 
       // Check if the user is an admin
-      console.log('Checking admin status for User ID:', authData.user.id);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Checking admin status for User ID:', authData.user.id);
+      }
 
       const { data: adminData, error: adminError } = await supabase
         .from('admins')
@@ -139,7 +142,9 @@ router.post('/login',
         .eq('id', authData.user.id)
         .single();
 
-      console.log('Admin Lookup Result:', { adminData, adminError });
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Admin Lookup Result:', { adminData, adminError });
+      }
 
       if (adminError || !adminData) {
         await trackLoginAttempt(email, false);
@@ -294,6 +299,12 @@ router.post('/articles',
 
       if (error) throw error;
 
+      try {
+        await indexArticle(data[0]);
+      } catch (indexError) {
+        console.error('Search index error (article create):', indexError);
+      }
+
       res.status(201).json(data[0]);
     } catch (error) {
       console.error('Error creating article:', error);
@@ -346,6 +357,12 @@ router.put('/articles/:id', authenticateToken, uploadLimiter, upload.single('cov
 
     if (error) throw error;
 
+    try {
+      await indexArticle(data[0]);
+    } catch (indexError) {
+      console.error('Search index error (article update):', indexError);
+    }
+
     res.json(data[0]);
   } catch (error) {
     console.error('Error updating article:', error);
@@ -375,6 +392,12 @@ router.delete('/articles/:id', authenticateToken, async (req, res) => {
 
     if (error) throw error;
 
+    try {
+      await removeArticle(id);
+    } catch (indexError) {
+      console.error('Search index error (article delete):', indexError);
+    }
+
     // Note: We are not deleting files from Supabase storage automatically to prevent accidental data loss
     // and because we don't track file references perfectly. 
     // A separate cleanup script would be better for that.
@@ -383,6 +406,267 @@ router.delete('/articles/:id', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Error deleting article:', error);
     res.status(500).json({ error: 'Failed to delete article' });
+  }
+});
+
+// Create new course
+router.post('/courses',
+  authenticateToken,
+  uploadLimiter,
+  upload.single('cover_image'),
+  validateUploadedFile(['jpg', 'jpeg', 'png']),
+  [
+    body('title').trim().isLength({ min: 3, max: 200 }).escape(),
+    body('description').trim().isLength({ min: 10, max: 2000 }).escape(),
+    body('author').trim().isLength({ min: 2, max: 200 }).escape()
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ error: errors.array()[0].msg });
+      }
+
+      const {
+        title,
+        author,
+        categories,
+        is_featured,
+        playback_provider,
+        playback_source,
+        billing_model,
+        minute_cost,
+        preview_source,
+        preview_seconds
+      } = req.body;
+
+      const description = sanitizeContent(req.body.description);
+
+      if (!playback_source) {
+        return res.status(400).json({ error: 'Playback source is required' });
+      }
+
+      let cover_image = '';
+      if (req.file) {
+        cover_image = await uploadToSupabase(req.file, 'images');
+      } else if (req.body.cover_image_url) {
+        cover_image = req.body.cover_image_url;
+      } else {
+        return res.status(400).json({ error: 'Cover image is required' });
+      }
+
+      const parsedCategories = categories ? JSON.parse(categories) : [];
+
+      const resolvedBillingModel = billing_model || 'per_minute';
+      const parsedMinuteCost = Number.isNaN(parseInt(minute_cost, 10)) ? 1 : parseInt(minute_cost, 10);
+      const parsedPreviewSeconds = Number.isNaN(parseInt(preview_seconds, 10)) ? 0 : parseInt(preview_seconds, 10);
+      const resolvedMinuteCost = resolvedBillingModel === 'per_minute' ? parsedMinuteCost : 0;
+
+      const { data, error } = await supabase
+        .from('video_courses')
+        .insert([
+          {
+            title,
+            description,
+            cover_image,
+            playback_source,
+            playback_provider: playback_provider || 'vdocipher',
+            billing_model: resolvedBillingModel,
+            minute_cost: resolvedMinuteCost,
+            preview_source: preview_source || null,
+            preview_seconds: parsedPreviewSeconds,
+            author,
+            categories: parsedCategories,
+            credits_required: parseInt(req.body.credits_required) || 0,
+            duration: parseInt(req.body.duration) || 0,
+            is_featured: is_featured === 'true',
+            publication_date: new Date().toISOString(),
+          }
+        ])
+        .select();
+
+      if (error) throw error;
+
+      try {
+        await indexCourse(data[0]);
+      } catch (indexError) {
+        console.error('Search index error (course create):', indexError);
+      }
+
+      res.status(201).json(data[0]);
+    } catch (error) {
+      console.error('Error creating course:', error);
+      res.status(500).json({ error: 'Failed to create course' });
+    }
+  }
+);
+
+// Update course
+router.put('/courses/:id',
+  authenticateToken,
+  uploadLimiter,
+  upload.single('cover_image'),
+  validateUploadedFile(['jpg', 'jpeg', 'png']),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const {
+        title,
+        author,
+        categories,
+        is_featured,
+        playback_provider,
+        playback_source,
+        billing_model,
+        minute_cost,
+        preview_source,
+        preview_seconds
+      } = req.body;
+
+      const description = sanitizeContent(req.body.description);
+
+      const { data: existingCourse, error: fetchError } = await supabase
+        .from('video_courses')
+        .select('cover_image')
+        .eq('id', id)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      let cover_image = existingCourse.cover_image;
+      if (req.file) {
+        cover_image = await uploadToSupabase(req.file, 'images');
+      } else if (req.body.cover_image_url) {
+        cover_image = req.body.cover_image_url;
+      }
+
+      const parsedCategories = categories ? JSON.parse(categories) : [];
+
+      const resolvedBillingModel = billing_model || 'per_minute';
+      const parsedMinuteCost = Number.isNaN(parseInt(minute_cost, 10)) ? 1 : parseInt(minute_cost, 10);
+      const parsedPreviewSeconds = Number.isNaN(parseInt(preview_seconds, 10)) ? 0 : parseInt(preview_seconds, 10);
+      const resolvedMinuteCost = resolvedBillingModel === 'per_minute' ? parsedMinuteCost : 0;
+
+      const updatePayload = {
+        title,
+        description,
+        cover_image,
+        playback_provider: playback_provider || 'vdocipher',
+        billing_model: resolvedBillingModel,
+        minute_cost: resolvedMinuteCost,
+        preview_source: preview_source || null,
+        preview_seconds: parsedPreviewSeconds,
+        author,
+        categories: parsedCategories,
+        credits_required: parseInt(req.body.credits_required) || 0,
+        duration: parseInt(req.body.duration) || 0,
+        is_featured: is_featured === 'true',
+        updated_at: new Date().toISOString(),
+      };
+
+      if (playback_source) {
+        updatePayload.playback_source = playback_source;
+      }
+
+      const { data, error } = await supabase
+        .from('video_courses')
+        .update(updatePayload)
+        .eq('id', id)
+        .select();
+
+      if (error) throw error;
+
+      try {
+        await indexCourse(data[0]);
+      } catch (indexError) {
+        console.error('Search index error (course update):', indexError);
+      }
+
+      res.json(data[0]);
+    } catch (error) {
+      console.error('Error updating course:', error);
+      res.status(500).json({ error: 'Failed to update course' });
+    }
+  }
+);
+
+// Get courses list (admin)
+router.get('/courses', authenticateToken, async (req, res) => {
+  try {
+    const { search, limit = 20, page = 1 } = req.query;
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const offset = (pageNum - 1) * limitNum;
+
+    let query = supabase
+      .from('video_courses')
+      .select('id, title, cover_image, author, categories, is_featured, credits_required, billing_model, minute_cost, playback_provider', { count: 'exact' });
+
+    if (search) {
+      query = query.or(`title.ilike.%${search}%,author.ilike.%${search}%`);
+    }
+
+    const { data, error, count } = await query
+      .order('publication_date', { ascending: false })
+      .range(offset, offset + limitNum - 1);
+
+    if (error) throw error;
+
+    res.json({
+      data,
+      pagination: {
+        total: count,
+        page: pageNum,
+        limit: limitNum,
+        pages: Math.ceil((count || 0) / limitNum)
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching courses:', error);
+    res.status(500).json({ error: 'Failed to fetch courses' });
+  }
+});
+
+// Get course by id (admin)
+router.get('/courses/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { data, error } = await supabase
+      .from('video_courses')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (error) {
+    console.error('Error fetching course:', error);
+    res.status(500).json({ error: 'Failed to fetch course' });
+  }
+});
+
+// Delete course
+router.delete('/courses/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const { error } = await supabase
+      .from('video_courses')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+
+    try {
+      await removeCourse(id);
+    } catch (indexError) {
+      console.error('Search index error (course delete):', indexError);
+    }
+
+    res.json({ message: 'Course deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting course:', error);
+    res.status(500).json({ error: 'Failed to delete course' });
   }
 });
 
@@ -426,6 +710,12 @@ router.post('/research', authenticateToken, uploadLimiter, upload.single('resear
       .select();
 
     if (error) throw error;
+
+    try {
+      await indexResearch(data[0]);
+    } catch (indexError) {
+      console.error('Search index error (research create):', indexError);
+    }
 
     res.status(201).json(data[0]);
   } catch (error) {
@@ -473,6 +763,12 @@ router.put('/research/:id', authenticateToken, uploadLimiter, upload.single('res
 
     if (error) throw error;
 
+    try {
+      await indexResearch(data[0]);
+    } catch (indexError) {
+      console.error('Search index error (research update):', indexError);
+    }
+
     res.json(data[0]);
   } catch (error) {
     console.error('Error updating research:', error);
@@ -492,6 +788,12 @@ router.delete('/research/:id', authenticateToken, async (req, res) => {
       .eq('id', id);
 
     if (error) throw error;
+
+    try {
+      await removeResearch(id);
+    } catch (indexError) {
+      console.error('Search index error (research delete):', indexError);
+    }
 
     res.json({ message: 'Research deleted successfully' });
   } catch (error) {
@@ -833,5 +1135,47 @@ router.delete('/categories/:id', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Failed to delete category' });
   }
 });
+
+router.get('/codes/history',
+  authenticateToken,
+  [
+    query('page').optional().isInt({ min: 1 }).withMessage('Page must be a positive integer').toInt(),
+    query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit must be between 1 and 100').toInt()
+  ],
+  async (req, res) => {
+    try {
+      // 1. Validation Check
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ error: errors.array()[0].msg });
+      }
+
+      const { page = 1, limit = 20 } = req.query;
+      const offset = (page - 1) * limit;
+
+      // 2. Optimized Query with Count
+      const { data, error, count } = await supabase
+        .from('license_codes')
+        .select('*', { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .range(offset, offset + limit - 1);
+
+      if (error) throw error;
+
+      res.json({
+        data,
+        pagination: {
+          total: count,
+          page,
+          limit,
+          pages: Math.ceil(count / limit)
+        }
+      });
+    } catch (error) {
+      console.error('Error fetching codes history:', error);
+      res.status(500).json({ error: 'Failed to fetch codes history' });
+    }
+  });
+
 
 export default router;

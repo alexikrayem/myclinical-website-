@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Coins, Plus, X, History } from 'lucide-react';
+import { Coins, Plus, X } from 'lucide-react';
 import { creditsApi } from '../../lib/api';
 import toast from 'react-hot-toast';
 
@@ -24,8 +24,9 @@ const RedeemCodeModal = ({ isOpen, onClose, onSuccess }: { isOpen: boolean; onCl
             } else {
                 toast.error(data.message);
             }
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'فشل شحن الرصيد');
+        } catch (error: unknown) {
+            const err = error as { response?: { data?: { error?: string } } };
+            toast.error(err.response?.data?.error || 'فشل شحن الرصيد');
         } finally {
             setIsLoading(false);
         }
@@ -76,7 +77,7 @@ const CreditBalance = () => {
         try {
             const data = await creditsApi.getBalance();
             setBalance(data.balance);
-        } catch (error) {
+        } catch {
             console.error('Failed to fetch balance');
         }
     };

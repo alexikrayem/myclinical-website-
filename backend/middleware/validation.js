@@ -1,5 +1,6 @@
 
 import { z } from 'zod';
+import { cleanPhoneNumber, isValidPhoneNumber, normalizePhoneNumber } from '../utils/phone.js';
 
 // Generic middleware to validate request against a Zod schema
 export const validate = (schema) => async (req, res, next) => {
@@ -27,29 +28,46 @@ export const validate = (schema) => async (req, res, next) => {
         path: e.path.join('.'),
         message: e.message,
       }));
-      return res.status(400).json({ error: 'Validation Error', details: errors });
+      const message = errors[0]?.message || 'Validation Error';
+      return res.status(400).json({ error: 'Validation Error', message, details: errors });
     }
     return res.status(400).json({ error: 'Invalid Input' });
   }
 };
 
 // Common Schemas
+const phoneSchema = z.string()
+  .trim()
+  .min(1, 'رقم الهاتف مطلوب')
+  .transform((val) => cleanPhoneNumber(val))
+  .refine((val) => isValidPhoneNumber(val), 'رقم الهاتف غير صحيح')
+  .transform((val) => normalizePhoneNumber(val));
+
+const displayNameSchema = z.preprocess(
+  (val) => {
+    if (typeof val !== 'string') return val;
+    const trimmed = val.trim();
+    return trimmed === '' ? undefined : trimmed;
+  },
+  z.string().min(2, 'الاسم يجب أن يكون حرفين على الأقل').optional()
+);
+
 export const schemas = {
   // Auth Schemas
   register: z.object({
     body: z.object({
-      phone_number: z.string().min(10, 'رقم الهاتف يجب أن يكون 10 أرقام على الأقل'),
+      phone_number: phoneSchema,
       password: z.string()
         .min(8, 'كلمة المرور يجب أن تكون 8 أحرف على الأقل')
         .regex(/[a-zA-Z]/, 'كلمة المرور يجب أن تحتوي على حرف واحد على الأقل')
         .regex(/\d/, 'كلمة المرور يجب أن تحتوي على رقم واحد على الأقل'),
-      display_name: z.string().min(2, 'الاسم يجب أن يكون حرفين على الأقل').optional(),
+      display_name: displayNameSchema,
     }),
   }),
 
   login: z.object({
     body: z.object({
-      phone_number: z.string().min(1, 'رقم الهاتف مطلوب'),
+      phone_number: phoneSchema,
       password: z.string().min(1, 'كلمة المرور مطلوبة'),
     }),
   }),

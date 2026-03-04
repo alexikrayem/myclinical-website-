@@ -1,41 +1,97 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Clock, User, Calendar, Award, Coins } from 'lucide-react';
-import { coursesApi } from '../lib/api';
+import { coursesApi, creditsApi } from '../lib/api';
 import { formatDistance } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import toast from 'react-hot-toast';
 import QuizModal from '../components/courses/QuizModal';
 import SecureVideoPlayer from '../components/courses/SecureVideoPlayer';
 
+type BillingModel = 'free' | 'per_course' | 'per_minute';
+
+type PlaybackDescriptor =
+    | { type: 'vdocipher'; otp: string; playbackInfo: string }
+    | { type: 'hls'; manifestUrl: string; expiresAt?: string }
+    | { type: 'youtube'; url: string }
+    | { type: 'mp4'; url: string };
+
+interface Course {
+    id: string;
+    title: string;
+    description: string;
+    cover_image: string;
+    publication_date: string;
+    author: string;
+    categories: string[];
+    credits_required: number;
+    duration: number;
+    billing_model: BillingModel;
+    minute_cost: number;
+    playback_provider: string;
+    preview_source?: string | null;
+    preview_seconds?: number;
+    has_access?: boolean;
+    requires_auth?: boolean;
+}
+
 const CourseDetailPage = () => {
     const { id } = useParams<{ id: string }>();
-    const [course, setCourse] = useState<any>(null);
+    const [course, setCourse] = useState<Course | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [hasAccess, setHasAccess] = useState(false);
     const [quiz, setQuiz] = useState<any>(null);
     const [showQuiz, setShowQuiz] = useState(false);
+    const [playback, setPlayback] = useState<PlaybackDescriptor | null>(null);
+    const [playbackSessionId, setPlaybackSessionId] = useState<string | null>(null);
+    const [playbackLoading, setPlaybackLoading] = useState(false);
+    const [isPlaying, setIsPlaying] = useState(false);
+    const [credits, setCredits] = useState<{ remaining_minutes?: number; remaining_balance?: number } | null>(null);
+    const [autoPlaybackRequested, setAutoPlaybackRequested] = useState(false);
+    const isLoggedIn = Boolean(localStorage.getItem('user_token'));
 
     useEffect(() => {
         const fetchCourse = async () => {
             if (!id) return;
             setIsLoading(true);
+            setPlayback(null);
+            setPlaybackSessionId(null);
+            setIsPlaying(false);
+            setCredits(null);
+            setQuiz(null);
+            setShowQuiz(false);
+            setHasAccess(false);
+            setPlaybackLoading(false);
+            setAutoPlaybackRequested(false);
             try {
                 const data = await coursesApi.getById(id);
                 setCourse(data);
 
-                // Use the secure flag from backend
                 if (data.has_access) {
                     setHasAccess(true);
-                    // Only fetch quiz if we have access
+                } else {
+                    setHasAccess(false);
+                }
+
+                if (data.billing_model === 'per_course' && data.has_access) {
                     try {
                         const quizData = await coursesApi.getQuiz(id);
                         if (quizData) setQuiz(quizData);
-                    } catch (e) {
+                    } catch {
                         console.log('Quiz not available yet');
                     }
-                } else {
-                    setHasAccess(false);
+                }
+
+                if (data.billing_model === 'per_minute' && localStorage.getItem('user_token')) {
+                    try {
+                        const creditData = await creditsApi.getBalance();
+                        setCredits({
+                            remaining_minutes: creditData.video_watch_minutes,
+                            remaining_balance: creditData.balance
+                        });
+                    } catch {
+                        // ignore
+                    }
                 }
 
             } catch (error) {
@@ -55,17 +111,84 @@ const CourseDetailPage = () => {
             await coursesApi.purchaseAccess(id);
             toast.success('تم شراء الدورة بنجاح!');
             setHasAccess(true);
-            // Refresh quiz to get data
-            const quizData = await coursesApi.getQuiz(id);
-            setQuiz(quizData);
-        } catch (error: any) {
-            if (error.response?.status === 400) {
-                toast.error(error.response.data.error || 'رصيد غير كافي');
+            try {
+                const quizData = await coursesApi.getQuiz(id);
+                setQuiz(quizData);
+            } catch {
+                // Quiz might not be available yet
+            }
+        } catch (error: unknown) {
+            const err = error as { response?: { status?: number; data?: { error?: string } } };
+            if (err.response?.status === 400) {
+                toast.error(err.response.data?.error || 'رصيد غير كافي');
             } else {
                 toast.error('فشل عملية الشراء. تأكد من تسجيل الدخول.');
             }
         }
     };
+
+    const startPlayback = useCallback(async () => {
+        if (!id) return;
+        if (playbackLoading || playback) return;
+        if (!localStorage.getItem('user_token')) {
+            toast.error('يرجى تسجيل الدخول لبدء التشغيل');
+            return;
+        }
+        setPlaybackLoading(true);
+        try {
+            const result = await coursesApi.getPlayback(id);
+            setPlayback(result.playback);
+            setPlaybackSessionId(result.session_id);
+            if (result.credits) {
+                setCredits(result.credits);
+            }
+        } catch (error: any) {
+            const message = error?.response?.data?.error || 'تعذر بدء التشغيل';
+            toast.error(message);
+        } finally {
+            setPlaybackLoading(false);
+        }
+    }, [id, playbackLoading, playback]);
+
+    useEffect(() => {
+        if (!course || !id || autoPlaybackRequested || playback || playbackLoading) return;
+        if (!isLoggedIn) return;
+        if (course.billing_model === 'per_course' && !hasAccess) return;
+        setAutoPlaybackRequested(true);
+        startPlayback();
+    }, [course, id, autoPlaybackRequested, playback, playbackLoading, isLoggedIn, hasAccess, startPlayback]);
+
+    useEffect(() => {
+        if (!id || !playbackSessionId || !isPlaying || course?.billing_model !== 'per_minute') return;
+        const interval = setInterval(async () => {
+            try {
+                const idempotencyKey = typeof crypto?.randomUUID === 'function'
+                    ? crypto.randomUUID()
+                    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+                const result = await coursesApi.sendHeartbeat(id, {
+                    session_id: playbackSessionId,
+                    seconds_delta: 30,
+                    idempotency_key: idempotencyKey
+                });
+
+                if (result?.remaining_minutes !== undefined || result?.remaining_balance !== undefined) {
+                    setCredits({
+                        remaining_minutes: result.remaining_minutes,
+                        remaining_balance: result.remaining_balance
+                    });
+                }
+            } catch (error: any) {
+                const message = error?.response?.data?.error || 'رصيد غير كافي';
+                toast.error(message);
+                setIsPlaying(false);
+                setPlayback(null);
+                setPlaybackSessionId(null);
+                setAutoPlaybackRequested(true);
+            }
+        }, 30000);
+
+        return () => clearInterval(interval);
+    }, [id, playbackSessionId, isPlaying, course?.billing_model]);
 
     if (isLoading) {
         return (
@@ -88,16 +211,26 @@ const CourseDetailPage = () => {
                             <div className="relative aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border border-gray-800">
                                 <SecureVideoPlayer
                                     title={course.title}
-                                    vdo_playback={course.vdo_playback}
+                                    playback={playback}
                                     hasAccess={hasAccess}
-                                    onPurchase={handlePurchase}
+                                    billingModel={course.billing_model}
+                                    onPurchase={isLoggedIn ? handlePurchase : undefined}
                                     creditsRequired={course.credits_required}
-                                    videoUrl={course.video_url}
+                                    onStartPlayback={startPlayback}
+                                    isPlaybackLoading={playbackLoading}
+                                    previewSource={course.preview_source}
+                                    previewSeconds={course.preview_seconds}
+                                    onPlaybackStateChange={setIsPlaying}
                                 />
                             </div>
 
                             <div>
-                                <h1 className="text-3xl font-bold mb-4 leading-tight">{course.title}</h1>
+                                <h1
+                                    className="text-3xl font-bold mb-4 leading-tight"
+                                    data-testid="course-detail-title"
+                                >
+                                    {course.title}
+                                </h1>
                                 <div className="flex flex-wrap gap-4 text-sm text-gray-300">
                                     <div className="flex items-center">
                                         <User size={16} className="ml-1 text-blue-400" />
@@ -119,23 +252,56 @@ const CourseDetailPage = () => {
                         <div className="space-y-6">
                             <div className="bg-gray-800/50 backdrop-blur rounded-2xl p-6 border border-gray-700">
                                 <div className="flex justify-between items-center mb-6">
-                                    <span className="text-gray-400">سعر الدورة</span>
+                                    <span className="text-gray-400">نموذج الفوترة</span>
                                     <div className="flex items-center text-xl font-bold text-yellow-400">
                                         <Coins size={20} className="ml-2" />
-                                        {course.credits_required} رصيد
+                                        {course.billing_model === 'per_minute'
+                                            ? `${course.minute_cost} رصيد/دقيقة`
+                                            : course.billing_model === 'free'
+                                                ? 'مجاني'
+                                                : `${course.credits_required} رصيد`}
                                     </div>
                                 </div>
 
-                                {!hasAccess ? (
+                                {course.billing_model === 'per_course' && !hasAccess ? (
+                                    isLoggedIn ? (
                                     <button
                                         onClick={handlePurchase}
                                         className="w-full btn-primary bg-blue-600 hover:bg-blue-700 border-none py-3 mb-4"
+                                        data-testid="course-purchase-button"
                                     >
                                         شراء الوصول
                                     </button>
+                                    ) : (
+                                        <div className="bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-center py-3 rounded-xl mb-4 font-medium">
+                                            يرجى تسجيل الدخول لشراء الوصول
+                                        </div>
+                                    )
+                                ) : !hasAccess ? (
+                                    <div
+                                        className="bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-center py-3 rounded-xl mb-4 font-medium"
+                                    >
+                                        يرجى تسجيل الدخول لبدء التشغيل
+                                    </div>
                                 ) : (
-                                    <div className="bg-green-500/10 border border-green-500/20 text-green-400 text-center py-3 rounded-xl mb-4 font-medium">
-                                        تمتلك صلاحية الوصول
+                                    <div
+                                        className="bg-green-500/10 border border-green-500/20 text-green-400 text-center py-3 rounded-xl mb-4 font-medium"
+                                        data-testid="course-access-granted"
+                                    >
+                                        {course.billing_model === 'per_minute' ? 'جاهز للتشغيل' : 'تمتلك صلاحية الوصول'}
+                                    </div>
+                                )}
+
+                                {course.billing_model === 'per_minute' && credits && (
+                                    <div className="space-y-2 text-sm text-gray-300">
+                                        <div className="flex items-center justify-between py-2 border-b border-gray-700">
+                                            <span>رصيد الدقائق</span>
+                                            <span>{credits.remaining_minutes ?? 0}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between py-2 border-b border-gray-700">
+                                            <span>الرصيد العام</span>
+                                            <span>{credits.remaining_balance ?? 0}</span>
+                                        </div>
                                     </div>
                                 )}
 
@@ -188,7 +354,7 @@ const CourseDetailPage = () => {
                     <div className="mt-8 pt-8 border-t border-gray-100">
                         <h3 className="font-bold text-gray-900 mb-4">التصنيفات</h3>
                         <div className="flex flex-wrap gap-2">
-                            {course.categories.map((cat: string, i: number) => (
+                            {course.categories.map((cat, i) => (
                                 <span key={i} className="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-sm">
                                     {cat}
                                 </span>

@@ -9,36 +9,15 @@ const Articles: React.FC = () => {
   const [articles, setArticles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filteredArticles, setFilteredArticles] = useState<any[]>([]);
   const [totalArticles, setTotalArticles] = useState(0);
-
-  useEffect(() => {
-    fetchArticles();
-  }, []);
-
-  useEffect(() => {
-    if (searchTerm.trim() === '') {
-      setFilteredArticles(articles);
-    } else {
-      const filtered = articles.filter(article =>
-        article.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        article.author.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        article.excerpt.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (article.tags && article.tags.some((tag: string) => 
-          tag.toLowerCase().includes(searchTerm.toLowerCase())
-        ))
-      );
-      setFilteredArticles(filtered);
-    }
-  }, [articles, searchTerm]);
 
   const fetchArticles = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/articles');
+      const response = await api.get('/articles', { params: { search: searchTerm } });
       const articlesData = response.data.data || response.data || [];
       setArticles(articlesData);
-      setTotalArticles(articlesData.length);
+      setTotalArticles(response.data.pagination?.total || articlesData.length);
     } catch (error) {
       console.error('Error fetching articles:', error);
       toast.error('فشل في تحميل المقالات');
@@ -47,6 +26,13 @@ const Articles: React.FC = () => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const debounce = setTimeout(() => {
+      fetchArticles();
+    }, 500);
+    return () => clearTimeout(debounce);
+  }, [searchTerm]);
 
   const handleDelete = async (id: string) => {
     if (!confirm('هل أنت متأكد من حذف هذا المقال؟')) {
@@ -100,6 +86,7 @@ const Articles: React.FC = () => {
           <Link
             to="/articles/create"
             className="flex items-center bg-[#005CB9] hover:bg-[#0047A0] text-white px-4 py-2 rounded-md transition-colors"
+            data-testid="admin-articles-create"
           >
             <Plus size={20} className="ml-2" />
             إضافة مقال جديد
@@ -115,6 +102,7 @@ const Articles: React.FC = () => {
               className="w-full px-4 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#005CB9] focus:border-transparent"
               value={searchTerm}
               onChange={handleSearchChange}
+              data-testid="admin-articles-search"
             />
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500" size={20} />
             {searchTerm && (
@@ -126,11 +114,11 @@ const Articles: React.FC = () => {
               </button>
             )}
           </div>
-          
+
           {/* Results counter */}
-          <div className="mt-2 text-sm text-gray-600">
+          <div className="mt-2 text-sm text-gray-600" data-testid="admin-articles-results">
             {searchTerm ? (
-              `عرض ${filteredArticles.length} من أصل ${totalArticles} مقال`
+              `عرض ${articles.length} من أصل ${totalArticles} مقال`
             ) : (
               `إجمالي ${totalArticles} مقال`
             )}
@@ -161,7 +149,7 @@ const Articles: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredArticles.map((article) => (
+                {articles.map((article) => (
                   <tr key={article.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4">
                       <div className="flex items-center">
@@ -171,7 +159,10 @@ const Articles: React.FC = () => {
                           className="w-12 h-12 rounded-lg object-cover ml-4"
                         />
                         <div>
-                          <div className="text-sm font-medium text-gray-900 line-clamp-2">
+                          <div
+                            className="text-sm font-medium text-gray-900 line-clamp-2"
+                            data-testid={`admin-article-title-${article.id}`}
+                          >
                             {article.title}
                           </div>
                           <div className="text-sm text-gray-500 line-clamp-1">
@@ -201,11 +192,10 @@ const Articles: React.FC = () => {
                       {article.author}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        article.is_featured
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${article.is_featured
                           ? 'bg-yellow-100 text-yellow-800'
                           : 'bg-green-100 text-green-800'
-                      }`}>
+                        }`}>
                         {article.is_featured ? 'مميز' : 'منشور'}
                       </span>
                     </td>
@@ -220,6 +210,7 @@ const Articles: React.FC = () => {
                           rel="noopener noreferrer"
                           className="text-blue-600 hover:text-blue-900 transition-colors"
                           title="عرض المقال"
+                          data-testid={`admin-article-view-${article.id}`}
                         >
                           <Eye size={16} />
                         </a>
@@ -227,6 +218,7 @@ const Articles: React.FC = () => {
                           to={`/articles/edit/${article.id}`}
                           className="text-indigo-600 hover:text-indigo-900 transition-colors"
                           title="تعديل المقال"
+                          data-testid={`admin-article-edit-${article.id}`}
                         >
                           <Edit size={16} />
                         </Link>
@@ -234,6 +226,7 @@ const Articles: React.FC = () => {
                           onClick={() => handleDelete(article.id)}
                           className="text-red-600 hover:text-red-900 transition-colors"
                           title="حذف المقال"
+                          data-testid={`admin-article-delete-${article.id}`}
                         >
                           <Trash2 size={16} />
                         </button>
@@ -245,7 +238,7 @@ const Articles: React.FC = () => {
             </table>
           </div>
 
-          {filteredArticles.length === 0 && (
+          {articles.length === 0 && (
             <div className="text-center py-8">
               {searchTerm ? (
                 <div>
