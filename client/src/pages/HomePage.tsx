@@ -1,6 +1,6 @@
 import React, { useRef, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, BookOpen, FileText, Sparkles, TrendingUp, ChevronLeft, ChevronRight, Video } from 'lucide-react';
+import { ArrowLeft, Sparkles, TrendingUp, ChevronLeft, ChevronRight } from 'lucide-react';
 import FeaturedArticles from '../components/article/FeaturedArticles';
 import ArticleList from '../components/article/ArticleList';
 import { useTags } from '../hooks/useArticles';
@@ -9,20 +9,33 @@ import RotatingDentalImages from '../components/home/RotatingDentalImages';
 import SpecialtySelector from '../components/home/SpecialtySelector';
 import ArticlesByCategorySection from '../components/home/ArticlesByCategorySection';
 import LatestResearchSection from '../components/home/LatestResearchSection';
-
-const ENABLE_COURSES = import.meta.env.VITE_ENABLE_COURSES !== 'false';
+import { useDisplayedItems } from '../hooks/useDisplayedItems';
+import HeroCarousel from '../components/home/HeroCarousel';
 
 const HomePage: React.FC = () => {
   const { data: tags = [] } = useTags();
   const { specialties, save: saveSpecialties } = useUserSpecialties();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const { displayedIds, addIds } = useDisplayedItems();
+
+  const handleItemsLoaded = useCallback((items: any[]) => {
+    addIds(items.map(i => i.id));
+  }, [addIds]);
+
+  const excludeIdsArray = useMemo(() => Array.from(displayedIds), [displayedIds]);
 
   // Order tags: selected specialties first, the rest after
   const orderedTags = useMemo(() => {
     if (!tags.length) return [];
-    const prioritized = specialties.filter((s: string) => tags.includes(s));
-    const rest = tags.filter((t: string) => !specialties.includes(t));
-    return [...prioritized, ...rest];
+
+    // Ensure uniqueness in specialties and tags
+    const uniqueSpecialties = [...new Set(specialties)];
+    const prioritized = uniqueSpecialties.filter((s: string) => tags.includes(s));
+    const rest = tags.filter((t: string) => !uniqueSpecialties.includes(t));
+
+    // Combine and slice to limit the number of sections on homepage (optional but helps focus)
+    // We'll show up to 6 tag sections to avoid infinite scrolling/repetition issues
+    return [...prioritized, ...rest].slice(0, 8);
   }, [tags, specialties]);
 
   const getTagImage = useCallback((tag: string) => {
@@ -111,27 +124,8 @@ const HomePage: React.FC = () => {
                 موسوعة متكاملة تجمع بين أحدث المقالات العلمية، الدورات التدريبية المعتمدة، والأبحاث المتخصصة في طب الأسنان.
               </p>
 
-              {/* Quick Access Grid */}
-              <div className="grid grid-cols-2 gap-4 mt-8">
-                {[
-                  { to: '/research-topics', icon: BookOpen, title: 'المكتبة البحثية', desc: 'أحدث الأبحاث والدراسات', color: 'bg-blue-50 text-blue-600' },
-                  ...(ENABLE_COURSES ? [{ to: '/courses', icon: Video, title: 'الدورات التدريبية', desc: 'تطوير مهاراتك العملية', color: 'bg-purple-50 text-purple-600' }] : []),
-                  { to: '/clinical-cases', icon: Sparkles, title: 'حالات سريرية', desc: 'مناقشة حالات واقعية', color: 'bg-green-50 text-green-600' },
-                  { to: '/articles', icon: FileText, title: 'المقالات العلمية', desc: 'محتوى متجدد يومياً', color: 'bg-orange-50 text-orange-600' },
-                ].map((item, idx) => (
-                  <Link
-                    key={idx}
-                    to={item.to}
-                    className="group flex flex-col p-4 bg-white border border-gray-100 rounded-2xl shadow-sm hover:shadow-md hover:border-blue-200 transition-all duration-300"
-                  >
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-3 ${item.color} group-hover:scale-110 transition-transform`}>
-                      <item.icon size={20} />
-                    </div>
-                    <span className="font-bold text-gray-900 mb-1">{item.title}</span>
-                    <span className="text-xs text-gray-500 font-medium">{item.desc}</span>
-                  </Link>
-                ))}
-              </div>
+              {/* Content Carousel */}
+              <HeroCarousel />
             </div>
 
             {/* Visual Content (Left) */}
@@ -158,7 +152,7 @@ const HomePage: React.FC = () => {
               اكتشف أحدث وأهم المقالات في مجال طب الأسنان من خبراء ومختصين معتمدين
             </p>
           </div>
-          <FeaturedArticles />
+          <FeaturedArticles onItemsLoaded={handleItemsLoaded} />
         </div>
       </section>
 
@@ -294,7 +288,7 @@ const HomePage: React.FC = () => {
             </Link>
           </div>
 
-          <ArticleList limit={6} showFilters={false} lazy={true} />
+          <ArticleList limit={6} showFilters={false} lazy={true} onItemsLoaded={handleItemsLoaded} />
 
           <div className="text-center mt-8 md:hidden">
             <Link
@@ -321,6 +315,8 @@ const HomePage: React.FC = () => {
           key={tag}
           tag={tag}
           isPriority={specialties.includes(tag)}
+          excludeIds={excludeIdsArray}
+          onItemsLoaded={handleItemsLoaded}
         />
       ))}
 

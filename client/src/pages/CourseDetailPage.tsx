@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Clock, User, Calendar, Award, Coins } from 'lucide-react';
+import { Clock, User, Calendar, Award, Coins, Tag, ShieldCheck } from 'lucide-react';
 import { coursesApi, creditsApi } from '../lib/api';
 import { formatDistance } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import toast from 'react-hot-toast';
 import QuizModal from '../components/courses/QuizModal';
 import SecureVideoPlayer from '../components/courses/SecureVideoPlayer';
+import AttentionCheckModal from '../components/courses/AttentionCheckModal';
 
 type BillingModel = 'free' | 'per_course' | 'per_minute';
 
@@ -15,6 +16,13 @@ type PlaybackDescriptor =
     | { type: 'hls'; manifestUrl: string; expiresAt?: string }
     | { type: 'youtube'; url: string }
     | { type: 'mp4'; url: string };
+
+interface TypedCredit {
+    credit_type_id: string;
+    name: string;
+    prefix: string;
+    balance: number;
+}
 
 interface Course {
     id: string;
@@ -33,6 +41,8 @@ interface Course {
     preview_seconds?: number;
     has_access?: boolean;
     requires_auth?: boolean;
+    applicable_typed_credits?: TypedCredit[];
+    attention_required?: boolean;
 }
 
 const CourseDetailPage = () => {
@@ -49,6 +59,14 @@ const CourseDetailPage = () => {
     const [credits, setCredits] = useState<{ remaining_minutes?: number; remaining_balance?: number } | null>(null);
     const [autoPlaybackRequested, setAutoPlaybackRequested] = useState(false);
     const isLoggedIn = Boolean(localStorage.getItem('user_token'));
+
+    // Attention verification state
+    const [attentionRequired, setAttentionRequired] = useState(false);
+    const [currentChallenge, setCurrentChallenge] = useState<any>(null);
+    const [attentionScore, setAttentionScore] = useState<number | null>(null);
+    const [sessionTerminated, setSessionTerminated] = useState(false);
+    const [currentVideoTime, setCurrentVideoTime] = useState(0);
+    const videoControlRef = useRef<{ pause: () => void; resume: () => void } | null>(null);
 
     useEffect(() => {
         const fetchCourse = async () => {
@@ -142,6 +160,12 @@ const CourseDetailPage = () => {
             if (result.credits) {
                 setCredits(result.credits);
             }
+            // Set attention tracking
+            if (result.attention_required) {
+                setAttentionRequired(true);
+            }
+            setSessionTerminated(false);
+            setAttentionScore(null);
         } catch (error: any) {
             const message = error?.response?.data?.error || 'تعذر بدء التشغيل';
             toast.error(message);
@@ -190,6 +214,71 @@ const CourseDetailPage = () => {
         return () => clearInterval(interval);
     }, [id, playbackSessionId, isPlaying, course?.billing_model]);
 
+    // Attention check polling — every 10 seconds while playing
+    useEffect(() => {
+        if (!id || !playbackSessionId || !isPlaying || !attentionRequired || sessionTerminated) return;
+        if (currentChallenge) return; // Don't poll while a challenge is active
+
+        const interval = setInterval(async () => {
+            try {
+                const result = await coursesApi.getAttentionCheck(id, playbackSessionId, currentVideoTime);
+                if (result?.challenge) {
+                    // Pause the video and show the challenge
+                    videoControlRef.current?.pause();
+                    setCurrentChallenge(result.challenge);
+                }
+            } catch {
+                // Non-fatal: silently continue
+            }
+        }, 10000);
+
+        return () => clearInterval(interval);
+    }, [id, playbackSessionId, isPlaying, attentionRequired, sessionTerminated, currentChallenge, currentVideoTime]);
+
+    // Attention check handlers
+    const handleAttentionVerify = useCallback(async (challengeId: string, answer: string) => {
+        if (!id || !playbackSessionId) throw new Error('Missing session');
+        return await coursesApi.verifyAttentionCheck(id, {
+            session_id: playbackSessionId,
+            challenge_id: challengeId,
+            answer
+        });
+    }, [id, playbackSessionId]);
+
+    const handleAttentionExpire = useCallback(async (challengeId: string) => {
+        if (!id || !playbackSessionId) throw new Error('Missing session');
+        return await coursesApi.verifyAttentionCheck(id, {
+            session_id: playbackSessionId,
+            challenge_id: challengeId,
+            expired: true
+        });
+    }, [id, playbackSessionId]);
+
+    const handleAttentionResult = useCallback((result: { passed: boolean; session_terminated: boolean; attention_score?: number; failures: number; max_failures: number }) => {
+        setCurrentChallenge(null);
+
+        if (result.attention_score !== undefined) {
+            setAttentionScore(result.attention_score);
+        }
+
+        if (result.session_terminated) {
+            setSessionTerminated(true);
+            setPlayback(null);
+            setPlaybackSessionId(null);
+            setIsPlaying(false);
+            setAutoPlaybackRequested(false);
+            toast.error(`تم إنهاء الجلسة بسبب عدم الانتباه (${result.failures}/${result.max_failures} محاولات فاشلة). يرجى إعادة بدء المشاهدة.`);
+            return;
+        }
+
+        if (!result.passed) {
+            toast(`تنبيه: ${result.failures}/${result.max_failures} محاولات فاشلة`, { icon: '⚠️' });
+        }
+
+        // Resume video
+        videoControlRef.current?.resume();
+    }, []);
+
     if (isLoading) {
         return (
             <div className="container mx-auto px-4 py-12 flex justify-center">
@@ -221,6 +310,8 @@ const CourseDetailPage = () => {
                                     previewSource={course.preview_source}
                                     previewSeconds={course.preview_seconds}
                                     onPlaybackStateChange={setIsPlaying}
+                                    onTimeUpdate={setCurrentVideoTime}
+                                    videoControlRef={videoControlRef}
                                 />
                             </div>
 
@@ -265,13 +356,24 @@ const CourseDetailPage = () => {
 
                                 {course.billing_model === 'per_course' && !hasAccess ? (
                                     isLoggedIn ? (
-                                    <button
-                                        onClick={handlePurchase}
-                                        className="w-full btn-primary bg-blue-600 hover:bg-blue-700 border-none py-3 mb-4"
-                                        data-testid="course-purchase-button"
-                                    >
-                                        شراء الوصول
-                                    </button>
+                                        <>
+                                            {course.applicable_typed_credits && course.applicable_typed_credits.length > 0 && (
+                                                <div className="bg-amber-500/10 border border-amber-500/20 text-amber-400 p-3 rounded-xl mb-4 text-sm flex items-start gap-2">
+                                                    <Tag size={18} className="shrink-0 mt-0.5" />
+                                                    <div>
+                                                        <span className="font-bold block mb-1">رصيد مخصص متاح</span>
+                                                        سيتم خصم التكلفة من رصيد {course.applicable_typed_credits[0].name} ({course.applicable_typed_credits[0].balance} رصيد متوفر).
+                                                    </div>
+                                                </div>
+                                            )}
+                                            <button
+                                                onClick={handlePurchase}
+                                                className="w-full btn-primary bg-blue-600 hover:bg-blue-700 border-none py-3 mb-4"
+                                                data-testid="course-purchase-button"
+                                            >
+                                                شراء الوصول
+                                            </button>
+                                        </>
                                     ) : (
                                         <div className="bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-center py-3 rounded-xl mb-4 font-medium">
                                             يرجى تسجيل الدخول لشراء الوصول
@@ -330,12 +432,32 @@ const CourseDetailPage = () => {
                                     <p className="text-sm text-gray-300 mb-4">
                                         أكمل مشاهدة الفيديو ثم اختبر معلوماتك للحصول على الشهادة.
                                     </p>
-                                    <button
-                                        onClick={() => setShowQuiz(true)}
-                                        className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl transition-colors font-medium"
-                                    >
-                                        بدء الاختبار
-                                    </button>
+                                    {attentionRequired && attentionScore !== null && attentionScore < 80 ? (
+                                        <div className="text-sm text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">
+                                            <ShieldCheck size={16} className="inline ml-1" />
+                                            يجب تحقيق نسبة انتباه 80% على الأقل للوصول للاختبار. نسبتك الحالية: {attentionScore}%
+                                        </div>
+                                    ) : (
+                                        <button
+                                            onClick={() => setShowQuiz(true)}
+                                            className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl transition-colors font-medium"
+                                        >
+                                            بدء الاختبار
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Attention Score Badge */}
+                            {attentionRequired && playbackSessionId && attentionScore !== null && (
+                                <div className={`rounded-2xl p-4 border text-center ${
+                                    attentionScore >= 80
+                                        ? 'bg-green-500/10 border-green-500/20 text-green-400'
+                                        : 'bg-amber-500/10 border-amber-500/20 text-amber-400'
+                                }`}>
+                                    <ShieldCheck size={20} className="inline ml-1" />
+                                    <span className="font-bold text-lg">{attentionScore}%</span>
+                                    <span className="block text-sm opacity-75 mt-1">نسبة الانتباه</span>
                                 </div>
                             )}
                         </div>
@@ -371,6 +493,16 @@ const CourseDetailPage = () => {
                     courseId={course.id}
                     quizId={quiz.id}
                     questions={quiz.questions}
+                />
+            )}
+
+            {/* Attention Check Modal */}
+            {currentChallenge && (
+                <AttentionCheckModal
+                    challenge={currentChallenge}
+                    onResult={handleAttentionResult}
+                    onVerify={handleAttentionVerify}
+                    onExpire={handleAttentionExpire}
                 />
             )}
         </div>

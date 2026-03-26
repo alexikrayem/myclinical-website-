@@ -28,7 +28,7 @@ import { setupSwagger } from './config/swagger.js';
 
 // Security Middleware
 import { errorHandler } from './middleware/errorHandler.js';
-import { securityHeaders, customSecurityHeaders } from './middleware/securityHeaders.js';
+import { securityHeaders, swaggerSecurityHeaders, customSecurityHeaders } from './middleware/securityHeaders.js';
 import { apiLimiter } from './middleware/rateLimiter.js';
 import { sanitizeData, preventXSS, preventHPP, validateInput } from './middleware/inputSanitizer.js';
 import { preventSensitiveFileAccess } from './middleware/fileValidation.js';
@@ -68,8 +68,13 @@ app.use(metricsMiddleware);
 // Trust proxy (important for rate limiting and security when behind a proxy)
 app.set('trust proxy', 1);
 
-// Security Headers - Apply first
-app.use(securityHeaders);
+// Security Headers - Apply strict headers conditionally (Swagger UI needs relaxed CSP)
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/docs')) {
+    return swaggerSecurityHeaders(req, res, next);
+  }
+  return securityHeaders(req, res, next);
+});
 app.use(customSecurityHeaders);
 
 // Response Compression

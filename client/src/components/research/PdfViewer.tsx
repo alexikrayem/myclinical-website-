@@ -3,8 +3,8 @@ import { Worker, Viewer } from '@react-pdf-viewer/core';
 import { defaultLayoutPlugin } from '@react-pdf-viewer/default-layout';
 import '@react-pdf-viewer/core/lib/styles/index.css';
 import '@react-pdf-viewer/default-layout/lib/styles/index.css';
-import { Loader, AlertTriangle, Lock } from 'lucide-react';
-import api from '../../lib/api';
+import { Loader, AlertTriangle, Lock, Unlock } from 'lucide-react';
+import api, { creditsApi } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 
 interface PdfViewerProps {
@@ -16,6 +16,8 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ researchId }) => {
     const [pdfUrl, setPdfUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [needsUnlock, setNeedsUnlock] = useState(false);
+    const [unlocking, setUnlocking] = useState(false);
 
     // Create new plugin instance
     const defaultLayoutPluginInstance = defaultLayoutPlugin({
@@ -85,9 +87,12 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ researchId }) => {
 
             try {
                 setLoading(true);
+                const token = localStorage.getItem('user_token');
                 // Fetch secure signed URL from our backend
                 // The backend handles checking auth and generating a short-lived signed URL
-                const response = await api.get(`/research/${researchId}/pdf`);
+                const response = await api.get(`/research/${researchId}/pdf`, {
+                    headers: token ? { Authorization: `Bearer ${token}` } : undefined
+                });
 
                 if (response.data.url) {
                     setPdfUrl(response.data.url);
@@ -99,6 +104,8 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ researchId }) => {
                 console.error('Error fetching PDF URL:', err);
                 if (errorResponse.response?.status === 401) {
                     setError('عذراً، يجب تسجيل الدخول لعرض هذا البحث');
+                } else if (errorResponse.response?.status === 403) {
+                    setNeedsUnlock(true);
                 } else if (errorResponse.response?.status === 404) {
                     setError('ملف البحث غير متوفر حالياً');
                 } else {
@@ -111,6 +118,31 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ researchId }) => {
 
         fetchPdfUrl();
     }, [researchId, user]);
+
+    const handleUnlock = async () => {
+        try {
+            setUnlocking(true);
+            setError(null);
+            await creditsApi.consumeResearch(researchId);
+            setNeedsUnlock(false);
+
+            // Re-fetch the PDF now that we've unlocked it
+            setLoading(true);
+            const token = localStorage.getItem('user_token');
+            const response = await api.get(`/research/${researchId}/pdf`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (response.data.url) {
+                setPdfUrl(response.data.url);
+            }
+        } catch (err: unknown) {
+            const errorResponse = err as { response?: { data?: { error?: string } } };
+            setError(errorResponse.response?.data?.error || 'فشل في فتح البحث. تأكد من وجود رصيد كافي.');
+        } finally {
+            setUnlocking(false);
+            setLoading(false);
+        }
+    };
 
     // Disable right click to prevent easy saving
     const handleContextMenu = (e: React.MouseEvent) => {
@@ -143,6 +175,32 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ researchId }) => {
             >
                 <Loader className="w-8 h-8 text-blue-600 animate-spin" />
                 <span className="mr-3 text-gray-600 font-medium">جاري تحميل البحث...</span>
+            </div>
+        );
+    }
+
+    if (needsUnlock) {
+        return (
+            <div
+                className="flex flex-col items-center justify-center p-12 bg-blue-50 rounded-2xl border border-blue-100 h-96"
+                data-testid="research-pdf-locked"
+            >
+                <Lock className="w-12 h-12 text-blue-500 mb-4" />
+                <h3 className="text-xl font-bold text-gray-900 mb-2">محتوى مدفوع</h3>
+                <p className="text-gray-600 text-center mb-6">
+                    هذا البحث يتطلب استخدام رصيد لفتحه (1 رصيد بحث أو 1 من الرصيد العام)
+                </p>
+                <button
+                    onClick={handleUnlock}
+                    disabled={unlocking}
+                    className="btn-primary flex items-center"
+                >
+                    {unlocking ? (
+                        <><Loader className="w-5 h-5 ml-2 animate-spin" /> جاري الفتح...</>
+                    ) : (
+                        <><Unlock className="w-5 h-5 ml-2" /> فتح البحث الان</>
+                    )}
+                </button>
             </div>
         );
     }

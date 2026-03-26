@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Save, X, Upload, Eye, FileText, Users, Calendar, BookOpen } from 'lucide-react';
 import toast from 'react-hot-toast';
 import RichTextEditor from '../editor/RichTextEditor';
+import AuthorForm from './AuthorForm';
 import { api } from '../../context/AuthContext';
 
 interface ResearchFormProps {
@@ -22,8 +23,25 @@ const ResearchForm: React.FC<ResearchFormProps> = ({ research, isEditing = false
   });
   const [researchFile, setResearchFile] = useState<File | null>(null);
   const [authorInput, setAuthorInput] = useState('');
+  const [selectedAuthor, setSelectedAuthor] = useState('');
   const [previewMode, setPreviewMode] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [authors, setAuthors] = useState<{ id: string; name: string }[]>([]);
+  const [loadingAuthors, setLoadingAuthors] = useState(true);
+  const [showAuthorModal, setShowAuthorModal] = useState(false);
+  const [newAuthorName, setNewAuthorName] = useState('');
+
+  const fetchAuthors = async () => {
+    try {
+      const response = await api.get('/authors');
+      setAuthors(response.data || []);
+    } catch (error) {
+      console.error('Error fetching authors:', error);
+      toast.error('فشل في تحميل قائمة المؤلفين');
+    } finally {
+      setLoadingAuthors(false);
+    }
+  };
 
   useEffect(() => {
     if (research && isEditing) {
@@ -36,6 +54,11 @@ const ResearchForm: React.FC<ResearchFormProps> = ({ research, isEditing = false
       });
     }
   }, [research, isEditing]);
+
+  // Fetch authors on mount
+  useEffect(() => {
+    fetchAuthors();
+  }, []);
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -95,17 +118,43 @@ const ResearchForm: React.FC<ResearchFormProps> = ({ research, isEditing = false
     }
   };
 
-  const addAuthor = () => {
-    if (authorInput.trim() && !formData.authors.includes(authorInput.trim())) {
+  const addAuthorByName = (name: string) => {
+    if (name && !formData.authors.includes(name)) {
       setFormData(prev => ({
         ...prev,
-        authors: [...prev.authors, authorInput.trim()]
+        authors: [...prev.authors, name]
       }));
-      setAuthorInput('');
       if (errors.authors) {
         setErrors(prev => ({ ...prev, authors: '' }));
       }
     }
+  };
+
+  const addAuthor = () => {
+    const trimmed = authorInput.trim();
+    if (!trimmed) return;
+    const existing = authors.find(a => a.name.toLowerCase() === trimmed.toLowerCase());
+    if (existing) {
+      addAuthorByName(existing.name);
+      setAuthorInput('');
+      return;
+    }
+    setNewAuthorName(trimmed);
+    setShowAuthorModal(true);
+    setAuthorInput('');
+  };
+
+  const handleAuthorCreated = (createdAuthor: any) => {
+    if (createdAuthor?.name) {
+      setAuthors(prev => {
+        const exists = prev.some(a => a.id === createdAuthor.id);
+        if (exists) return prev;
+        return [...prev, { id: createdAuthor.id, name: createdAuthor.name }];
+      });
+      addAuthorByName(createdAuthor.name);
+    }
+    setShowAuthorModal(false);
+    setNewAuthorName('');
   };
 
   const removeAuthor = (authorToRemove: string) => {
@@ -305,6 +354,29 @@ const ResearchForm: React.FC<ResearchFormProps> = ({ research, isEditing = false
           </div>
           
           <div className="space-y-4">
+            <div className="flex flex-col lg:flex-row gap-3">
+              <select
+                value={selectedAuthor}
+                onChange={(e) => {
+                  const name = e.target.value;
+                  if (!name) return;
+                  addAuthorByName(name);
+                  setSelectedAuthor('');
+                }}
+                className="form-input flex-1"
+                disabled={loadingAuthors}
+              >
+                <option value="">
+                  {loadingAuthors ? 'جارٍ التحميل...' : 'اختر مؤلفاً من القائمة'}
+                </option>
+                {authors.map((author) => (
+                  <option key={author.id} value={author.name}>
+                    {author.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <p className="text-sm text-gray-500">يمكنك أيضاً إنشاء مؤلف جديد بتفاصيله</p>
             <div className="tag-input">
               {formData.authors.map((author, index) => (
                 <span key={index} className="tag-item">
@@ -324,8 +396,26 @@ const ResearchForm: React.FC<ResearchFormProps> = ({ research, isEditing = false
                 onChange={(e) => setAuthorInput(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addAuthor())}
                 className="flex-1 min-w-0 border-none outline-none bg-transparent"
-                placeholder="أضف اسم المؤلف واضغط Enter"
+                placeholder="أدخل اسم مؤلف جديد واضغط Enter"
               />
+            </div>
+            <div className="flex justify-start">
+              <button
+                type="button"
+                onClick={() => {
+                  const trimmed = authorInput.trim();
+                  if (trimmed) {
+                    setNewAuthorName(trimmed);
+                  } else {
+                    setNewAuthorName('');
+                  }
+                  setShowAuthorModal(true);
+                  setAuthorInput('');
+                }}
+                className="btn-secondary"
+              >
+                إضافة مؤلف جديد بالتفاصيل
+              </button>
             </div>
             {errors.authors && <p className="form-error">{errors.authors}</p>}
           </div>
@@ -407,6 +497,38 @@ const ResearchForm: React.FC<ResearchFormProps> = ({ research, isEditing = false
           </button>
         </div>
       </form>
+
+      {/* Create Author Modal */}
+      {showAuthorModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-4 border-b border-gray-200 flex justify-between items-center">
+              <h2 className="text-xl font-bold text-gray-900">إضافة مؤلف جديد</h2>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAuthorModal(false);
+                  setNewAuthorName('');
+                }}
+                className="w-8 h-8 bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center justify-center transition-colors"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-4">
+              <AuthorForm
+                embedded
+                initialName={newAuthorName}
+                onSaved={handleAuthorCreated}
+                onCancel={() => {
+                  setShowAuthorModal(false);
+                  setNewAuthorName('');
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,13 +1,10 @@
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
-import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
+import { getRedisClient } from '../config/redis.js';
+import { supabaseAdmin } from '../config/supabase.js';
 
 dotenv.config();
-
-const supabase = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-);
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -34,11 +31,28 @@ export const authenticateUser = async (req, res, next) => {
         // Verify JWT token
         const decoded = jwt.verify(token, JWT_SECRET);
 
-        // Hash token to match database record
-        const tokenHash = Buffer.from(token).toString('base64').substring(0, 64);
+        // Hash token securely
+        const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+        const redisClient = await getRedisClient();
+        const cacheKey = `session:${tokenHash}`;
+
+        if (redisClient) {
+            try {
+                const cachedSession = await redisClient.get(cacheKey);
+                if (cachedSession) {
+                    const sessionData = JSON.parse(cachedSession);
+                    req.user = sessionData.user;
+                    req.sessionId = sessionData.sessionId;
+                    return next();
+                }
+            } catch (err) {
+                console.error('Redis cache error:', err);
+            }
+        }
 
         // Check if session is still active in database
-        const { data: session, error: sessionError } = await supabase
+        const { data: session, error: sessionError } = await supabaseAdmin
             .from('user_sessions')
             .select('*, users(*)')
             .eq('user_id', decoded.userId)
@@ -71,6 +85,19 @@ export const authenticateUser = async (req, res, next) => {
             createdAt: session.users.created_at
         };
         req.sessionId = session.id;
+
+        if (redisClient) {
+            try {
+                const payload = {
+                    user: req.user,
+                    sessionId: req.sessionId
+                };
+                // Cache for 1 hour to reduce DB hits
+                await redisClient.set(cacheKey, JSON.stringify(payload), { EX: 3600 });
+            } catch (err) {
+                console.error('Redis set error:', err);
+            }
+        }
 
         next();
     } catch (error) {
@@ -111,7 +138,7 @@ export const optionalAuth = async (req, res, next) => {
     try {
         const decoded = jwt.verify(token, JWT_SECRET);
 
-        const { data: user } = await supabase
+        const { data: user } = await supabaseAdmin
             .from('users')
             .select('*')
             .eq('id', decoded.userId)
@@ -148,11 +175,11 @@ export const generateToken = (userId) => {
  * Create session in database
  */
 export const createSession = async (userId, token, deviceInfo = null, ipAddress = null) => {
-    const tokenHash = Buffer.from(token).toString('base64').substring(0, 64);
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7); // 7 days
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
         .from('user_sessions')
         .insert({
             user_id: userId,
@@ -177,7 +204,14 @@ export const createSession = async (userId, token, deviceInfo = null, ipAddress 
  * Invalidate session
  */
 export const invalidateSession = async (sessionId) => {
-    const { error } = await supabase
+    // Get token_hash to remove from cache
+    const { data: sessionData } = await supabaseAdmin
+        .from('user_sessions')
+        .select('token_hash')
+        .eq('id', sessionId)
+        .single();
+
+    const { error } = await supabaseAdmin
         .from('user_sessions')
         .update({ is_active: false })
         .eq('id', sessionId);
@@ -186,13 +220,27 @@ export const invalidateSession = async (sessionId) => {
         console.error('Error invalidating session:', error);
         throw error;
     }
+
+    if (sessionData && sessionData.token_hash) {
+        const redisClient = await getRedisClient();
+        if (redisClient) {
+            await redisClient.del(`session:${sessionData.token_hash}`).catch(e => console.error('Redis del error:', e));
+        }
+    }
 };
 
 /**
  * Invalidate all user sessions
  */
 export const invalidateAllUserSessions = async (userId) => {
-    const { error } = await supabase
+    // Get token hashes to remove from cache
+    const { data: sessions } = await supabaseAdmin
+        .from('user_sessions')
+        .select('token_hash')
+        .eq('user_id', userId)
+        .eq('is_active', true);
+
+    const { error } = await supabaseAdmin
         .from('user_sessions')
         .update({ is_active: false })
         .eq('user_id', userId);
@@ -200,6 +248,16 @@ export const invalidateAllUserSessions = async (userId) => {
     if (error) {
         console.error('Error invalidating sessions:', error);
         throw error;
+    }
+
+    if (sessions && sessions.length > 0) {
+        const redisClient = await getRedisClient();
+        if (redisClient) {
+            const keys = sessions.map(s => `session:${s.token_hash}`);
+            if (keys.length > 0) {
+                await redisClient.del(keys).catch(e => console.error('Redis del error:', e));
+            }
+        }
     }
 };
 

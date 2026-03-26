@@ -1,13 +1,8 @@
 import jwt from 'jsonwebtoken';
-import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
+import { supabaseAdmin, supabasePublic } from '../config/supabase.js';
 
 dotenv.config();
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
 
 import { getRedisClient } from '../config/redis.js';
 
@@ -17,7 +12,9 @@ const LOCK_DURATION = 15 * 60; // 15 minutes in seconds
 
 export const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  const headerToken = authHeader && authHeader.split(' ')[1];
+  const cookieToken = req.cookies?.session;
+  const token = headerToken || cookieToken;
 
   if (!token) {
     return res.status(401).json({
@@ -28,7 +25,7 @@ export const authenticateToken = async (req, res, next) => {
 
   try {
     // Verify the token with Supabase
-    const { data, error } = await supabase.auth.getUser(token);
+    const { data, error } = await supabasePublic.auth.getUser(token);
 
     if (error) {
       // Don't log full error in production
@@ -49,7 +46,7 @@ export const authenticateToken = async (req, res, next) => {
     }
 
     // Check if the user is an admin
-    const { data: adminData, error: adminError } = await supabase
+    const { data: adminData, error: adminError } = await supabaseAdmin
       .from('admins')
       .select('*')
       .eq('id', data.user.id)
@@ -84,13 +81,64 @@ export const authenticateToken = async (req, res, next) => {
   }
 };
 
+// In-memory fallback for rate limiting
+const memoryAttempts = new Map();
+
+// Periodic cleanup of memory fallback to prevent leaks
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of memoryAttempts.entries()) {
+    if (value.lockedUntil && now > value.lockedUntil) {
+        memoryAttempts.delete(key);
+    } else if (!value.lockedUntil && value.timestamp && (now - value.timestamp > LOCK_DURATION * 1000)) {
+        memoryAttempts.delete(key);
+    }
+  }
+}, 60 * 60 * 1000).unref();
+
 // Track and limit failed login attempts
 export const trackLoginAttempt = async (identifier, success) => {
   const client = await getRedisClient();
-  // Fallback to memory if no redis (simplified: allow if redis down)
-  if (!client) return { allowed: true };
-
   const key = getLoginKey(identifier);
+  const now = Date.now();
+
+  // Fallback to memory if no redis
+  if (!client) {
+    if (success) {
+      memoryAttempts.delete(key);
+      return { allowed: true };
+    }
+    
+    let attempts = memoryAttempts.get(key) || { count: 0, lockedUntil: null };
+    
+    if (attempts.lockedUntil && now < attempts.lockedUntil) {
+      const remainingTime = Math.ceil((attempts.lockedUntil - now) / 1000 / 60);
+      return {
+        allowed: false,
+        reason: `Account temporarily locked. Try again in ${remainingTime} minutes.`,
+        lockedUntil: attempts.lockedUntil
+      };
+    }
+    
+    attempts.count++;
+    attempts.timestamp = now;
+    
+    if (attempts.count >= 5) {
+      attempts.lockedUntil = now + (LOCK_DURATION * 1000);
+      memoryAttempts.set(key, attempts);
+      return {
+        allowed: false,
+        reason: 'Too many failed login attempts. Account locked for 15 minutes.',
+        lockedUntil: attempts.lockedUntil
+      };
+    }
+    
+    memoryAttempts.set(key, attempts);
+    return {
+      allowed: true,
+      remainingAttempts: 5 - attempts.count
+    };
+  }
 
   if (success) {
     // Reset on successful login
@@ -100,7 +148,6 @@ export const trackLoginAttempt = async (identifier, success) => {
     // Check current attempts
     let attempts = await client.get(key);
     attempts = attempts ? JSON.parse(attempts) : { count: 0, lockedUntil: null };
-    const now = Date.now();
 
     // Check if account is locked
     if (attempts.lockedUntil && now < attempts.lockedUntil) {
@@ -144,15 +191,28 @@ export const checkLoginAllowed = async (req, res, next) => {
   if (!identifier) return next();
 
   const client = await getRedisClient();
-  if (!client) return next();
-
   const key = getLoginKey(identifier);
+  const now = Date.now();
+
+  if (!client) {
+    const attempts = memoryAttempts.get(key);
+    if (attempts && attempts.lockedUntil && now < attempts.lockedUntil) {
+      const remainingTime = Math.ceil((attempts.lockedUntil - now) / 1000 / 60);
+      return res.status(429).json({
+        error: `Account temporarily locked due to multiple failed login attempts. Try again in ${remainingTime} minutes.`,
+        code: 'ACCOUNT_LOCKED',
+        retryAfter: remainingTime * 60
+      });
+    }
+    return next();
+  }
+
   const data = await client.get(key);
 
   if (data) {
     const attempts = JSON.parse(data);
-    if (attempts.lockedUntil && Date.now() < attempts.lockedUntil) {
-      const remainingTime = Math.ceil((attempts.lockedUntil - Date.now()) / 1000 / 60);
+    if (attempts.lockedUntil && now < attempts.lockedUntil) {
+      const remainingTime = Math.ceil((attempts.lockedUntil - now) / 1000 / 60);
       return res.status(429).json({
         error: `Account temporarily locked due to multiple failed login attempts. Try again in ${remainingTime} minutes.`,
         code: 'ACCOUNT_LOCKED',

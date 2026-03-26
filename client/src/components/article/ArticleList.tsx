@@ -9,9 +9,10 @@ interface ArticleListProps {
   limit?: number;
   showFilters?: boolean;
   lazy?: boolean;
+  onItemsLoaded?: (items: any[]) => void;
 }
 
-const ArticleList: React.FC<ArticleListProps> = ({ tag, limit = 12, showFilters = true, lazy = false }) => {
+const ArticleList: React.FC<ArticleListProps> = ({ tag, limit = 12, showFilters = true, lazy = false, onItemsLoaded }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || '');
   const [selectedTags, setSelectedTags] = useState<string[]>(tag ? [tag] : []);
@@ -51,6 +52,13 @@ const ArticleList: React.FC<ArticleListProps> = ({ tag, limit = 12, showFilters 
     const raw = response?.data || response;
     return Array.isArray(raw) ? raw : [];
   }, [response]);
+
+  useEffect(() => {
+    if (articles.length > 0 && onItemsLoaded) {
+      onItemsLoaded(articles);
+    }
+  }, [articles, onItemsLoaded]);
+
   const totalResults = response?.pagination?.total || articles.length;
 
   const availableTags = useMemo(() => {

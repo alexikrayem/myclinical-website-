@@ -1,5 +1,16 @@
 // Secure error handler that prevents information leakage
+import { AppError } from '../utils/errors.js';
+
 export const errorHandler = (err, req, res, next) => {
+  if (err instanceof AppError) {
+    return res.status(err.statusCode).json({
+      error: err.message,
+      code: err.code,
+      details: (process.env.NODE_ENV === 'development' || err.expose) ? err.details : undefined,
+      requestId: req.id || undefined,
+    });
+  }
+
   // Log full error for debugging (only in server logs)
   if (process.env.NODE_ENV === 'development') {
     console.error('Error details:', err);
@@ -36,6 +47,14 @@ export const errorHandler = (err, req, res, next) => {
       error: 'Validation failed',
       code: 'VALIDATION_ERROR',
       details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  }
+
+  if (err.name === 'ZodError') {
+    return res.status(400).json({
+      error: 'Validation failed',
+      code: 'VALIDATION_ERROR',
+      details: process.env.NODE_ENV === 'development' ? err.issues : undefined
     });
   }
   

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { FileText, Search, Filter, X, Loader, BookOpen, Award, Users } from 'lucide-react';
+import { FileText, Search, Filter, X, Loader, BookOpen } from 'lucide-react';
 import ResearchCard from '../components/research/ResearchCard';
 import { researchApi } from '../lib/api';
 
@@ -105,33 +105,6 @@ const ResearchTopicsPage: React.FC = () => {
           <p className="text-modern text-lg max-w-3xl mx-auto">
             استكشف أحدث الأبحاث والدراسات العلمية في مجال طب الأسنان من أشهر المجلات والدوريات العلمية المحكمة
           </p>
-        </div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-          <div className="form-modern text-center">
-            <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <FileText className="w-8 h-8 text-white" />
-            </div>
-            <div className="text-3xl font-bold text-gray-900 mb-2">{totalResults}</div>
-            <p className="text-gray-600">بحث علمي</p>
-          </div>
-
-          <div className="form-modern text-center">
-            <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Award className="w-8 h-8 text-white" />
-            </div>
-            <div className="text-3xl font-bold text-gray-900 mb-2">{availableJournals.length}</div>
-            <p className="text-gray-600">مجلة علمية</p>
-          </div>
-
-          <div className="form-modern text-center">
-            <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Users className="w-8 h-8 text-white" />
-            </div>
-            <div className="text-3xl font-bold text-gray-900 mb-2">200+</div>
-            <p className="text-gray-600">باحث ومؤلف</p>
-          </div>
         </div>
 
         {/* Search and Filters */}

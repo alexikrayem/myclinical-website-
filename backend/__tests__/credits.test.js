@@ -36,6 +36,8 @@ jest.unstable_mockModule('../middleware/rateLimiter.js', () => ({
     uploadLimiter: (req, res, next) => next(),
     aiLimiter: (req, res, next) => next(),
     searchLimiter: (req, res, next) => next(),
+    redeemLimiter: (req, res, next) => next(),
+    accountRedeemLimiter: (req, res, next) => next(),
     limiters: {}
 }));
 
@@ -83,6 +85,9 @@ describe('Credits Routes Integration Tests', () => {
                 error: null
             });
 
+            // 3. typed credits query (returns via .then, not .single)
+            mockSupabase.then = jest.fn((resolve) => resolve({ data: [], error: null }));
+
             const res = await request(app)
                 .get('/api/credits/balance')
                 .set('Authorization', `Bearer ${validToken}`);
@@ -90,6 +95,7 @@ describe('Credits Routes Integration Tests', () => {
             expect(res.status).toBe(200);
             expect(res.body.balance).toBe(50);
             expect(res.body.video_watch_minutes).toBe(100);
+            expect(res.body).toHaveProperty('typed_credits');
         });
     });
 
@@ -110,14 +116,31 @@ describe('Credits Routes Integration Tests', () => {
             const res = await request(app)
                 .post('/api/credits/redeem')
                 .set('Authorization', `Bearer ${validToken}`)
-                .send({ code: 'FREE100' });
+                .send({ code: 'FREE-1111-2222-3333' });
 
             expect(res.status).toBe(200);
             expect(res.body.success).toBe(true);
             expect(res.body.credits.balance).toBe(100);
         });
 
-        it('should fail with invalid code', async () => {
+        it('should fail with structurally invalid code format', async () => {
+            // Because Zod immediately blocks 'INVALID', it won't even hit DB
+            // 1. authenticateUser
+            mockSupabase.single.mockResolvedValueOnce({
+                data: { id: 'session-1', users: { id: 'user-123', is_active: true } },
+                error: null
+            });
+
+            const res = await request(app)
+                .post('/api/credits/redeem')
+                .set('Authorization', `Bearer ${validToken}`)
+                .send({ code: 'INVALID' });
+
+            expect(res.status).toBe(400);
+            expect(res.body.error).toBe('Validation Error');
+        });
+
+        it('should fail with valid format but rejected by DB', async () => {
             // 1. authenticateUser
             mockSupabase.single.mockResolvedValueOnce({
                 data: { id: 'session-1', users: { id: 'user-123', is_active: true } },
@@ -133,7 +156,7 @@ describe('Credits Routes Integration Tests', () => {
             const res = await request(app)
                 .post('/api/credits/redeem')
                 .set('Authorization', `Bearer ${validToken}`)
-                .send({ code: 'INVALID' });
+                .send({ code: 'BAD-1111-2222-3333' });
 
             expect(res.status).toBe(400);
             expect(res.body.error).toBe('Invalid code');

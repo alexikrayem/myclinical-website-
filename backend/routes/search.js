@@ -1,5 +1,4 @@
 import express from 'express';
-import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import { query, validationResult } from 'express-validator';
 import { searchLimiter } from '../middleware/rateLimiter.js';
@@ -8,14 +7,13 @@ import { ensureMeiliIndexes, getMeiliClient, isMeiliEnabled } from '../services/
 import { normalizeQuery } from '../services/search/normalize.js';
 import { getHitScore, orderByIdList } from '../services/search/searchService.js';
 import { MERGED_FETCH_CAP, SEARCH_TYPE_WEIGHTS } from '../services/search/searchConfig.js';
+import { supabasePublic as supabase } from '../config/supabase.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
+import { AppError } from '../utils/errors.js';
 
 dotenv.config();
 
 const router = express.Router();
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
 
 const TYPE_MAP = {
   article: 'articles',
@@ -98,7 +96,7 @@ router.get('/',
     query('limit').optional().isInt({ min: 1, max: 50 }).toInt(),
     query('page').optional().isInt({ min: 1 }).toInt()
   ],
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
@@ -304,9 +302,9 @@ router.get('/',
       });
     } catch (error) {
       console.error('Unified search error:', error);
-      res.status(500).json({ error: 'Search failed' });
+      throw new AppError('Search failed', 500, 'SEARCH_FAILED');
     }
-  }
+  })
 );
 
 export default router;

@@ -1,14 +1,12 @@
 import express from 'express';
-import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
+import { supabaseAdmin as supabase } from '../config/supabase.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
+import { AppError } from '../utils/errors.js';
 
 dotenv.config();
 
 const router = express.Router();
-const supabase = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-);
 
 /**
  * @swagger
@@ -39,7 +37,7 @@ import { authenticateUser } from '../middleware/userAuth.js'; // Added import
 
 // ... existing code ...
 
-router.get('/:id/pdf', authenticateUser, async (req, res) => {
+router.get('/:id/pdf', authenticateUser, asyncHandler(async (req, res) => {
     try {
         const { id } = req.params;
 
@@ -49,12 +47,38 @@ router.get('/:id/pdf', authenticateUser, async (req, res) => {
         // 2. Get research paper details
         const { data: research, error: researchError } = await supabase
             .from('researches')
-            .select('id, title, file_url')
+            .select('id, title, file_url, credits_required')
             .eq('id', id)
             .single();
 
         if (researchError || !research) {
             return res.status(404).json({ error: 'Research paper not found' });
+        }
+
+        const creditsRequired = research.credits_required || 0;
+
+        // 2.5 Verify access based on credits
+        if (creditsRequired > 0) {
+            // Check if user is admin
+            const { data: adminCheck } = await supabase
+                .from('admins')
+                .select('id')
+                .eq('id', userId)
+                .single();
+
+            if (!adminCheck) {
+                // Not an admin, check research_access
+                const { data: access } = await supabase
+                    .from('research_access')
+                    .select('id')
+                    .eq('user_id', userId)
+                    .eq('research_id', id)
+                    .single();
+
+                if (!access) {
+                    return res.status(403).json({ error: 'لم تقم بفتح هذا البحث بعد. يجب خصم رصيد.' });
+                }
+            }
         }
 
         // 3. Check if file_url is a Supabase storage path
@@ -83,7 +107,7 @@ router.get('/:id/pdf', authenticateUser, async (req, res) => {
 
             if (signedUrlError) {
                 console.error('Error creating signed URL:', signedUrlError);
-                return res.status(500).json({ error: 'Failed to generate PDF URL' });
+                throw new AppError('Failed to generate PDF URL', 500, 'PDF_SIGNED_URL_FAILED');
             }
 
             return res.json({
@@ -104,8 +128,8 @@ router.get('/:id/pdf', authenticateUser, async (req, res) => {
 
     } catch (error) {
         console.error('Error fetching PDF:', error);
-        res.status(500).json({ error: 'Failed to get PDF' });
+        throw new AppError('Failed to get PDF', 500, 'PDF_FETCH_FAILED');
     }
-});
+}));
 
 export default router;

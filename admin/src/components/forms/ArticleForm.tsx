@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Save, X, Upload, Link as LinkIcon, Eye, Image, FileText, User, Tag, Star, Coins, Sparkles, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import RichTextEditor from '../editor/RichTextEditor';
+import AuthorForm from './AuthorForm';
 import { api } from '../../context/AuthContext';
 
 interface ArticleFormProps {
@@ -31,6 +32,8 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [authors, setAuthors] = useState<{ id: string; name: string }[]>([]);
   const [loadingAuthors, setLoadingAuthors] = useState(true);
+  const [showAuthorModal, setShowAuthorModal] = useState(false);
+  const [newAuthorName, setNewAuthorName] = useState('');
   const [categories, setCategories] = useState<string[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [isSuggestingTags, setIsSuggestingTags] = useState(false);
@@ -130,6 +133,22 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
     }
+  };
+
+  const handleAuthorCreated = (createdAuthor: any) => {
+    if (createdAuthor?.name) {
+      setAuthors(prev => {
+        const exists = prev.some(a => a.id === createdAuthor.id);
+        if (exists) return prev;
+        return [...prev, { id: createdAuthor.id, name: createdAuthor.name }];
+      });
+      setFormData(prev => ({ ...prev, author: createdAuthor.name }));
+      if (errors.author) {
+        setErrors(prev => ({ ...prev, author: '' }));
+      }
+    }
+    setShowAuthorModal(false);
+    setNewAuthorName('');
   };
 
   const handleContentChange = (content: string) => {
@@ -382,6 +401,25 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
                   </option>
                 ))}
               </select>
+              <div className="mt-3 space-y-2">
+                <p className="text-sm text-gray-500">أو أضف مؤلفاً جديداً بالتفاصيل</p>
+                <div className="flex gap-3">
+                  <input
+                    type="text"
+                    value={newAuthorName}
+                    onChange={(e) => setNewAuthorName(e.target.value)}
+                    className="form-input flex-1"
+                    placeholder="اسم المؤلف الجديد (اختياري)"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAuthorModal(true)}
+                    className="btn-secondary"
+                  >
+                    إضافة مؤلف
+                  </button>
+                </div>
+              </div>
               {errors.author && <p className="form-error">{errors.author}</p>}
             </div>
           </div>
@@ -664,6 +702,38 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
           </button>
         </div>
       </form>
+
+      {/* Create Author Modal */}
+      {showAuthorModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-4 border-b border-gray-200 flex justify-between items-center">
+              <h2 className="text-xl font-bold text-gray-900">إضافة مؤلف جديد</h2>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAuthorModal(false);
+                  setNewAuthorName('');
+                }}
+                className="w-8 h-8 bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center justify-center transition-colors"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-4">
+              <AuthorForm
+                embedded
+                initialName={newAuthorName}
+                onSaved={handleAuthorCreated}
+                onCancel={() => {
+                  setShowAuthorModal(false);
+                  setNewAuthorName('');
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

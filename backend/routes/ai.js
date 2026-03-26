@@ -8,7 +8,9 @@ import { dirname } from 'path';
 import { authenticateToken } from '../middleware/auth.js';
 import dotenv from 'dotenv';
 
-import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin as supabase } from '../config/supabase.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
+import { AppError } from '../utils/errors.js';
 
 dotenv.config();
 
@@ -18,10 +20,6 @@ const __dirname = dirname(__filename);
 const router = express.Router();
 
 // Initialize Supabase
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
 
 // Initialize Google Gemini AI
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY);
@@ -78,7 +76,7 @@ async function extractTextFromFile(filePath, mimetype) {
 }
 
 // Generate article content using Gemini AI
-router.post('/generate-content', authenticateToken, upload.single('file'), async (req, res) => {
+router.post('/generate-content', authenticateToken, upload.single('file'), asyncHandler(async (req, res) => {
   try {
     const { textInput, language = 'arabic', contentType = 'article' } = req.body;
     let inputText = '';
@@ -152,25 +150,19 @@ Make sure the content is:
 
     // Handle specific Gemini API errors
     if (error.message.includes('API_KEY')) {
-      return res.status(500).json({
-        error: 'AI service configuration error. Please check API key.'
-      });
+      throw new AppError('AI service configuration error. Please check API key.', 500, 'AI_CONFIG_ERROR');
     }
 
     if (error.message.includes('quota')) {
-      return res.status(429).json({
-        error: 'AI service quota exceeded. Please try again later.'
-      });
+      throw new AppError('AI service quota exceeded. Please try again later.', 429, 'AI_QUOTA_EXCEEDED');
     }
 
-    res.status(500).json({
-      error: 'Failed to generate content. Please try again.'
-    });
+    throw new AppError('Failed to generate content. Please try again.', 500, 'AI_GENERATE_FAILED');
   }
-});
+}));
 
 // Suggest tags for an article
-router.post('/suggest-tags', authenticateToken, async (req, res) => {
+router.post('/suggest-tags', authenticateToken, asyncHandler(async (req, res) => {
   try {
     const { title, excerpt, content } = req.body;
 
@@ -225,41 +217,31 @@ Example Response:
         throw new Error('AI response is not an array');
       }
 
-      res.json({
-        success: true,
-        tags: suggestedTags,
-        message: 'Tags suggested successfully'
-      });
-    } catch (parseError) {
+    res.json({
+      success: true,
+      tags: suggestedTags,
+      message: 'Tags suggested successfully'
+    });
+  } catch (parseError) {
       console.error('Error parsing AI response:', text);
-      throw new Error('Failed to parse suggested tags from AI');
+      throw new AppError('Failed to parse suggested tags from AI', 500, 'AI_TAGS_PARSE_FAILED');
     }
 
   } catch (error) {
     console.error('Error suggesting tags with Gemini AI:', error);
-    res.status(500).json({ error: 'Failed to suggest tags' });
+    throw new AppError('Failed to suggest tags', 500, 'AI_TAGS_FAILED');
   }
-});
-router.get('/health', authenticateToken, async (req, res) => {
-  try {
-    if (!process.env.GOOGLE_GEMINI_API_KEY) {
-      return res.status(500).json({
-        status: 'error',
-        message: 'Google Gemini API key not configured'
-      });
-    }
+}));
+router.get('/health', authenticateToken, asyncHandler(async (req, res) => {
+  if (!process.env.GOOGLE_GEMINI_API_KEY) {
+    throw new AppError('Google Gemini API key not configured', 500, 'AI_CONFIG_ERROR');
+  }
 
-    res.json({
-      status: 'ok',
-      service: 'Google Gemini AI',
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: 'error',
-      message: 'AI service health check failed'
-    });
-  }
-});
+  res.json({
+    status: 'ok',
+    service: 'Google Gemini AI',
+    timestamp: new Date().toISOString()
+  });
+}));
 
 export default router;

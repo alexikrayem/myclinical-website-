@@ -88,7 +88,8 @@ jest.unstable_mockModule('../middleware/rateLimiter.js', () => ({
     searchLimiter: (req, res, next) => next(),
     uploadLimiter: (req, res, next) => next(),
     apiLimiter: (req, res, next) => next(),
-    authLimiter: (req, res, next) => next()
+    authLimiter: (req, res, next) => next(),
+    redeemLimiter: (req, res, next) => next()
 }));
 
 // Mock global fetch to prevent network errors

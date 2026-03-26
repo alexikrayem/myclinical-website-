@@ -2,6 +2,7 @@ import mongoSanitize from 'express-mongo-sanitize';
 import xss from 'xss-clean';
 import hpp from 'hpp';
 import sanitizeHtml from 'sanitize-html';
+import path from 'path';
 
 // Sanitize data to prevent NoSQL injection
 export const sanitizeData = mongoSanitize({
@@ -55,8 +56,8 @@ export const validateInput = (req, res, next) => {
 
 // Sanitize file names
 export const sanitizeFileName = (filename) => {
-	// Remove any path traversal attempts
-	let sanitized = filename.replace(/\.\./g, '');
+	// Extract the base file name to robustly strip any directory traversal paths
+	let sanitized = path.basename(filename || '');
 
 	// Remove special characters except alphanumeric, dash, underscore, and dot
 	sanitized = sanitized.replace(/[^a-zA-Z0-9\u0600-\u06FF._-]/g, '_');

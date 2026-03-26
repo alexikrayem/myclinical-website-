@@ -1,22 +1,20 @@
 import express from 'express';
-import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import { sanitizeSearchInput } from '../utils/searchUtils.js';
 import { meiliSearch, orderByIdList } from '../services/search/searchService.js';
+import { validate, schemas } from '../middleware/validation.js';
+import { supabasePublic as supabase } from '../config/supabase.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
+import { AppError, NotFoundError } from '../utils/errors.js';
 
 dotenv.config();
 
 const router = express.Router();
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
 
 // Get all research papers with advanced search
-router.get('/', async (req, res) => {
-  try {
-    const { journal, search, limit = 12, page = 1 } = req.query;
-    const offset = (page - 1) * limit;
+router.get('/', validate(schemas.researchList), asyncHandler(async (req, res) => {
+  const { journal, search, limit, page } = req.query;
+  const offset = (page - 1) * limit;
 
     let query = supabase.from('researches').select('id, title, journal, abstract, publication_date, authors', { count: 'exact' });
 
@@ -28,8 +26,8 @@ router.get('/', async (req, res) => {
     // Search with Meilisearch if available, fallback to ilike
     if (search) {
       const meiliResult = await meiliSearch('researches', search, {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page,
+        limit,
         filters: {
           ...(journal ? { journal } : {})
         }
@@ -44,8 +42,8 @@ router.get('/', async (req, res) => {
             data: [],
             pagination: {
               total,
-              page: parseInt(page),
-              limit: parseInt(limit),
+              page,
+              limit,
               pages: Math.ceil(total / limit)
             }
           });
@@ -56,15 +54,17 @@ router.get('/', async (req, res) => {
           .select('id, title, journal, abstract, publication_date, authors')
           .in('id', ids);
 
-        if (fetchError) throw fetchError;
+        if (fetchError) {
+          throw new AppError('Failed to fetch research papers', 500, 'RESEARCH_FETCH_FAILED');
+        }
 
         const ordered = orderByIdList(rows, ids);
         return res.json({
           data: ordered,
           pagination: {
             total,
-            page: parseInt(page),
-            limit: parseInt(limit),
+            page,
+            limit,
             pages: Math.ceil(total / limit)
           }
         });
@@ -78,29 +78,26 @@ router.get('/', async (req, res) => {
 
     const { data, error, count } = await query
       .order('publication_date', { ascending: false })
-      .range(offset, offset + parseInt(limit) - 1);
+      .range(offset, offset + limit - 1);
 
-    if (error) throw error;
+    if (error) {
+      throw new AppError('Failed to fetch research papers', 500, 'RESEARCH_FETCH_FAILED');
+    }
 
     res.json({
       data,
       pagination: {
         total: count,
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page,
+        limit,
         pages: Math.ceil(count / limit)
       }
     });
-  } catch (error) {
-    console.error('Error fetching research papers:', error);
-    res.status(500).json({ error: 'Failed to fetch research papers' });
-  }
-});
+}));
 
 // Get single research paper by ID
-router.get('/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
+router.get('/:id', asyncHandler(async (req, res) => {
+  const { id } = req.params;
 
     const { data, error } = await supabase
       .from('researches')
@@ -108,19 +105,15 @@ router.get('/:id', async (req, res) => {
       .eq('id', id)
       .single();
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return res.status(404).json({ error: 'Research paper not found' });
-      }
-      throw error;
+  if (error) {
+    if (error.code === 'PGRST116') {
+      throw new NotFoundError('Research paper not found');
     }
-
-    res.json(data);
-  } catch (error) {
-    console.error('Error fetching research paper:', error);
-    res.status(500).json({ error: 'Failed to fetch research paper' });
+    throw new AppError('Failed to fetch research paper', 500, 'RESEARCH_FETCH_FAILED');
   }
-});
+
+  res.json(data);
+}));
 
 /**
  * @swagger
@@ -139,10 +132,9 @@ router.get('/:id', async (req, res) => {
  *       200:
  *         description: List of related research papers
  */
-router.get('/:id/related', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const limit = parseInt(req.query.limit) || 3;
+router.get('/:id/related', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const limit = parseInt(req.query.limit) || 3;
 
     // 1. Get current paper details to find related ones
     const { data: currentPaper, error: fetchError } = await supabase
@@ -151,7 +143,9 @@ router.get('/:id/related', async (req, res) => {
       .eq('id', id)
       .single();
 
-    if (fetchError) throw fetchError;
+    if (fetchError) {
+      throw new AppError('Failed to fetch related research', 500, 'RESEARCH_RELATED_FAILED');
+    }
 
     // 2. Find related papers
     // Strategy: Same journal OR similar title/content using full-text search
@@ -168,35 +162,30 @@ router.get('/:id/related', async (req, res) => {
 
     const { data: related, error: relatedError } = await query;
 
-    if (relatedError) throw relatedError;
+    if (relatedError) {
+      throw new AppError('Failed to fetch related research', 500, 'RESEARCH_RELATED_FAILED');
+    }
 
     // If we didn't find enough related by journal, try FTS similarity (future improvement)
     // For now, this is a good start.
 
-    res.json(related);
-  } catch (error) {
-    console.error('Error fetching related research:', error);
-    res.status(500).json({ error: 'Failed to fetch related research' });
-  }
-});
+  res.json(related);
+}));
 
 // Get available journals
-router.get('/journals/list', async (req, res) => {
-  try {
-    const { data, error } = await supabase
+router.get('/journals/list', asyncHandler(async (req, res) => {
+  const { data, error } = await supabase
       .from('researches')
       .select('journal');
 
-    if (error) throw error;
+  if (error) {
+    throw new AppError('Failed to fetch journals', 500, 'RESEARCH_JOURNALS_FAILED');
+  }
 
     // Extract unique journal names
     const journals = [...new Set(data.map(item => item.journal))];
 
-    res.json(journals);
-  } catch (error) {
-    console.error('Error fetching journals:', error);
-    res.status(500).json({ error: 'Failed to fetch journals' });
-  }
-});
+  res.json(journals);
+}));
 
 export default router;

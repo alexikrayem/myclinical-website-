@@ -1,5 +1,4 @@
 import express from 'express';
-import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import multer from "multer";
 import fs from "fs";
@@ -13,14 +12,14 @@ import { cacheMiddleware } from '../middleware/cache.js';
 import { validateUploadedFile } from '../middleware/fileValidation.js';
 import { body, query, validationResult } from 'express-validator';
 import { meiliSearch, orderByIdList } from '../services/search/searchService.js';
+import { optionalAuth } from '../middleware/userAuth.js';
+import { supabaseAdmin, supabasePublic } from '../config/supabase.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
+import { AppError, NotFoundError } from '../utils/errors.js';
 
 dotenv.config();
 
 const router = express.Router();
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
 
 // === File upload setup ===
 const upload = multer({ dest: "uploads/" });
@@ -37,7 +36,7 @@ router.post("/generate-article",
     body('language').optional().isIn(['arabic', 'english']).withMessage('اللغة غير مدعومة'),
     body('articleType').optional().isIn(['article', 'research', 'summary']).withMessage('نوع المقال غير مدعوم')
   ],
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
@@ -96,12 +95,12 @@ router.post("/generate-article",
       res.json(responseData);
     } catch (error) {
       console.error("Error generating article:", error);
-      res.status(500).json({ error: "فشل توليد المقال" });
+      throw new AppError('فشل توليد المقال', 500, 'AI_ARTICLE_GENERATE_FAILED');
     }
-  });
+  }));
 
 // === Generate article from file (PDF or TXT) ===
-router.post("/generate-article-from-file", aiLimiter, uploadLimiter, upload.single("file"), validateUploadedFile(['pdf', 'txt']), async (req, res) => {
+router.post("/generate-article-from-file", aiLimiter, uploadLimiter, upload.single("file"), validateUploadedFile(['pdf', 'txt']), asyncHandler(async (req, res) => {
   try {
     const { language, articleType } = req.body;
     const filePath = req.file.path;
@@ -139,9 +138,9 @@ router.post("/generate-article-from-file", aiLimiter, uploadLimiter, upload.sing
     });
   } catch (error) {
     console.error("Error generating article from file:", error);
-    res.status(500).json({ error: "فشل توليد المقال من الملف" });
+    throw new AppError('فشل توليد المقال من الملف', 500, 'AI_ARTICLE_FILE_FAILED');
   }
-});
+}));
 
 /**
  * @swagger
@@ -159,32 +158,28 @@ router.post("/generate-article-from-file", aiLimiter, uploadLimiter, upload.sing
  *               items:
  *                 type: string
  */
-router.get('/tags', async (req, res) => {
-  try {
-    const { data, error } = await supabase
-      .from('articles')
-      .select('tags');
+router.get('/tags', asyncHandler(async (req, res) => {
+  const { data, error } = await supabasePublic
+    .from('articles')
+    .select('tags');
 
-    if (error) throw error;
-
-    // Flatten tags array and get unique values
-    const allTags = data.flatMap(article => article.tags);
-    const uniqueTags = [...new Set(allTags)].sort();
-
-    res.json(uniqueTags);
-  } catch (error) {
-    console.error('Error fetching tags:', error);
-    res.status(500).json({ error: 'Failed to fetch tags' });
+  if (error) {
+    throw new AppError('Failed to fetch tags', 500, 'ARTICLES_TAGS_FAILED');
   }
-});
+
+  // Flatten tags array and get unique values
+  const allTags = data.flatMap(article => article.tags);
+  const uniqueTags = [...new Set(allTags)].sort();
+
+  res.json(uniqueTags);
+}));
 
 // Get latest articles grouped by tags
 // GET /articles/by-tags?tags=tag1,tag2&limit=5
 // If tags omitted, returns for ALL known tags
-router.get('/by-tags', cacheMiddleware(300), async (req, res) => {
-  try {
-    const { limit = 5 } = req.query;
-    const parsedLimit = Math.min(parseInt(limit) || 5, 10);
+router.get('/by-tags', cacheMiddleware(300), asyncHandler(async (req, res) => {
+  const { limit = 5 } = req.query;
+  const parsedLimit = Math.min(parseInt(limit) || 5, 10);
 
     // Determine which tags to fetch
     let tagsToFetch;
@@ -192,10 +187,12 @@ router.get('/by-tags', cacheMiddleware(300), async (req, res) => {
       tagsToFetch = req.query.tags.split(',').map(t => t.trim()).filter(Boolean);
     } else {
       // Fetch all known tags
-      const { data: tagData, error: tagError } = await supabase
+      const { data: tagData, error: tagError } = await supabasePublic
         .from('articles')
         .select('tags');
-      if (tagError) throw tagError;
+      if (tagError) {
+        throw new AppError('Failed to fetch articles by tags', 500, 'ARTICLES_BY_TAGS_FAILED');
+      }
       const allTags = tagData.flatMap(a => a.tags);
       tagsToFetch = [...new Set(allTags)].sort();
     }
@@ -204,7 +201,7 @@ router.get('/by-tags', cacheMiddleware(300), async (req, res) => {
     const results = {};
     await Promise.all(
       tagsToFetch.map(async (tag) => {
-        const { data, error } = await supabase
+        const { data, error } = await supabasePublic
           .from('articles')
           .select('id, title, slug, excerpt, cover_image, publication_date, author, tags, article_type')
           .contains('tags', [tag])
@@ -221,11 +218,7 @@ router.get('/by-tags', cacheMiddleware(300), async (req, res) => {
     );
 
     res.json(results);
-  } catch (error) {
-    console.error('Error fetching articles by tags:', error);
-    res.status(500).json({ error: 'Failed to fetch articles by tags' });
-  }
-});
+}));
 
 /**
  * @swagger
@@ -288,17 +281,16 @@ router.get('/',
     query('limit').optional().isInt({ min: 1, max: 50 }).toInt(),
     query('page').optional().isInt({ min: 1 }).toInt()
   ],
-  async (req, res) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ error: 'Invalid search parameters' });
-      }
+  asyncHandler(async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ error: 'Invalid search parameters' });
+    }
 
       const { tag, search, limit = 12, page = 1 } = req.query;
       const offset = (page - 1) * limit;
 
-      let query = supabase.from('articles').select('*', { count: 'exact' });
+      let query = supabasePublic.from('articles').select('*', { count: 'exact' });
 
       // Tag filtering
       if (tag) {
@@ -344,12 +336,14 @@ router.get('/',
             });
           }
 
-          const { data: rows, error: fetchError } = await supabase
+          const { data: rows, error: fetchError } = await supabasePublic
             .from('articles')
             .select('*')
             .in('id', ids);
 
-          if (fetchError) throw fetchError;
+          if (fetchError) {
+            throw new AppError('Failed to fetch articles', 500, 'ARTICLES_FETCH_FAILED');
+          }
 
           const ordered = orderByIdList(rows, ids);
           return res.json({
@@ -373,63 +367,51 @@ router.get('/',
         .order('publication_date', { ascending: false })
         .range(offset, offset + parseInt(limit) - 1);
 
-      if (error) throw error;
+      if (error) {
+        throw new AppError('Failed to fetch articles', 500, 'ARTICLES_FETCH_FAILED');
+      }
 
-      res.json({
-        data,
-        pagination: {
-          total: count,
-          page: parseInt(page),
-          limit: parseInt(limit),
-          pages: Math.ceil(count / limit)
-        }
-      });
-    } catch (error) {
-      console.error('Error fetching articles:', error);
-      res.status(500).json({ error: 'Failed to fetch articles' });
-    }
-  });
+    res.json({
+      data,
+      pagination: {
+        total: count,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        pages: Math.ceil(count / limit)
+      }
+    });
+  }));
 
 // Get featured articles
-router.get('/featured', cacheMiddleware(600), async (req, res) => {
-  try {
-    const { data: articles, error } = await supabase
-      .from('articles')
-      .select('*')
-      .eq('is_featured', true)
-      .order('publication_date', { ascending: false })
-      .limit(5);
+router.get('/featured', cacheMiddleware(600), asyncHandler(async (req, res) => {
+  const { data: articles, error } = await supabasePublic
+    .from('articles')
+    .select('*')
+    .eq('is_featured', true)
+    .order('publication_date', { ascending: false })
+    .limit(5);
 
-    if (error) throw error;
+  if (error) {
+    throw new AppError('Failed to fetch featured articles', 500, 'ARTICLES_FEATURED_FAILED');
+  }
 
-    // Fetch author details for each article
-    const articlesWithAuthors = await Promise.all(articles.map(async (article) => {
-      try {
-        const { data: authorData } = await supabase
-          .from('authors')
-          .select('image')
-          .eq('name', article.author)
-          .single();
+    // Fetch author details for all featured articles in one query (Refactored to avoid N+1)
+    const authorNames = [...new Set(articles.map(a => a.author))];
+    const { data: authorsData } = await supabasePublic
+      .from('authors')
+      .select('name, image')
+      .in('name', authorNames);
 
-        return {
-          ...article,
-          author_image: authorData?.image || 'https://images.pexels.com/photos/5327585/pexels-photo-5327585.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2' // Default image
-        };
-      } catch (err) {
-        // If author fetch fails, return article with default image
-        return {
-          ...article,
-          author_image: 'https://images.pexels.com/photos/5327585/pexels-photo-5327585.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2'
-        };
-      }
+    const authorMap = new Map(authorsData?.map(a => [a.name, a.image]) || []);
+    const defaultImage = 'https://images.pexels.com/photos/5327585/pexels-photo-5327585.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2';
+
+    const articlesWithAuthors = articles.map(article => ({
+      ...article,
+      author_image: authorMap.get(article.author) || defaultImage
     }));
 
-    res.json(articlesWithAuthors);
-  } catch (error) {
-    console.error('Error fetching featured articles:', error);
-    res.status(500).json({ error: 'Failed to fetch featured articles' });
-  }
-});
+  res.json(articlesWithAuthors);
+}));
 
 /**
  * @swagger
@@ -456,18 +438,17 @@ router.get('/featured', cacheMiddleware(600), async (req, res) => {
  *       404:
  *         description: Article not found
  */
-router.get('/:idOrSlug', async (req, res) => {
-  try {
-    const { idOrSlug } = req.params;
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
+router.get('/:idOrSlug', optionalAuth, asyncHandler(async (req, res) => {
+  const { idOrSlug } = req.params;
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
 
-    let userId = null;
+    let userId = req.user?.id || null;
     let hasAccess = false;
 
     // 1. Verify User if token exists
-    if (token) {
-      const { data: { user }, error } = await supabase.auth.getUser(token);
+    if (!userId && token) {
+      const { data: { user }, error } = await supabasePublic.auth.getUser(token);
       if (!error && user) {
         userId = user.id;
       }
@@ -477,7 +458,7 @@ router.get('/:idOrSlug', async (req, res) => {
     // Check if idOrSlug looks like a UUID
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrSlug);
 
-    let query = supabase.from('articles').select('*');
+    let query = supabasePublic.from('articles').select('*');
     if (isUUID) {
       query = query.eq('id', idOrSlug);
     } else {
@@ -488,15 +469,15 @@ router.get('/:idOrSlug', async (req, res) => {
 
     if (error) {
       if (error.code === 'PGRST116') {
-        return res.status(404).json({ error: 'Article not found' });
+        throw new NotFoundError('Article not found');
       }
-      throw error;
+      throw new AppError('Failed to fetch article', 500, 'ARTICLE_FETCH_FAILED');
     }
 
     // 3. Check Access (if user is logged in)
     if (userId) {
       // Check for Admin
-      const { data: admin } = await supabase
+      const { data: admin } = await supabaseAdmin
         .from('admins')
         .select('id')
         .eq('id', userId)
@@ -506,7 +487,7 @@ router.get('/:idOrSlug', async (req, res) => {
         hasAccess = true;
       } else {
         // Check Article Access table
-        const { data: access } = await supabase
+        const { data: access } = await supabaseAdmin
           .from('article_access')
           .select('id')
           .eq('user_id', userId)
@@ -521,63 +502,63 @@ router.get('/:idOrSlug', async (req, res) => {
     // If article is free (credits_required = 0), grant access to everyone
     if (article.credits_required === 0) hasAccess = true;
 
-    if (hasAccess) {
-      // Return full content
-      res.json({
-        ...article,
-        is_preview: false,
-        has_access: true
-      });
-    } else {
-      // Return truncated content (Peek)
-      // Truncate at ~600 chars, try to cut at a space
-      const TRUNCATE_LENGTH = 600;
-      let truncatedContent = article.content;
-
-      if (article.content.length > TRUNCATE_LENGTH) {
-        const cutIndex = article.content.indexOf(' ', TRUNCATE_LENGTH);
-        truncatedContent = article.content.substring(0, cutIndex > 0 ? cutIndex : TRUNCATE_LENGTH) + '...';
-      }
-
-      res.json({
-        ...article,
-        content: truncatedContent, // Hidden content
-        is_preview: true,
-        has_access: false
-      });
+    // Return truncated content (Peek) when no access
+    const TRUNCATE_LENGTH = 600;
+    let content = article.content;
+    if (!hasAccess && article.content?.length > TRUNCATE_LENGTH) {
+      const cutIndex = article.content.indexOf(' ', TRUNCATE_LENGTH);
+      content = article.content.substring(0, cutIndex > 0 ? cutIndex : TRUNCATE_LENGTH) + '...';
     }
-  } catch (error) {
-    console.error('Error fetching article:', error);
-    res.status(500).json({ error: 'Failed to fetch article' });
-  }
-});
+
+    const responsePayload = {
+      id: article.id,
+      slug: article.slug,
+      title: article.title,
+      excerpt: article.excerpt,
+      content: hasAccess ? article.content : content,
+      cover_image: article.cover_image,
+      publication_date: article.publication_date,
+      author: article.author,
+      tags: article.tags,
+      article_type: article.article_type,
+      is_featured: article.is_featured,
+      credits_required: article.credits_required,
+      is_preview: !hasAccess,
+      has_access: hasAccess
+    };
+
+  res.json(responsePayload);
+}));
 
 // Get related articles with smart scoring
-router.get('/:id/related', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { limit = 3 } = req.query;
+router.get('/:id/related', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { limit = 3 } = req.query;
 
     // 1. Get current article details
-    const { data: article, error: articleError } = await supabase
+    const { data: article, error: articleError } = await supabasePublic
       .from('articles')
       .select('tags, article_type, categories')
       .eq('id', id)
       .single();
 
-    if (articleError) throw articleError;
+    if (articleError) {
+      throw new AppError('Failed to fetch related articles', 500, 'ARTICLES_RELATED_FAILED');
+    }
 
     // 2. Fetch candidates (pool of potentially related items)
     // We fetch more than needed to sort them in memory
     // Strategy: Get items with overlapping tags OR same category
-    const { data: candidates, error } = await supabase
+    const { data: candidates, error } = await supabasePublic
       .from('articles')
       .select('id, title, excerpt, cover_image, publication_date, author, tags, article_type')
       .neq('id', id) // Exclude current
       .overlaps('tags', article.tags || []) // Must have at least one tag in common
       .limit(20); // Fetch pool of 20
 
-    if (error) throw error;
+    if (error) {
+      throw new AppError('Failed to fetch related articles', 500, 'ARTICLES_RELATED_FAILED');
+    }
 
     // 3. Score and Sort
     const scoredCandidates = candidates.map(candidate => {
@@ -606,7 +587,7 @@ router.get('/:id/related', async (req, res) => {
 
     // If we have fewer than requested, fill with recent articles
     if (finalResults.length < parseInt(limit)) {
-      const { data: fallback } = await supabase
+      const { data: fallback } = await supabasePublic
         .from('articles')
         .select('id, title, excerpt, cover_image, publication_date, author, tags, article_type')
         .neq('id', id)
@@ -620,11 +601,7 @@ router.get('/:id/related', async (req, res) => {
       finalResults = [...finalResults, ...uniqueFallback];
     }
 
-    res.json(finalResults);
-  } catch (error) {
-    console.error('Error fetching related articles:', error);
-    res.status(500).json({ error: 'Failed to fetch related articles' });
-  }
-});
+  res.json(finalResults);
+}));
 
 export default router;

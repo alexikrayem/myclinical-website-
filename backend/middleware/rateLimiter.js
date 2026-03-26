@@ -125,3 +125,45 @@ export const searchLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false
 });
+
+// Strict rate limiter for credit code redemption (IP based)
+export const redeemLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 10, // Limit each IP to 10 redemption attempts per hour
+  skipSuccessfulRequests: true, // Don't count successful redemptions
+  message: {
+    error: 'Too many attempts to redeem codes. Please try again after an hour.',
+    retryAfter: '1 hour'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({
+      error: 'Too many attempts. To protect your account, code redemption has been temporarily disabled.',
+      retryAfter: Math.ceil(req.rateLimit.resetTime / 1000)
+    });
+  }
+});
+
+// Strict rate limiter for credit code redemption per user account
+export const accountRedeemLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5, // Limit each user account to 5 failed redemption attempts per hour
+  skipSuccessfulRequests: true, // Don't count successful redemptions
+  keyGenerator: (req) => {
+    return req.user ? `user_${req.user.id}` : req.ip; 
+  },
+  store: createHybridStore('account_redeem'),
+  message: {
+    error: 'Too many attempts to redeem codes on this account. Please try again after an hour.',
+    retryAfter: '1 hour'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({
+      error: 'تجاوزت الحد المسموح به للمحاولات الخاطئة. تم تعطيل سحب الأكواد لهذا الحساب مؤقتاً.',
+      retryAfter: Math.ceil(req.rateLimit.resetTime / 1000)
+    });
+  }
+});

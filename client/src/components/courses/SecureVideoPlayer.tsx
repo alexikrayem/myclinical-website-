@@ -24,6 +24,8 @@ interface SecureVideoPlayerProps {
     previewSource?: string | null;
     previewSeconds?: number;
     onPlaybackStateChange?: (isPlaying: boolean) => void;
+    onTimeUpdate?: (currentTime: number) => void;
+    videoControlRef?: React.MutableRefObject<{ pause: () => void; resume: () => void } | null>;
 }
 
 const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
@@ -37,7 +39,9 @@ const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
     isPlaybackLoading,
     previewSource,
     previewSeconds,
-    onPlaybackStateChange
+    onPlaybackStateChange,
+    onTimeUpdate,
+    videoControlRef
 }) => {
     const videoRef = useRef<HTMLVideoElement | null>(null);
     const previewRef = useRef<HTMLVideoElement | null>(null);
@@ -94,17 +98,20 @@ const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
         const handlePlay = () => onPlaybackStateChange?.(true);
         const handlePause = () => onPlaybackStateChange?.(false);
         const handleEnded = () => onPlaybackStateChange?.(false);
+        const handleTimeUpdate = () => onTimeUpdate?.(video.currentTime);
 
         video.addEventListener('play', handlePlay);
         video.addEventListener('pause', handlePause);
         video.addEventListener('ended', handleEnded);
+        video.addEventListener('timeupdate', handleTimeUpdate);
 
         return () => {
             video.removeEventListener('play', handlePlay);
             video.removeEventListener('pause', handlePause);
             video.removeEventListener('ended', handleEnded);
+            video.removeEventListener('timeupdate', handleTimeUpdate);
         };
-    }, [playback?.type, onPlaybackStateChange]);
+    }, [playback?.type, onPlaybackStateChange, onTimeUpdate]);
 
     useEffect(() => {
         destroyPlyr();
@@ -118,6 +125,9 @@ const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
             player.on('play', () => onPlaybackStateChange?.(true));
             player.on('pause', () => onPlaybackStateChange?.(false));
             player.on('ended', () => onPlaybackStateChange?.(false));
+            player.on('timeupdate', () => {
+                if (player.currentTime !== undefined) onTimeUpdate?.(player.currentTime);
+            });
             plyrInstanceRef.current = player;
             return;
         }
@@ -134,9 +144,33 @@ const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
             player.on('play', () => onPlaybackStateChange?.(true));
             player.on('pause', () => onPlaybackStateChange?.(false));
             player.on('ended', () => onPlaybackStateChange?.(false));
+            player.on('timeupdate', () => {
+                if (player.currentTime !== undefined) onTimeUpdate?.(player.currentTime);
+            });
             plyrInstanceRef.current = player;
         }
-    }, [playback, onPlaybackStateChange]);
+    }, [playback, onPlaybackStateChange, onTimeUpdate]);
+
+    // Expose pause/resume controls via ref
+    useEffect(() => {
+        if (!videoControlRef) return;
+        videoControlRef.current = {
+            pause: () => {
+                if (plyrInstanceRef.current) {
+                    plyrInstanceRef.current.pause();
+                } else if (videoRef.current) {
+                    videoRef.current.pause();
+                }
+            },
+            resume: () => {
+                if (plyrInstanceRef.current) {
+                    plyrInstanceRef.current.play();
+                } else if (videoRef.current) {
+                    videoRef.current.play();
+                }
+            }
+        };
+    }, [playback, videoControlRef]);
 
     useEffect(() => {
         if (!playback || playback.type !== 'hls' || !videoRef.current) return;

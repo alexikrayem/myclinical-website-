@@ -20,9 +20,11 @@ interface Article {
 interface ArticlesByCategorySectionProps {
     tag: string;
     isPriority?: boolean;
+    excludeIds?: string[];
+    onItemsLoaded?: (items: any[]) => void;
 }
 
-const ArticlesByCategorySection: React.FC<ArticlesByCategorySectionProps> = ({ tag, isPriority = false }) => {
+const ArticlesByCategorySection: React.FC<ArticlesByCategorySectionProps> = ({ tag, isPriority = false, excludeIds = [], onItemsLoaded }) => {
     const sentinelRef = useRef<HTMLDivElement>(null);
     const [isVisible, setIsVisible] = useState(isPriority); // Priority tags load immediately
 
@@ -54,8 +56,16 @@ const ArticlesByCategorySection: React.FC<ArticlesByCategorySectionProps> = ({ t
     const articles: Article[] = React.useMemo(() => {
         if (!isVisible) return [];
         const raw = response?.data || response;
-        return Array.isArray(raw) ? raw : [];
-    }, [response, isVisible]);
+        const all = Array.isArray(raw) ? raw : [];
+        // Filter out already displayed articles
+        return all.filter(a => !excludeIds.includes(a.id));
+    }, [response, isVisible, excludeIds]);
+
+    useEffect(() => {
+        if (articles.length > 0 && onItemsLoaded) {
+            onItemsLoaded(articles);
+        }
+    }, [articles, onItemsLoaded]);
 
     // Skeleton loader
     if (isVisible && isLoading) {

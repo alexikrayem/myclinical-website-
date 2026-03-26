@@ -34,7 +34,7 @@ const ResearchCard: React.FC<ResearchCardProps> = ({ paper }) => {
 
     return (
         <Link
-            to={`/research-topics/${paper.id}`}
+            to={`/research/${paper.id}?view=full`}
             className="group block bg-white border border-gray-100 rounded-2xl p-5 shadow-sm hover:shadow-lg hover:border-blue-200 transition-all duration-300"
         >
             <div className="flex items-start justify-between mb-3">

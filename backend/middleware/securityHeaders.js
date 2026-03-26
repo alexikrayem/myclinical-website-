@@ -2,53 +2,48 @@
 
 import helmet from 'helmet';
 
-// Configure Helmet for comprehensive security headers
+const commonDirectives = {
+  defaultSrc: ["'self'"],
+  imgSrc: ["'self'", 'data:', 'https:', 'blob:'],
+  fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+  connectSrc: ["'self'", process.env.SUPABASE_URL || '*', 'https://fonts.googleapis.com', 'https://fonts.gstatic.com'],
+  frameSrc: ["'none'"],
+  objectSrc: ["'none'"],
+  baseUri: ["'self'"],
+  upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null,
+};
+
+const commonHelmetOptions = {
+  hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
+  frameguard: { action: 'deny' },
+  hidePoweredBy: true,
+  noSniff: true,
+  xssFilter: true,
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  permittedCrossDomainPolicies: { permittedPolicies: 'none' },
+};
+
+// Strict configuration for the core JSON API
 export const securityHeaders = helmet({
-  // Content Security Policy
+  ...commonHelmetOptions,
   contentSecurityPolicy: {
     directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", 'https://trusted-cdn.com'], // Kept unsafe-inline for React compatibility, consider nonce in future
-      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
-      imgSrc: ["'self'", 'data:', 'https:', 'blob:'],
-      fontSrc: ["'self'", 'https://fonts.gstatic.com'],
-      connectSrc: ["'self'", process.env.SUPABASE_URL || '*', 'https://fonts.googleapis.com', 'https://fonts.gstatic.com'], // Restricted connectSrc
-      frameSrc: ["'none'"],
-      objectSrc: ["'none'"],
-      baseUri: ["'self'"],
-      upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null,
+      ...commonDirectives,
+      scriptSrc: ["'self'", 'https://trusted-cdn.com'], // 'unsafe-inline' removed
+      styleSrc: ["'self'", 'https://fonts.googleapis.com'], // 'unsafe-inline' removed
     },
   },
+});
 
-  // Strict Transport Security (HTTPS enforcement)
-  hsts: {
-    maxAge: 31536000, // 1 year
-    includeSubDomains: true,
-    preload: true,
-  },
-
-  // Prevent clickjacking
-  frameguard: {
-    action: 'deny',
-  },
-
-  // Hide X-Powered-By header
-  hidePoweredBy: true,
-
-  // Prevent MIME type sniffing
-  noSniff: true,
-
-  // Enable XSS filter
-  xssFilter: true,
-
-  // Referrer Policy
-  referrerPolicy: {
-    policy: 'strict-origin-when-cross-origin',
-  },
-
-  // Permissions Policy (formerly Feature Policy)
-  permittedCrossDomainPolicies: {
-    permittedPolicies: 'none',
+// Relaxed configuration exclusively for Swagger UI compatibility
+export const swaggerSecurityHeaders = helmet({
+  ...commonHelmetOptions,
+  contentSecurityPolicy: {
+    directives: {
+      ...commonDirectives,
+      scriptSrc: ["'self'", "'unsafe-inline'", 'https://trusted-cdn.com'],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+    },
   },
 });
 

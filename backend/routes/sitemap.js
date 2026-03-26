@@ -1,14 +1,12 @@
 import express from 'express';
-import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
+import { supabasePublic as supabase } from '../config/supabase.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
+import { AppError } from '../utils/errors.js';
 
 dotenv.config();
 
 const router = express.Router();
-const supabase = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-);
 
 const SITE_URL = process.env.SITE_URL || 'https://tabeeb.com';
 
@@ -16,31 +14,36 @@ const SITE_URL = process.env.SITE_URL || 'https://tabeeb.com';
  * @route GET /sitemap.xml
  * @desc Generate XML sitemap for SEO
  */
-router.get('/sitemap.xml', async (req, res) => {
-    try {
-        // Fetch all articles
-        const { data: articles, error: articlesError } = await supabase
-            .from('articles')
-            .select('id, slug, updated_at')
-            .order('updated_at', { ascending: false });
+router.get('/sitemap.xml', asyncHandler(async (req, res) => {
+    // Fetch all articles
+    const { data: articles, error: articlesError } = await supabase
+        .from('articles')
+        .select('id, slug, updated_at')
+        .order('updated_at', { ascending: false });
 
-        if (articlesError) throw articlesError;
+    if (articlesError) {
+        throw new AppError('Error generating sitemap', 500, 'SITEMAP_FETCH_FAILED');
+    }
 
-        // Fetch all research papers
-        const { data: research, error: researchError } = await supabase
-            .from('researches')
-            .select('id, updated_at')
-            .order('updated_at', { ascending: false });
+    // Fetch all research papers
+    const { data: research, error: researchError } = await supabase
+        .from('researches')
+        .select('id, updated_at')
+        .order('updated_at', { ascending: false });
 
-        if (researchError) throw researchError;
+    if (researchError) {
+        throw new AppError('Error generating sitemap', 500, 'SITEMAP_FETCH_FAILED');
+    }
 
-        // Fetch all courses
-        const { data: courses, error: coursesError } = await supabase
-            .from('video_courses')
-            .select('id, updated_at')
-            .order('updated_at', { ascending: false });
+    // Fetch all courses
+    const { data: courses, error: coursesError } = await supabase
+        .from('video_courses')
+        .select('id, updated_at')
+        .order('updated_at', { ascending: false });
 
-        if (coursesError) throw coursesError;
+    if (coursesError) {
+        throw new AppError('Error generating sitemap', 500, 'SITEMAP_FETCH_FAILED');
+    }
 
         // Build XML
         let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
@@ -100,13 +103,9 @@ router.get('/sitemap.xml', async (req, res) => {
 
         xml += '</urlset>';
 
-        res.set('Content-Type', 'application/xml');
-        res.send(xml);
-    } catch (error) {
-        console.error('Error generating sitemap:', error);
-        res.status(500).send('Error generating sitemap');
-    }
-});
+    res.set('Content-Type', 'application/xml');
+    res.send(xml);
+}));
 
 /**
  * @route GET /robots.txt

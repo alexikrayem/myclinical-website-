@@ -1,18 +1,16 @@
 import express from 'express';
 import multer from 'multer';
 import path from 'path';
-import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import { authenticateToken } from '../middleware/auth.js';
+import { supabaseAdmin as supabase } from '../config/supabase.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
+import { AppError } from '../utils/errors.js';
 
 dotenv.config();
 
 const router = express.Router();
 
-const supabase = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-);
 
 // Configure Storage - Memory storage for direct upload to Supabase
 const storage = multer.memoryStorage();
@@ -41,7 +39,7 @@ const upload = multer({
  * @desc Upload an image for the editor
  * @access Admin
  */
-router.post('/', authenticateToken, upload.single('image'), async (req, res) => {
+router.post('/', authenticateToken, upload.single('image'), asyncHandler(async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ error: 'No file uploaded' });
@@ -78,7 +76,9 @@ router.post('/', authenticateToken, upload.single('image'), async (req, res) => 
                 upsert: false
             });
 
-        if (error) throw error;
+        if (error) {
+            throw new AppError('Failed to upload image', 500, 'UPLOAD_FAILED');
+        }
 
         // Get public URL
         const { data: publicUrlData } = supabase.storage
@@ -92,8 +92,8 @@ router.post('/', authenticateToken, upload.single('image'), async (req, res) => 
         });
     } catch (error) {
         console.error('Upload Error:', error);
-        res.status(500).json({ error: 'Failed to upload image' });
+        throw new AppError('Failed to upload image', 500, 'UPLOAD_FAILED');
     }
-});
+}));
 
 export default router;

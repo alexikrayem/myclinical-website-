@@ -186,8 +186,8 @@ export const validateFileAccessAsync = async (filePath) => {
   const uploadsDir = path.resolve('uploads');
   const requestedPath = path.resolve(filePath);
 
-  // Ensure the file is within the uploads directory (prevent path traversal)
-  if (!requestedPath.startsWith(uploadsDir)) {
+  // Ensure the file is within the uploads directory (prevent path confusion and traversal)
+  if (requestedPath !== uploadsDir && !requestedPath.startsWith(uploadsDir + path.sep)) {
     return false;
   }
 
@@ -205,8 +205,8 @@ export const validateFileAccess = (filePath) => {
   const uploadsDir = path.resolve('uploads');
   const requestedPath = path.resolve(filePath);
 
-  // Ensure the file is within the uploads directory (prevent path traversal)
-  if (!requestedPath.startsWith(uploadsDir)) {
+  // Ensure the file is within the uploads directory (prevent path confusion and traversal)
+  if (requestedPath !== uploadsDir && !requestedPath.startsWith(uploadsDir + path.sep)) {
     return false;
   }
 

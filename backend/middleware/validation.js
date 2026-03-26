@@ -52,6 +52,37 @@ const displayNameSchema = z.preprocess(
   z.string().min(2, 'الاسم يجب أن يكون حرفين على الأقل').optional()
 );
 
+const optionalTrimmedString = z.preprocess(
+  (val) => {
+    if (typeof val !== 'string') return val;
+    const trimmed = val.trim();
+    return trimmed === '' ? undefined : trimmed;
+  },
+  z.string().optional()
+);
+
+const toIntFromQuery = (val) => {
+  if (val === undefined || val === null || val === '') return undefined;
+  const num = Number(val);
+  return Number.isFinite(num) ? num : val;
+};
+
+const queryInt = (min, max, defaultValue) => z.preprocess(
+  toIntFromQuery,
+  z.number().int().min(min).max(max).default(defaultValue)
+);
+
+const toIntFromBody = (val) => {
+  if (val === undefined || val === null || val === '') return undefined;
+  const num = Number(val);
+  return Number.isFinite(num) ? num : val;
+};
+
+const bodyInt = (min, max) => z.preprocess(
+  toIntFromBody,
+  z.number().int().min(min).max(max)
+);
+
 export const schemas = {
   // Auth Schemas
   register: z.object({
@@ -83,6 +114,16 @@ export const schemas = {
     }),
   }),
 
+  // Redeem License Code Schema
+  redeem: z.object({
+    body: z.object({
+      code: z.string()
+        .trim()
+        .toUpperCase()
+        .regex(/^[A-Z0-9]+(-[A-Z0-9]{4}){3,}$/, 'صيغة الكود غير صحيحة')
+    }),
+  }),
+
   // Admin Article Schema
   article: z.object({
     body: z.object({
@@ -111,8 +152,151 @@ export const schemas = {
       journal: z.string().min(1, 'Journal is required'),
       publication_date: z.string().optional(),
     }),
-  })
+  }),
+
+  researchList: z.object({
+    query: z.object({
+      journal: optionalTrimmedString,
+      search: optionalTrimmedString,
+      page: queryInt(1, 1000, 1),
+      limit: queryInt(1, 50, 12),
+    })
+  }),
+
+  // Credits + Courses
+  creditsConsumeVideo: z.object({
+    body: z.object({
+      minutes: bodyInt(1, 100000),
+      course_id: z.string().uuid()
+    })
+  }),
+
+  creditsConsumeArticle: z.object({
+    body: z.object({
+      article_id: z.string().uuid()
+    })
+  }),
+
+  creditsConsumeResearch: z.object({
+    body: z.object({
+      research_id: z.string().uuid()
+    })
+  }),
+
+  creditsTransactions: z.object({
+    query: z.object({
+      page: queryInt(1, 1000, 1),
+      limit: queryInt(1, 100, 10),
+      type: optionalTrimmedString
+    })
+  }),
+
+  creditsCheckAccess: z.object({
+    params: z.object({
+      articleId: z.string().uuid().optional(),
+      researchId: z.string().uuid().optional()
+    }).refine((data) => data.articleId || data.researchId, {
+      message: 'Either articleId or researchId is required'
+    })
+  }),
+
+  coursePlayback: z.object({
+    params: z.object({
+      id: z.string().uuid()
+    })
+  }),
+
+  coursesList: z.object({
+    query: z.object({
+      category: optionalTrimmedString,
+      search: optionalTrimmedString,
+      featured: optionalTrimmedString,
+      page: queryInt(1, 1000, 1),
+      limit: queryInt(1, 100, 12),
+    })
+  }),
+
+  courseById: z.object({
+    params: z.object({
+      id: z.string().uuid()
+    })
+  }),
+
+  courseHeartbeat: z.object({
+    params: z.object({
+      id: z.string().uuid()
+    }),
+    body: z.object({
+      session_id: z.string().uuid(),
+      seconds_delta: bodyInt(1, 36000),
+      idempotency_key: optionalTrimmedString
+    })
+  }),
+
+  courseHlsManifest: z.object({
+    params: z.object({
+      id: z.string().uuid()
+    }),
+    query: z.object({
+      session_id: z.string().uuid(),
+      playlist: optionalTrimmedString
+    })
+  }),
+
+  courseAccess: z.object({
+    params: z.object({
+      id: z.string().uuid()
+    }),
+    body: z.object({
+      idempotency_key: optionalTrimmedString
+    }).optional()
+  }),
+
+  courseAttentionCheck: z.object({
+    params: z.object({
+      id: z.string().uuid()
+    }),
+    query: z.object({
+      session_id: z.string().uuid(),
+      current_seconds: z.preprocess(toIntFromQuery, z.number().min(0))
+    })
+  }),
+
+  courseAttentionVerify: z.object({
+    params: z.object({
+      id: z.string().uuid()
+    }),
+    body: z.object({
+      session_id: z.string().uuid(),
+      challenge_id: z.string().uuid(),
+      answer: optionalTrimmedString,
+      expired: z.boolean().optional()
+    })
+  }),
+
+  courseGenerateQuiz: z.object({
+    params: z.object({
+      id: z.string().uuid()
+    })
+  }),
+
+  courseQuiz: z.object({
+    params: z.object({
+      id: z.string().uuid()
+    })
+  }),
+
+  courseQuizSubmit: z.object({
+    params: z.object({
+      id: z.string().uuid()
+    }),
+    body: z.object({
+      quizId: z.string().uuid(),
+      answers: z.array(z.number().int().min(0).max(3)).min(1)
+    })
+  }),
 };
 
 export const validateArticle = validate(schemas.article);
 export const validateResearch = validate(schemas.research);
+export const validateRedeem = validate(schemas.redeem);

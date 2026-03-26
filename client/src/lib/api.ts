@@ -310,6 +310,38 @@ export const coursesApi = {
       console.error('Error submitting quiz:', error);
       throw error;
     }
+  },
+
+  getAttentionCheck: async (courseId: string, sessionId: string, currentSeconds: number) => {
+    try {
+      const token = getUserToken();
+      const response = await api.get(`/courses/${courseId}/attention-check`, {
+        params: { session_id: sessionId, current_seconds: currentSeconds },
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching attention check:', error);
+      throw error;
+    }
+  },
+
+  verifyAttentionCheck: async (courseId: string, payload: {
+    session_id: string;
+    challenge_id: string;
+    answer?: string;
+    expired?: boolean;
+  }) => {
+    try {
+      const token = getUserToken();
+      const response = await api.post(`/courses/${courseId}/attention-check/verify`, payload, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error verifying attention check:', error);
+      throw error;
+    }
   }
 };
 
@@ -465,6 +497,33 @@ export const creditsApi = {
       return response.data;
     } catch (error) {
       console.error('Error checking article access:', error);
+      throw error;
+    }
+  },
+
+  consumeResearch: async (researchId: string) => {
+    try {
+      const token = getUserToken();
+      const response = await api.post('/credits/consume-research',
+        { research_id: researchId },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error consuming research credits:', error);
+      throw error;
+    }
+  },
+
+  checkResearchAccess: async (researchId: string) => {
+    try {
+      const token = getUserToken();
+      const response = await api.get(`/credits/check-research-access/${researchId}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error checking research access:', error);
       throw error;
     }
   },

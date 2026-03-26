@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Upload, Video, BrainCircuit } from 'lucide-react';
+import { ArrowRight, Upload, Video, BrainCircuit, ShieldAlert } from 'lucide-react';
 import AdminLayout from '../components/layout/AdminLayout';
 import { courseService } from '../services/courseService';
 import toast from 'react-hot-toast';
@@ -22,7 +22,8 @@ const CreateCourse: React.FC = () => {
         credits_required: 0,
         duration: 0,
         categories: '',
-        is_featured: false
+        is_featured: false,
+        attention_required: false
     });
     const [coverImage, setCoverImage] = useState<File | null>(null);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -59,6 +60,7 @@ const CreateCourse: React.FC = () => {
             data.append('duration', formData.duration.toString());
             data.append('categories', JSON.stringify(formData.categories.split(',').map(c => c.trim())));
             data.append('is_featured', formData.is_featured.toString());
+            data.append('attention_required', formData.attention_required.toString());
             data.append('cover_image', coverImage);
 
             await courseService.create(data);
@@ -250,6 +252,21 @@ const CreateCourse: React.FC = () => {
                                 />
                                 <label htmlFor="is_featured" className="text-sm font-medium text-gray-700 cursor-pointer">
                                     تمييز هذه الدورة (تظهر في الصفحة الرئيسية)
+                                </label>
+                            </div>
+
+                            <div className="flex items-center gap-2 pt-2">
+                                <input
+                                    type="checkbox"
+                                    id="attention_required"
+                                    className="w-5 h-5 text-orange-600 rounded focus:ring-orange-500"
+                                    checked={formData.attention_required}
+                                    onChange={e => setFormData({ ...formData, attention_required: e.target.checked })}
+                                />
+                                <label htmlFor="attention_required" className="text-sm font-medium text-gray-700 cursor-pointer flex items-center gap-1.5">
+                                    <ShieldAlert size={16} className="text-orange-500" />
+                                    تفعيل التحقق من الانتباه
+                                    <span className="text-xs text-gray-400 font-normal">(مطلوب لإصدار الشهادات)</span>
                                 </label>
                             </div>
                         </div>

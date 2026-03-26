@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
     User, Phone, Edit2, Check, X, CreditCard, History,
-    Coins, Video, FileText, Lock, LogOut
+    Coins, Video, FileText, Lock, LogOut, BookOpen, Tag
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { creditsApi, authApi } from '../lib/api';
@@ -159,7 +159,7 @@ const ProfilePage: React.FC = () => {
                     </div>
 
                     {/* Credits Summary */}
-                    <div className="grid grid-cols-3 gap-4 mt-6">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6">
                         <div className="bg-white/10 backdrop-blur rounded-xl p-4 text-center">
                             <Coins size={24} className="mx-auto mb-2 text-yellow-300" />
                             <div className="text-2xl font-bold">{credits?.balance || 0}</div>
@@ -175,7 +175,25 @@ const ProfilePage: React.FC = () => {
                             <div className="text-2xl font-bold">{credits?.article_credits || 0}</div>
                             <div className="text-sm text-white/70">مقالات</div>
                         </div>
+                        <div className="bg-white/10 backdrop-blur rounded-xl p-4 text-center">
+                            <BookOpen size={24} className="mx-auto mb-2 text-purple-300" />
+                            <div className="text-2xl font-bold">{credits?.research_credits || 0}</div>
+                            <div className="text-sm text-white/70">أبحاث</div>
+                        </div>
                     </div>
+
+                    {/* Typed Credits */}
+                    {credits?.typed_credits && credits.typed_credits.length > 0 && (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3">
+                            {credits.typed_credits.map((tc) => (
+                                <div key={tc.credit_type_id} className="bg-white/10 backdrop-blur rounded-xl p-3 text-center">
+                                    <Tag size={20} className="mx-auto mb-1.5 text-amber-300" />
+                                    <div className="text-xl font-bold">{tc.balance}</div>
+                                    <div className="text-xs text-white/70">{tc.name}</div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
 
                     {/* Redeem Button */}
                     <button

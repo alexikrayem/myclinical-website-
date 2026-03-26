@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Menu, X, Search } from 'lucide-react';
+import { Menu, X, Search, Home, Newspaper, Stethoscope, GraduationCap, Microscope } from 'lucide-react';
 import UserMenu from '../auth/UserMenu';
 import AuthModal from '../auth/AuthModal';
 import CreditRedeemModal from '../credits/CreditRedeemModal';
@@ -117,10 +117,10 @@ const Navbar: React.FC = () => {
 
   return (
     <>
-      <header className="sticky top-0 z-50 bg-gradient-to-b from-white to-white/70 backdrop-blur-lg border-b border-white/20 shadow-sm">
-        <div className="container-modern">
-          {/* Main Navbar content wrapper */}
-          <div className="relative flex justify-between items-center h-16 md:h-20 overflow-visible transition-all duration-300 ease-in-out">
+      <header className="sticky top-4 z-50 px-4 md:px-6 pointer-events-none">
+        <div className="container-modern max-w-6xl mx-auto pointer-events-auto">
+          <div className="glass-pill rounded-[2rem] px-6 transition-all duration-300 ease-in-out overflow-visible">
+            <div className="relative flex justify-between items-center h-16 md:h-18 lg:h-20 overflow-visible">
 
             {/* Logo container - NOW ON THE RIGHT */}
             <Link to="/" className="flex items-center gap-1.5 group">
@@ -157,24 +157,24 @@ const Navbar: React.FC = () => {
             </div>
 
 
-            {/* Desktop Navigation - CENTERED */}
-            <nav className="hidden md:flex items-center space-x-4 space-x-reverse absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+            <nav className="hidden md:flex items-center space-x-2 space-x-reverse absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
               {[
-                { path: '/', label: 'الرئيسية' },
-                { path: '/articles', label: 'المقالات' },
-                { path: '/clinical-cases', label: 'حالات سريرية' },
-                ...(ENABLE_COURSES ? [{ path: '/courses', label: 'الدورات' }] : []),
-                { path: '/research-topics', label: 'أبحاث علمية' },
-              ].map(({ path, label }) => (
+                { path: '/', label: 'الرئيسية', icon: Home },
+                { path: '/articles', label: 'المقالات', icon: Newspaper },
+                { path: '/clinical-cases', label: 'حالات سريرية', icon: Stethoscope },
+                ...(ENABLE_COURSES ? [{ path: '/courses', label: 'الدورات', icon: GraduationCap }] : []),
+                { path: '/research-topics', label: 'أبحاث علمية', icon: Microscope },
+              ].map(({ path, label, icon: Icon }) => (
                 <Link
                   key={path}
                   to={path}
-                  className={`relative px-3 py-2 rounded-full font-medium whitespace-nowrap text-sm transition-all duration-300 ${isActive(path)
+                  className={`relative flex items-center gap-1.5 px-3 py-2 rounded-full font-medium whitespace-nowrap text-sm transition-all duration-300 group ${isActive(path)
                     ? 'bg-blue-600 text-white shadow-md'
                     : 'text-gray-700 hover:text-blue-600 hover:bg-blue-50'
                     }`}
                 >
-                  {label}
+                  <Icon size={16} className={isActive(path) ? 'text-white' : 'text-gray-400 group-hover:text-blue-600'} />
+                  <span>{label}</span>
                 </Link>
               ))}
             </nav>
@@ -261,12 +261,13 @@ const Navbar: React.FC = () => {
                 )}
               </div>
             </div>
+            </div>
           </div>
 
 
           {/* Mobile Navigation (opened menu overlay) */}
           {isMenuOpen && (
-            <div className="md:hidden py-4 border-t border-gray-100 animate-fadeIn bg-white/90 backdrop-blur-md z-40">
+            <div className="md:hidden py-4 border-t border-gray-100/50 animate-fadeIn z-40">
               <form onSubmit={handleSearch} className="mb-4">
                 <div className="relative">
                   <input
@@ -291,22 +292,23 @@ const Navbar: React.FC = () => {
               </form>
               <nav className="flex flex-col space-y-2">
                 {[
-                  { path: '/', label: 'الرئيسية' },
-                  { path: '/articles', label: 'المقالات' },
-                  { path: '/clinical-cases', label: 'حالات سريرية' },
-                  ...(ENABLE_COURSES ? [{ path: '/courses', label: 'الدورات' }] : []),
-                  { path: '/research-topics', label: 'أبحاث علمية' },
-                ].map(({ path, label }) => (
+                  { path: '/', label: 'الرئيسية', icon: Home },
+                  { path: '/articles', label: 'المقالات', icon: Newspaper },
+                  { path: '/clinical-cases', label: 'حالات سريرية', icon: Stethoscope },
+                  ...(ENABLE_COURSES ? [{ path: '/courses', label: 'الدورات', icon: GraduationCap }] : []),
+                  { path: '/research-topics', label: 'أبحاث علمية', icon: Microscope },
+                ].map(({ path, label, icon: Icon }) => (
                   <Link
                     key={path}
                     to={path}
                     onClick={toggleMenu}
-                    className={`block px-3 py-2 rounded-md font-medium text-base text-center transition-all duration-300 ${isActive(path)
+                    className={`flex items-center justify-center gap-2 px-3 py-2 rounded-xl font-medium text-base transition-all duration-300 ${isActive(path)
                       ? 'bg-blue-600 text-white shadow-sm'
                       : 'text-gray-700 hover:text-blue-600 hover:bg-blue-50'
                       }`}
                   >
-                    {label}
+                    <Icon size={18} />
+                    <span>{label}</span>
                   </Link>
                 ))}
               </nav>
@@ -321,9 +323,8 @@ const Navbar: React.FC = () => {
             </div>
           )}
         </div>
-        {/* Mobile Search Overlay (slides down) */}
         {showMobileSearch && (
-          <div className="md:hidden absolute top-full left-0 w-full bg-white/90 backdrop-blur-md border-b border-gray-200 shadow-lg overflow-hidden animate-slideDown z-40">
+          <div className="md:hidden absolute top-full left-4 right-4 mt-2 bg-white/90 backdrop-blur-md border border-white rounded-2xl shadow-lg overflow-hidden animate-slideDown z-40 pointer-events-auto">
             <form onSubmit={handleSearch} className="relative p-4">
               <input
                 type="text"

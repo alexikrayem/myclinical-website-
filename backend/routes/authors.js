@@ -1,65 +1,55 @@
 import express from 'express';
-import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
+import { supabasePublic as supabase } from '../config/supabase.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
+import { AppError } from '../utils/errors.js';
 
 dotenv.config();
 
 const router = express.Router();
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
 
 // Get author by name
-router.get('/:name', async (req, res) => {
-  try {
-    const { name } = req.params;
-    
-    const { data, error } = await supabase
-      .from('authors')
-      .select('*')
-      .eq('name', decodeURIComponent(name))
-      .single();
-    
-    if (error && error.code !== 'PGRST116') {
-      throw error;
-    }
-    
-    // If author not found, return default author info
-    if (!data) {
-      return res.json({
-        name: decodeURIComponent(name),
-        bio: 'طبيب أسنان متخصص ومؤلف في مجال طب الأسنان',
-        image: 'https://images.pexels.com/photos/5327585/pexels-photo-5327585.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2',
-        specialization: 'طب الأسنان العام',
-        experience_years: 5,
-        education: 'بكالوريوس طب وجراحة الأسنان',
-        location: 'المملكة العربية السعودية'
-      });
-    }
-    
-    res.json(data);
-  } catch (error) {
-    console.error('Error fetching author:', error);
-    res.status(500).json({ error: 'Failed to fetch author' });
+router.get('/:name', asyncHandler(async (req, res) => {
+  const { name } = req.params;
+  
+  const { data, error } = await supabase
+    .from('authors')
+    .select('*')
+    .eq('name', decodeURIComponent(name))
+    .single();
+  
+  if (error && error.code !== 'PGRST116') {
+    throw new AppError('Failed to fetch author', 500, 'AUTHOR_FETCH_FAILED');
   }
-});
+  
+  // If author not found, return default author info
+  if (!data) {
+    return res.json({
+      name: decodeURIComponent(name),
+      bio: 'طبيب أسنان متخصص ومؤلف في مجال طب الأسنان',
+      image: 'https://images.pexels.com/photos/5327585/pexels-photo-5327585.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2',
+      specialization: 'طب الأسنان العام',
+      experience_years: 5,
+      education: 'بكالوريوس طب وجراحة الأسنان',
+      location: 'المملكة العربية السعودية'
+    });
+  }
+  
+  res.json(data);
+}));
 
 // Get all authors
-router.get('/', async (req, res) => {
-  try {
-    const { data, error } = await supabase
-      .from('authors')
-      .select('*')
-      .order('name');
-    
-    if (error) throw error;
-    
-    res.json(data || []);
-  } catch (error) {
-    console.error('Error fetching authors:', error);
-    res.status(500).json({ error: 'Failed to fetch authors' });
+router.get('/', asyncHandler(async (req, res) => {
+  const { data, error } = await supabase
+    .from('authors')
+    .select('*')
+    .order('name');
+  
+  if (error) {
+    throw new AppError('Failed to fetch authors', 500, 'AUTHORS_FETCH_FAILED');
   }
-});
+  
+  res.json(data || []);
+}));
 
 export default router;

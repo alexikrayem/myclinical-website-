@@ -1,5 +1,6 @@
 import { getVdoPlaybackInfo } from '../vdoService.js';
 import { parseSupabaseSource } from './hlsService.js';
+import { generateChallenges } from './attentionService.js';
 
 const PLAYBACK_SESSION_TTL_SECONDS = parseInt(process.env.PLAYBACK_SESSION_TTL_SECONDS || '600', 10);
 
@@ -8,7 +9,7 @@ const buildSessionExpiry = () => new Date(Date.now() + PLAYBACK_SESSION_TTL_SECO
 export async function createPlaybackSession({ supabase, courseId, user, baseUrl }) {
   const { data: course, error } = await supabase
     .from('video_courses')
-    .select('id, title, playback_source, playback_provider, billing_model, minute_cost, credits_required')
+    .select('id, title, playback_source, playback_provider, billing_model, minute_cost, credits_required, duration, attention_required, attention_check_interval_min, attention_check_interval_max')
     .eq('id', courseId)
     .single();
 
@@ -123,12 +124,33 @@ export async function createPlaybackSession({ supabase, courseId, user, baseUrl 
     }
   }
 
+  // Generate attention challenges if the course requires it
+  let attentionInfo = null;
+  if (course.attention_required && course.duration > 0) {
+    try {
+      attentionInfo = await generateChallenges({
+        supabase,
+        courseId,
+        sessionId: session.id,
+        userId: user.id,
+        courseDuration: course.duration,
+        intervalMin: course.attention_check_interval_min || 180,
+        intervalMax: course.attention_check_interval_max || 420
+      });
+    } catch (err) {
+      console.error('Failed to generate attention challenges:', err);
+      // Non-fatal: playback can proceed, but attention won't be tracked
+    }
+  }
+
   return {
     session_id: session.id,
     expires_at: expiresAt,
     playback,
     billing_model: course.billing_model,
     minute_cost: course.minute_cost,
-    credits: creditsSummary
+    credits: creditsSummary,
+    attention_required: course.attention_required || false,
+    attention: attentionInfo
   };
 }

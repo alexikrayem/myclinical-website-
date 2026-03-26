@@ -7,9 +7,20 @@ import { api } from '../../context/AuthContext';
 interface AuthorFormProps {
   author?: any;
   isEditing?: boolean;
+  initialName?: string;
+  onSaved?: (author: any) => void;
+  onCancel?: () => void;
+  embedded?: boolean;
 }
 
-const AuthorForm: React.FC<AuthorFormProps> = ({ author, isEditing = false }) => {
+const AuthorForm: React.FC<AuthorFormProps> = ({
+  author,
+  isEditing = false,
+  initialName,
+  onSaved,
+  onCancel,
+  embedded = false
+}) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -44,6 +55,12 @@ const AuthorForm: React.FC<AuthorFormProps> = ({ author, isEditing = false }) =>
       setUseImageUrl(author.image && !author.image.startsWith('/uploads/'));
     }
   }, [author, isEditing]);
+
+  useEffect(() => {
+    if (!isEditing && initialName) {
+      setFormData(prev => ({ ...prev, name: initialName }));
+    }
+  }, [initialName, isEditing]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
@@ -111,7 +128,11 @@ const AuthorForm: React.FC<AuthorFormProps> = ({ author, isEditing = false }) =>
       }
 
       toast.success(isEditing ? 'تم تحديث المؤلف بنجاح' : 'تم إنشاء المؤلف بنجاح');
-      navigate('/authors');
+      if (onSaved) {
+        onSaved(response.data);
+      } else {
+        navigate('/authors');
+      }
     } catch (error: any) {
       console.error('Error saving author:', error);
       const errorMessage = error.response?.data?.error || 'حدث خطأ أثناء حفظ المؤلف';
@@ -121,15 +142,20 @@ const AuthorForm: React.FC<AuthorFormProps> = ({ author, isEditing = false }) =>
     }
   };
 
-  return (
-    <div className="bg-white rounded-lg shadow-sm">
-      <div className="p-6 border-b">
-        <h1 className="text-2xl font-bold text-gray-800">
-          {isEditing ? 'تعديل المؤلف' : 'إضافة مؤلف جديد'}
-        </h1>
-      </div>
+  const containerClass = embedded ? 'bg-white rounded-lg' : 'bg-white rounded-lg shadow-sm';
+  const formClass = embedded ? 'p-6 space-y-6' : 'p-6 space-y-6';
 
-      <form onSubmit={handleSubmit} className="p-6 space-y-6">
+  return (
+    <div className={containerClass}>
+      {!embedded && (
+        <div className="p-6 border-b">
+          <h1 className="text-2xl font-bold text-gray-800">
+            {isEditing ? 'تعديل المؤلف' : 'إضافة مؤلف جديد'}
+          </h1>
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className={formClass}>
         {/* Name */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -323,7 +349,13 @@ const AuthorForm: React.FC<AuthorFormProps> = ({ author, isEditing = false }) =>
         <div className="flex justify-end space-x-4 space-x-reverse pt-6 border-t">
           <button
             type="button"
-            onClick={() => navigate('/authors')}
+            onClick={() => {
+              if (onCancel) {
+                onCancel();
+              } else {
+                navigate('/authors');
+              }
+            }}
             className="px-6 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
           >
             إلغاء

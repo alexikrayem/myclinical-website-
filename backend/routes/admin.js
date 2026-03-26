@@ -4,7 +4,6 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
-import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import { validateArticle, validateResearch } from '../middleware/validation.js';
 import { authenticateToken, trackLoginAttempt, checkLoginAllowed } from '../middleware/auth.js';
@@ -13,6 +12,9 @@ import { validateUploadedFile } from '../middleware/fileValidation.js';
 import { sanitizeFileName, sanitizeContent } from '../middleware/inputSanitizer.js';
 import { body, validationResult, query } from 'express-validator';
 import { indexArticle, indexResearch, removeArticle, removeResearch, indexCourse, removeCourse } from '../services/search/indexer.js';
+import { supabaseAdmin as supabase } from '../config/supabase.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
+import { AppError } from '../utils/errors.js';
 
 dotenv.config();
 
@@ -20,10 +22,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const router = express.Router();
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
 
 // Set up multer storage (Memory Storage for Supabase Upload)
 const storage = multer.memoryStorage();
@@ -80,7 +78,7 @@ router.post('/login',
     body('email').isEmail().withMessage('بريد إلكتروني غير صالح').normalizeEmail(),
     body('password').isLength({ min: 6 }).withMessage('كلمة المرور قصيرة جداً')
   ],
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
@@ -190,15 +188,12 @@ router.post('/login',
       if (process.env.NODE_ENV === 'development') {
         console.error('Login error:', error);
       }
-      res.status(500).json({
-        error: 'An error occurred during login',
-        code: 'INTERNAL_ERROR'
-      });
+      throw new AppError('An error occurred during login', 500, 'INTERNAL_ERROR');
     }
-  });
+  }));
 
 // Logout endpoint
-router.post('/logout', authenticateToken, async (req, res) => {
+router.post('/logout', authenticateToken, asyncHandler(async (req, res) => {
   try {
     // Clear session cookie
     res.clearCookie('session');
@@ -208,14 +203,11 @@ router.post('/logout', authenticateToken, async (req, res) => {
       code: 'LOGOUT_SUCCESS'
     });
   } catch (error) {
-    res.status(500).json({
-      error: 'An error occurred during logout',
-      code: 'LOGOUT_ERROR'
-    });
+    throw new AppError('An error occurred during logout', 500, 'LOGOUT_ERROR');
   }
-});
+}));
 // Get admin profile
-router.get('/profile', authenticateToken, async (req, res) => {
+router.get('/profile', authenticateToken, asyncHandler(async (req, res) => {
   try {
     const { data: adminData, error } = await supabase
       .from('admins')
@@ -223,14 +215,16 @@ router.get('/profile', authenticateToken, async (req, res) => {
       .eq('id', req.user.id)
       .single();
 
-    if (error) throw error;
+    if (error) {
+      throw new AppError('Failed to fetch admin profile', 500, 'ADMIN_PROFILE_FAILED');
+    }
 
     res.json(adminData);
   } catch (error) {
     console.error('Error fetching admin profile:', error);
-    res.status(500).json({ error: 'Failed to fetch admin profile' });
+    throw new AppError('Failed to fetch admin profile', 500, 'ADMIN_PROFILE_FAILED');
   }
-});
+}));
 
 // Create new article
 router.post('/articles',
@@ -245,7 +239,7 @@ router.post('/articles',
     // content is HTML, so we might want to sanitize it differently or rely on frontend + basic checks
     body('author').trim().escape()
   ],
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
@@ -308,12 +302,12 @@ router.post('/articles',
       res.status(201).json(data[0]);
     } catch (error) {
       console.error('Error creating article:', error);
-      res.status(500).json({ error: 'Failed to create article' });
+      throw new AppError('Failed to create article', 500, 'ADMIN_ARTICLE_CREATE_FAILED');
     }
-  });
+  }));
 
 // Update article
-router.put('/articles/:id', authenticateToken, uploadLimiter, upload.single('cover_image'), validateUploadedFile(['jpg', 'jpeg', 'png']), validateArticle, async (req, res) => {
+router.put('/articles/:id', authenticateToken, uploadLimiter, upload.single('cover_image'), validateUploadedFile(['jpg', 'jpeg', 'png']), validateArticle, asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
     const { title, author, tags, is_featured } = req.body;
@@ -366,12 +360,12 @@ router.put('/articles/:id', authenticateToken, uploadLimiter, upload.single('cov
     res.json(data[0]);
   } catch (error) {
     console.error('Error updating article:', error);
-    res.status(500).json({ error: 'Failed to update article' });
+    throw new AppError('Failed to update article', 500, 'ADMIN_ARTICLE_UPDATE_FAILED');
   }
-});
+}));
 
 // Delete article
-router.delete('/articles/:id', authenticateToken, async (req, res) => {
+router.delete('/articles/:id', authenticateToken, asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -405,9 +399,9 @@ router.delete('/articles/:id', authenticateToken, async (req, res) => {
     res.json({ message: 'Article deleted successfully' });
   } catch (error) {
     console.error('Error deleting article:', error);
-    res.status(500).json({ error: 'Failed to delete article' });
+    throw new AppError('Failed to delete article', 500, 'ADMIN_ARTICLE_DELETE_FAILED');
   }
-});
+}));
 
 // Create new course
 router.post('/courses',
@@ -420,7 +414,7 @@ router.post('/courses',
     body('description').trim().isLength({ min: 10, max: 2000 }).escape(),
     body('author').trim().isLength({ min: 2, max: 200 }).escape()
   ],
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
@@ -496,9 +490,9 @@ router.post('/courses',
       res.status(201).json(data[0]);
     } catch (error) {
       console.error('Error creating course:', error);
-      res.status(500).json({ error: 'Failed to create course' });
+      throw new AppError('Failed to create course', 500, 'ADMIN_COURSE_CREATE_FAILED');
     }
-  }
+  })
 );
 
 // Update course
@@ -507,7 +501,7 @@ router.put('/courses/:id',
   uploadLimiter,
   upload.single('cover_image'),
   validateUploadedFile(['jpg', 'jpeg', 'png']),
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     try {
       const { id } = req.params;
       const {
@@ -585,13 +579,13 @@ router.put('/courses/:id',
       res.json(data[0]);
     } catch (error) {
       console.error('Error updating course:', error);
-      res.status(500).json({ error: 'Failed to update course' });
+      throw new AppError('Failed to update course', 500, 'ADMIN_COURSE_UPDATE_FAILED');
     }
-  }
+  })
 );
 
 // Get courses list (admin)
-router.get('/courses', authenticateToken, async (req, res) => {
+router.get('/courses', authenticateToken, asyncHandler(async (req, res) => {
   try {
     const { search, limit = 20, page = 1 } = req.query;
     const pageNum = parseInt(page);
@@ -623,12 +617,12 @@ router.get('/courses', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching courses:', error);
-    res.status(500).json({ error: 'Failed to fetch courses' });
+    throw new AppError('Failed to fetch courses', 500, 'ADMIN_COURSES_FETCH_FAILED');
   }
-});
+}));
 
 // Get course by id (admin)
-router.get('/courses/:id', authenticateToken, async (req, res) => {
+router.get('/courses/:id', authenticateToken, asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
     const { data, error } = await supabase
@@ -637,16 +631,18 @@ router.get('/courses/:id', authenticateToken, async (req, res) => {
       .eq('id', id)
       .single();
 
-    if (error) throw error;
+    if (error) {
+      throw new AppError('Failed to fetch course', 500, 'ADMIN_COURSE_FETCH_FAILED');
+    }
     res.json(data);
   } catch (error) {
     console.error('Error fetching course:', error);
-    res.status(500).json({ error: 'Failed to fetch course' });
+    throw new AppError('Failed to fetch course', 500, 'ADMIN_COURSE_FETCH_FAILED');
   }
-});
+}));
 
 // Delete course
-router.delete('/courses/:id', authenticateToken, async (req, res) => {
+router.delete('/courses/:id', authenticateToken, asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -666,12 +662,12 @@ router.delete('/courses/:id', authenticateToken, async (req, res) => {
     res.json({ message: 'Course deleted successfully' });
   } catch (error) {
     console.error('Error deleting course:', error);
-    res.status(500).json({ error: 'Failed to delete course' });
+    throw new AppError('Failed to delete course', 500, 'ADMIN_COURSE_DELETE_FAILED');
   }
-});
+}));
 
 // Create new research
-router.post('/research', authenticateToken, uploadLimiter, upload.single('research_file'), validateUploadedFile(['pdf', 'doc', 'docx']), validateResearch, async (req, res) => {
+router.post('/research', authenticateToken, uploadLimiter, upload.single('research_file'), validateUploadedFile(['pdf', 'doc', 'docx']), validateResearch, asyncHandler(async (req, res) => {
   try {
     const { title, authors, journal, publication_date } = req.body;
     const abstract = sanitizeContent(req.body.abstract);
@@ -720,12 +716,12 @@ router.post('/research', authenticateToken, uploadLimiter, upload.single('resear
     res.status(201).json(data[0]);
   } catch (error) {
     console.error('Error creating research:', error);
-    res.status(500).json({ error: 'Failed to create research' });
+    throw new AppError('Failed to create research', 500, 'ADMIN_RESEARCH_CREATE_FAILED');
   }
-});
+}));
 
 // Update research
-router.put('/research/:id', authenticateToken, uploadLimiter, upload.single('research_file'), validateUploadedFile(['pdf', 'doc', 'docx']), validateResearch, async (req, res) => {
+router.put('/research/:id', authenticateToken, uploadLimiter, upload.single('research_file'), validateUploadedFile(['pdf', 'doc', 'docx']), validateResearch, asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
     const { title, authors, journal, publication_date } = req.body;
@@ -772,12 +768,12 @@ router.put('/research/:id', authenticateToken, uploadLimiter, upload.single('res
     res.json(data[0]);
   } catch (error) {
     console.error('Error updating research:', error);
-    res.status(500).json({ error: 'Failed to update research' });
+    throw new AppError('Failed to update research', 500, 'ADMIN_RESEARCH_UPDATE_FAILED');
   }
-});
+}));
 
 // Delete research
-router.delete('/research/:id', authenticateToken, async (req, res) => {
+router.delete('/research/:id', authenticateToken, asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -798,14 +794,14 @@ router.delete('/research/:id', authenticateToken, async (req, res) => {
     res.json({ message: 'Research deleted successfully' });
   } catch (error) {
     console.error('Error deleting research:', error);
-    res.status(500).json({ error: 'Failed to delete research' });
+    throw new AppError('Failed to delete research', 500, 'ADMIN_RESEARCH_DELETE_FAILED');
   }
-});
+}));
 
 // Authors management routes
 
 // Create new author
-router.post('/authors', authenticateToken, uploadLimiter, upload.single('image'), validateUploadedFile(['jpg', 'jpeg', 'png']), async (req, res) => {
+router.post('/authors', authenticateToken, uploadLimiter, upload.single('image'), validateUploadedFile(['jpg', 'jpeg', 'png']), asyncHandler(async (req, res) => {
   try {
     const {
       name,
@@ -854,12 +850,12 @@ router.post('/authors', authenticateToken, uploadLimiter, upload.single('image')
     res.status(201).json(data[0]);
   } catch (error) {
     console.error('Error creating author:', error);
-    res.status(500).json({ error: 'Failed to create author' });
+    throw new AppError('Failed to create author', 500, 'ADMIN_AUTHOR_CREATE_FAILED');
   }
-});
+}));
 
 // Update author
-router.put('/authors/:id', authenticateToken, uploadLimiter, upload.single('image'), validateUploadedFile(['jpg', 'jpeg', 'png']), async (req, res) => {
+router.put('/authors/:id', authenticateToken, uploadLimiter, upload.single('image'), validateUploadedFile(['jpg', 'jpeg', 'png']), asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
     const {
@@ -915,12 +911,12 @@ router.put('/authors/:id', authenticateToken, uploadLimiter, upload.single('imag
     res.json(data[0]);
   } catch (error) {
     console.error('Error updating author:', error);
-    res.status(500).json({ error: 'Failed to update author' });
+    throw new AppError('Failed to update author', 500, 'ADMIN_AUTHOR_UPDATE_FAILED');
   }
-});
+}));
 
 // Delete author
-router.delete('/authors/:id', authenticateToken, async (req, res) => {
+router.delete('/authors/:id', authenticateToken, asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -935,12 +931,12 @@ router.delete('/authors/:id', authenticateToken, async (req, res) => {
     res.json({ message: 'Author deleted successfully' });
   } catch (error) {
     console.error('Error deleting author:', error);
-    res.status(500).json({ error: 'Failed to delete author' });
+    throw new AppError('Failed to delete author', 500, 'ADMIN_AUTHOR_DELETE_FAILED');
   }
-});
+}));
 
 // Get License Code Report
-router.get('/reports/licenses', authenticateToken, async (req, res) => {
+router.get('/reports/licenses', authenticateToken, asyncHandler(async (req, res) => {
   try {
     // Check if user is admin (re-using the logic from other routes or middleware if available)
     // The file imports checkLoginAllowed but not requireAdmin middleware explicitly in the imports shown?
@@ -988,18 +984,23 @@ router.get('/reports/licenses', authenticateToken, async (req, res) => {
 
   } catch (error) {
     console.error('Error fetching license report:', error);
-    res.status(500).json({ error: 'Failed to fetch report' });
+    throw new AppError('Failed to fetch report', 500, 'ADMIN_LICENSE_REPORT_FAILED');
   }
-});
+}));
 
-// Generate License Codes
-router.post('/codes/generate', authenticateToken, async (req, res) => {
+// Generate License Codes (supports typed credit collections)
+router.post('/codes/generate', authenticateToken, asyncHandler(async (req, res) => {
   try {
-    const { amount, credit_value, prefix, credit_type, video_minutes, article_count } = req.body;
+    const { amount, credit_value, prefix, credit_type, video_minutes, article_count, research_count, credit_type_id } = req.body;
 
     // Validate inputs
     if (!amount || amount < 1 || amount > 100) {
       return res.status(400).json({ error: 'Amount must be between 1 and 100' });
+    }
+
+    // If typed, credit_type_id is required
+    if (credit_type === 'typed' && !credit_type_id) {
+      return res.status(400).json({ error: 'credit_type_id is required for typed codes' });
     }
 
     // Check admin permissions
@@ -1013,15 +1014,30 @@ router.post('/codes/generate', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    // Call the new RPC function
+    // Determine prefix: if typed, use credit type's prefix
+    let resolvedPrefix = prefix || 'GIFT';
+    if (credit_type === 'typed' && credit_type_id) {
+      const { data: typeData } = await supabase
+        .from('credit_types')
+        .select('prefix')
+        .eq('id', credit_type_id)
+        .single();
+      if (typeData?.prefix) {
+        resolvedPrefix = typeData.prefix;
+      }
+    }
+
+    // Call v3 RPC which supports credit_type_id
     const { data, error } = await supabase
-      .rpc('generate_license_codes_v2', {
+      .rpc('generate_license_codes_v3', {
         p_amount: parseInt(amount),
         p_credit_value: parseInt(credit_value || 0),
-        p_prefix: prefix || 'GIFT',
+        p_prefix: resolvedPrefix,
         p_credit_type: credit_type || 'universal',
         p_video_minutes: parseInt(video_minutes || 0),
-        p_article_count: parseInt(article_count || 0)
+        p_article_count: parseInt(article_count || 0),
+        p_research_count: parseInt(research_count || 0),
+        p_credit_type_id: credit_type_id || null
       });
 
     if (error) throw error;
@@ -1033,32 +1049,34 @@ router.post('/codes/generate', authenticateToken, async (req, res) => {
 
   } catch (error) {
     console.error('Error generating codes:', error);
-    res.status(500).json({ error: 'Failed to generate codes' });
+    throw new AppError('Failed to generate codes', 500, 'ADMIN_CODES_GENERATE_FAILED');
   }
-});
+}));
 
 // =====================
 // Categories Management
 // =====================
 
 // Get all categories
-router.get('/categories', authenticateToken, async (req, res) => {
+router.get('/categories', authenticateToken, asyncHandler(async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('categories')
       .select('*')
       .order('name');
 
-    if (error) throw error;
+    if (error) {
+      throw new AppError('Failed to fetch categories', 500, 'ADMIN_CATEGORIES_FETCH_FAILED');
+    }
     res.json(data);
   } catch (error) {
     console.error('Error fetching categories:', error);
-    res.status(500).json({ error: 'Failed to fetch categories' });
+    throw new AppError('Failed to fetch categories', 500, 'ADMIN_CATEGORIES_FETCH_FAILED');
   }
-});
+}));
 
 // Create category
-router.post('/categories', authenticateToken, async (req, res) => {
+router.post('/categories', authenticateToken, asyncHandler(async (req, res) => {
   try {
     const { name, name_ar, description, color, is_active } = req.body;
 
@@ -1087,12 +1105,12 @@ router.post('/categories', authenticateToken, async (req, res) => {
     res.status(201).json(data[0]);
   } catch (error) {
     console.error('Error creating category:', error);
-    res.status(500).json({ error: 'Failed to create category' });
+    throw new AppError('Failed to create category', 500, 'ADMIN_CATEGORY_CREATE_FAILED');
   }
-});
+}));
 
 // Update category
-router.put('/categories/:id', authenticateToken, async (req, res) => {
+router.put('/categories/:id', authenticateToken, asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
     const { name, name_ar, description, color, is_active } = req.body;
@@ -1114,12 +1132,12 @@ router.put('/categories/:id', authenticateToken, async (req, res) => {
     res.json(data[0]);
   } catch (error) {
     console.error('Error updating category:', error);
-    res.status(500).json({ error: 'Failed to update category' });
+    throw new AppError('Failed to update category', 500, 'ADMIN_CATEGORY_UPDATE_FAILED');
   }
-});
+}));
 
 // Delete category
-router.delete('/categories/:id', authenticateToken, async (req, res) => {
+router.delete('/categories/:id', authenticateToken, asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -1132,9 +1150,9 @@ router.delete('/categories/:id', authenticateToken, async (req, res) => {
     res.json({ message: 'Category deleted successfully' });
   } catch (error) {
     console.error('Error deleting category:', error);
-    res.status(500).json({ error: 'Failed to delete category' });
+    throw new AppError('Failed to delete category', 500, 'ADMIN_CATEGORY_DELETE_FAILED');
   }
-});
+}));
 
 router.get('/codes/history',
   authenticateToken,
@@ -1142,7 +1160,7 @@ router.get('/codes/history',
     query('page').optional().isInt({ min: 1 }).withMessage('Page must be a positive integer').toInt(),
     query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit must be between 1 and 100').toInt()
   ],
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     try {
       // 1. Validation Check
       const errors = validationResult(req);
@@ -1173,9 +1191,238 @@ router.get('/codes/history',
       });
     } catch (error) {
       console.error('Error fetching codes history:', error);
-      res.status(500).json({ error: 'Failed to fetch codes history' });
+      throw new AppError('Failed to fetch codes history', 500, 'ADMIN_CODES_HISTORY_FAILED');
     }
-  });
+  }));
 
+
+// =====================
+// Credit Types Management
+// =====================
+
+// Get all credit types
+router.get('/credit-types', authenticateToken, asyncHandler(async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('credit_types')
+      .select('*, credit_type_courses(course_id)')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      throw new AppError('Failed to fetch credit types', 500, 'ADMIN_CREDIT_TYPES_FETCH_FAILED');
+    }
+
+    // Reshape to include course_ids array
+    const result = data.map(ct => ({
+      ...ct,
+      course_ids: (ct.credit_type_courses || []).map(c => c.course_id),
+      credit_type_courses: undefined
+    }));
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching credit types:', error);
+    throw new AppError('Failed to fetch credit types', 500, 'ADMIN_CREDIT_TYPES_FETCH_FAILED');
+  }
+}));
+
+// Get single credit type with courses
+router.get('/credit-types/:id', authenticateToken, asyncHandler(async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const { data, error } = await supabase
+      .from('credit_types')
+      .select('*, credit_type_courses(course_id)')
+      .eq('id', id)
+      .single();
+
+    if (error) {
+      throw new AppError('Failed to fetch credit type', 500, 'ADMIN_CREDIT_TYPE_FETCH_FAILED');
+    }
+
+    res.json({
+      ...data,
+      course_ids: (data.credit_type_courses || []).map(c => c.course_id),
+      credit_type_courses: undefined
+    });
+  } catch (error) {
+    console.error('Error fetching credit type:', error);
+    throw new AppError('Failed to fetch credit type', 500, 'ADMIN_CREDIT_TYPE_FETCH_FAILED');
+  }
+}));
+
+// Create credit type
+router.post('/credit-types', authenticateToken, asyncHandler(async (req, res) => {
+  try {
+    const { name, description, prefix, is_active, course_ids } = req.body;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Credit type name is required' });
+    }
+    if (!prefix || !prefix.trim()) {
+      return res.status(400).json({ error: 'Credit type prefix is required' });
+    }
+
+    // Create the credit type
+    const { data: creditType, error } = await supabase
+      .from('credit_types')
+      .insert([{
+        name: name.trim(),
+        description: description?.trim() || null,
+        prefix: prefix.trim().toUpperCase(),
+        is_active: is_active !== false
+      }])
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    // Link courses if provided
+    if (course_ids && Array.isArray(course_ids) && course_ids.length > 0) {
+      const courseLinks = course_ids.map(courseId => ({
+        credit_type_id: creditType.id,
+        course_id: courseId
+      }));
+
+      const { error: linkError } = await supabase
+        .from('credit_type_courses')
+        .insert(courseLinks);
+
+      if (linkError) {
+        console.error('Error linking courses:', linkError);
+      }
+    }
+
+    res.status(201).json({
+      ...creditType,
+      course_ids: course_ids || []
+    });
+  } catch (error) {
+    console.error('Error creating credit type:', error);
+    throw new AppError('Failed to create credit type', 500, 'ADMIN_CREDIT_TYPE_CREATE_FAILED');
+  }
+}));
+
+// Update credit type
+router.put('/credit-types/:id', authenticateToken, asyncHandler(async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, description, prefix, is_active, course_ids } = req.body;
+
+    const { data: creditType, error } = await supabase
+      .from('credit_types')
+      .update({
+        name: name?.trim(),
+        description: description?.trim() || null,
+        prefix: prefix?.trim().toUpperCase(),
+        is_active,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    // If course_ids provided, replace the full collection
+    if (course_ids && Array.isArray(course_ids)) {
+      // Remove existing links
+      await supabase
+        .from('credit_type_courses')
+        .delete()
+        .eq('credit_type_id', id);
+
+      // Insert new links
+      if (course_ids.length > 0) {
+        const courseLinks = course_ids.map(courseId => ({
+          credit_type_id: id,
+          course_id: courseId
+        }));
+
+        const { error: linkError } = await supabase
+          .from('credit_type_courses')
+          .insert(courseLinks);
+
+        if (linkError) {
+          console.error('Error updating course links:', linkError);
+        }
+      }
+    }
+
+    res.json({
+      ...creditType,
+      course_ids: course_ids || []
+    });
+  } catch (error) {
+    console.error('Error updating credit type:', error);
+    throw new AppError('Failed to update credit type', 500, 'ADMIN_CREDIT_TYPE_UPDATE_FAILED');
+  }
+}));
+
+// Delete credit type
+router.delete('/credit-types/:id', authenticateToken, asyncHandler(async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const { error } = await supabase
+      .from('credit_types')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+    res.json({ message: 'Credit type deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting credit type:', error);
+    throw new AppError('Failed to delete credit type', 500, 'ADMIN_CREDIT_TYPE_DELETE_FAILED');
+  }
+}));
+
+// Add courses to a credit type
+router.post('/credit-types/:id/courses', authenticateToken, asyncHandler(async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { course_ids } = req.body;
+
+    if (!course_ids || !Array.isArray(course_ids) || course_ids.length === 0) {
+      return res.status(400).json({ error: 'course_ids array is required' });
+    }
+
+    const courseLinks = course_ids.map(courseId => ({
+      credit_type_id: id,
+      course_id: courseId
+    }));
+
+    const { data, error } = await supabase
+      .from('credit_type_courses')
+      .upsert(courseLinks, { onConflict: 'credit_type_id,course_id' })
+      .select();
+
+    if (error) throw error;
+    res.json({ message: 'Courses added successfully', data });
+  } catch (error) {
+    console.error('Error adding courses to credit type:', error);
+    throw new AppError('Failed to add courses', 500, 'ADMIN_CREDIT_TYPE_ADD_COURSES_FAILED');
+  }
+}));
+
+// Remove a course from a credit type
+router.delete('/credit-types/:id/courses/:courseId', authenticateToken, asyncHandler(async (req, res) => {
+  try {
+    const { id, courseId } = req.params;
+
+    const { error } = await supabase
+      .from('credit_type_courses')
+      .delete()
+      .eq('credit_type_id', id)
+      .eq('course_id', courseId);
+
+    if (error) throw error;
+    res.json({ message: 'Course removed from credit type' });
+  } catch (error) {
+    console.error('Error removing course from credit type:', error);
+    throw new AppError('Failed to remove course', 500, 'ADMIN_CREDIT_TYPE_REMOVE_COURSE_FAILED');
+  }
+}));
 
 export default router;

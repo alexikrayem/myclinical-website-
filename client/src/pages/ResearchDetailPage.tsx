@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import React, { useEffect, useState, useRef } from 'react';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { Calendar, User, FileText, ChevronRight, Eye, BookOpen, Quote } from 'lucide-react';
 import { format } from 'date-fns';
@@ -15,7 +15,11 @@ const ResearchDetailPage: React.FC = () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [relatedPapers, setRelatedPapers] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-    const [viewMode, setViewMode] = useState<'abstract' | 'full'>('abstract');
+    const [searchParams] = useSearchParams();
+    const initialViewMode = searchParams.get('view') === 'full' ? 'full' : 'abstract';
+    const [viewMode, setViewMode] = useState<'abstract' | 'full'>(initialViewMode);
+    const [pendingScrollToPdf, setPendingScrollToPdf] = useState(false);
+    const pdfAnchorRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
         const fetchResearch = async () => {
@@ -39,6 +43,26 @@ const ResearchDetailPage: React.FC = () => {
         // Scroll to top
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }, [id]);
+
+    useEffect(() => {
+        if (viewMode === 'full' && pendingScrollToPdf) {
+            pdfAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            setPendingScrollToPdf(false);
+        }
+    }, [viewMode, pendingScrollToPdf]);
+
+    const openFullView = (shouldScroll = false) => {
+        if (viewMode === 'full') {
+            if (shouldScroll) {
+                pdfAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+            return;
+        }
+        setViewMode('full');
+        if (shouldScroll) {
+            setPendingScrollToPdf(true);
+        }
+    };
 
     if (loading) {
         return (
@@ -156,7 +180,7 @@ const ResearchDetailPage: React.FC = () => {
                                     نظرة عامة
                                 </button>
                                 <button
-                                    onClick={() => setViewMode('full')}
+                                    onClick={() => openFullView(true)}
                                     className={`px-6 py-3 rounded-xl font-medium transition-all ${viewMode === 'full'
                                         ? 'bg-blue-600 text-white shadow-lg'
                                         : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
@@ -169,7 +193,7 @@ const ResearchDetailPage: React.FC = () => {
 
                             {/* PDF Viewer */}
                             {viewMode === 'full' && (
-                                <div className="animate-fadeIn">
+                                <div ref={pdfAnchorRef} className="animate-fadeIn">
                                     <PdfViewer researchId={id!} />
                                 </div>
                             )}
@@ -182,7 +206,7 @@ const ResearchDetailPage: React.FC = () => {
                             <h3 className="text-lg font-bold text-gray-900 mb-4">إجراءات</h3>
                             <div className="space-y-3">
                                 <button
-                                    onClick={() => setViewMode('full')}
+                                    onClick={() => openFullView(true)}
                                     className="w-full btn-primary flex items-center justify-center"
                                     data-testid="research-view-full-action"
                                 >

@@ -1,6 +1,5 @@
 import express from 'express';
 import bcrypt from 'bcryptjs';
-import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import {
     authenticateUser,
@@ -13,14 +12,13 @@ import { validate, schemas } from '../middleware/validation.js';
 import { authLimiter } from '../middleware/rateLimiter.js';
 import { trackLoginAttempt, checkLoginAllowed } from '../middleware/auth.js';
 import { normalizePhoneNumber } from '../utils/phone.js';
+import { supabaseAdmin as supabase } from '../config/supabase.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
+import { AppError } from '../utils/errors.js';
 
 dotenv.config();
 
 const router = express.Router();
-const supabase = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-);
 
 const SALT_ROUNDS = 12;
 
@@ -34,7 +32,7 @@ const isValidPassword = (password) => {
  * POST /api/auth/register
  * Register a new user with phone + password
  */
-router.post('/register', validate(schemas.register), async (req, res) => {
+router.post('/register', validate(schemas.register), asyncHandler(async (req, res) => {
     try {
         const { phone_number, password, display_name } = req.body;
 
@@ -139,9 +137,21 @@ router.post('/register', validate(schemas.register), async (req, res) => {
             await createSession(newUser.id, token, deviceInfo, ipAddress);
         } catch (sessionError) {
             console.error('Error creating session:', sessionError);
+            
+            // Compensating transaction: remove the user we just created to avoid a zombie account
+            try {
+                // Delete user_credits first if they were created
+                await supabase.from('user_credits').delete().eq('custom_user_id', newUser.id);
+                // Delete the user record
+                await supabase.from('users').delete().eq('id', newUser.id);
+                console.log(`Compensating transaction successful for user ${newUser.id}`);
+            } catch (cleanupError) {
+                console.error(`Failed to cleanup zombie user ${newUser.id} after session failure:`, cleanupError);
+            }
+
             // If session creation fails, we should return an error
             return res.status(500).json({
-                error: 'فشل إنشاء الجلسة',
+                error: 'فشل إنشاء الجلسة و تم الغاء تسجيل الحساب',
                 code: 'SESSION_CREATE_FAILED'
             });
         }
@@ -164,18 +174,15 @@ router.post('/register', validate(schemas.register), async (req, res) => {
             stack: error.stack,
             code: error.code
         });
-        res.status(500).json({
-            error: 'حدث خطأ أثناء التسجيل',
-            code: 'SERVER_ERROR'
-        });
+        throw new AppError('حدث خطأ أثناء التسجيل', 500, 'SERVER_ERROR');
     }
-});
+}));
 
 /**
  * POST /api/auth/login
  * Login with phone + password
  */
-router.post('/login', authLimiter, checkLoginAllowed, validate(schemas.login), async (req, res) => {
+router.post('/login', authLimiter, checkLoginAllowed, validate(schemas.login), asyncHandler(async (req, res) => {
     try {
         const { phone_number, password } = req.body;
 
@@ -246,18 +253,15 @@ router.post('/login', authLimiter, checkLoginAllowed, validate(schemas.login), a
 
     } catch (error) {
         console.error('Login error:', error);
-        res.status(500).json({
-            error: 'حدث خطأ أثناء تسجيل الدخول',
-            code: 'SERVER_ERROR'
-        });
+        throw new AppError('حدث خطأ أثناء تسجيل الدخول', 500, 'SERVER_ERROR');
     }
-});
+}));
 
 /**
  * POST /api/auth/logout
  * Logout and invalidate session
  */
-router.post('/logout', authenticateUser, async (req, res) => {
+router.post('/logout', authenticateUser, asyncHandler(async (req, res) => {
     try {
         await invalidateSession(req.sessionId);
 
@@ -267,18 +271,15 @@ router.post('/logout', authenticateUser, async (req, res) => {
         });
     } catch (error) {
         console.error('Logout error:', error);
-        res.status(500).json({
-            error: 'حدث خطأ أثناء تسجيل الخروج',
-            code: 'SERVER_ERROR'
-        });
+        throw new AppError('حدث خطأ أثناء تسجيل الخروج', 500, 'SERVER_ERROR');
     }
-});
+}));
 
 /**
  * POST /api/auth/logout-all
  * Logout from all devices
  */
-router.post('/logout-all', authenticateUser, async (req, res) => {
+router.post('/logout-all', authenticateUser, asyncHandler(async (req, res) => {
     try {
         await invalidateAllUserSessions(req.user.id);
 
@@ -288,25 +289,45 @@ router.post('/logout-all', authenticateUser, async (req, res) => {
         });
     } catch (error) {
         console.error('Logout all error:', error);
-        res.status(500).json({
-            error: 'حدث خطأ',
-            code: 'SERVER_ERROR'
-        });
+        throw new AppError('حدث خطأ', 500, 'SERVER_ERROR');
     }
-});
+}));
 
 /**
  * GET /api/auth/profile
  * Get current user profile
  */
-router.get('/profile', authenticateUser, async (req, res) => {
+router.get('/profile', authenticateUser, asyncHandler(async (req, res) => {
     try {
         // Get user with credits
-        const { data: credits } = await supabase
+        const { data: creditsData } = await supabase
             .from('user_credits')
-            .select('balance, video_watch_minutes, article_credits, total_earned, total_spent')
+            .select('balance, video_watch_minutes, article_credits, research_credits, total_earned, total_spent')
             .eq('custom_user_id', req.user.id)
             .single();
+
+        const credits = creditsData || {
+            balance: 0,
+            video_watch_minutes: 0,
+            article_credits: 0,
+            research_credits: 0,
+            total_earned: 0,
+            total_spent: 0
+        };
+
+        // Fetch typed credits with type names
+        const { data: typedCredits } = await supabase
+            .from('user_typed_credits')
+            .select('credit_type_id, balance, credit_types(name, prefix)')
+            .eq('user_id', req.user.id)
+            .gt('balance', 0);
+
+        const typed_credits = (typedCredits || []).map(tc => ({
+            credit_type_id: tc.credit_type_id,
+            name: tc.credit_types?.name || 'Unknown',
+            prefix: tc.credit_types?.prefix || '',
+            balance: tc.balance
+        }));
 
         res.json({
             user: {
@@ -315,28 +336,22 @@ router.get('/profile', authenticateUser, async (req, res) => {
                 display_name: req.user.displayName,
                 created_at: req.user.createdAt
             },
-            credits: credits || {
-                balance: 0,
-                video_watch_minutes: 0,
-                article_credits: 0,
-                total_earned: 0,
-                total_spent: 0
+            credits: {
+                ...credits,
+                typed_credits
             }
         });
     } catch (error) {
         console.error('Profile error:', error);
-        res.status(500).json({
-            error: 'حدث خطأ',
-            code: 'SERVER_ERROR'
-        });
+        throw new AppError('حدث خطأ', 500, 'SERVER_ERROR');
     }
-});
+}));
 
 /**
  * PUT /api/auth/profile
  * Update user profile
  */
-router.put('/profile', authenticateUser, async (req, res) => {
+router.put('/profile', authenticateUser, asyncHandler(async (req, res) => {
     try {
         const { display_name } = req.body;
 
@@ -359,18 +374,15 @@ router.put('/profile', authenticateUser, async (req, res) => {
         });
     } catch (error) {
         console.error('Update profile error:', error);
-        res.status(500).json({
-            error: 'حدث خطأ أثناء التحديث',
-            code: 'SERVER_ERROR'
-        });
+        throw new AppError('حدث خطأ أثناء التحديث', 500, 'SERVER_ERROR');
     }
-});
+}));
 
 /**
  * PUT /api/auth/change-password
  * Change password
  */
-router.put('/change-password', authenticateUser, async (req, res) => {
+router.put('/change-password', authenticateUser, asyncHandler(async (req, res) => {
     try {
         const { current_password, new_password } = req.body;
 
@@ -429,11 +441,8 @@ router.put('/change-password', authenticateUser, async (req, res) => {
         });
     } catch (error) {
         console.error('Change password error:', error);
-        res.status(500).json({
-            error: 'حدث خطأ أثناء تغيير كلمة المرور',
-            code: 'SERVER_ERROR'
-        });
+        throw new AppError('حدث خطأ أثناء تغيير كلمة المرور', 500, 'SERVER_ERROR');
     }
-});
+}));
 
 export default router;

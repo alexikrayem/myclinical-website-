@@ -8,12 +8,21 @@ interface User {
     display_name: string | null;
 }
 
+interface TypedCredit {
+    credit_type_id: string;
+    name: string;
+    prefix: string;
+    balance: number;
+}
+
 interface Credits {
     balance: number;
     video_watch_minutes: number;
     article_credits: number;
+    research_credits: number;
     total_earned: number;
     total_spent: number;
+    typed_credits: TypedCredit[];
 }
 
 interface AuthContextType {
@@ -32,8 +41,10 @@ const defaultCredits: Credits = {
     balance: 0,
     video_watch_minutes: 0,
     article_credits: 0,
+    research_credits: 0,
     total_earned: 0,
-    total_spent: 0
+    total_spent: 0,
+    typed_credits: []
 };
 
 const AuthContext = createContext<AuthContextType | null>(null);

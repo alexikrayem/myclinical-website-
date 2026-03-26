@@ -1,5 +1,6 @@
 import React from 'react';
-import { Calendar, Download, Users, Award, ArrowLeft } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Calendar, Users, Award, ArrowLeft, Eye } from 'lucide-react';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 
@@ -16,6 +17,7 @@ interface ResearchCardProps {
 }
 
 const ResearchCard: React.FC<ResearchCardProps> = ({ research }) => {
+  const navigate = useNavigate();
 
   const formattedDate = format(
     new Date(research.publication_date),
@@ -29,8 +31,7 @@ const ResearchCard: React.FC<ResearchCardProps> = ({ research }) => {
       return;
     }
 
-    // For now, just scroll to top since we don't have research detail pages
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    navigate(`/research/${research.id}?view=full`);
   };
 
   return (
@@ -90,8 +91,7 @@ const ResearchCard: React.FC<ResearchCardProps> = ({ research }) => {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              // Navigate to research detail when implemented
-              window.scrollTo({ top: 0, behavior: 'smooth' });
+              navigate(`/research/${research.id}?view=full`);
             }}
             className="text-blue-600 hover:text-blue-700 transition-colors font-semibold flex items-center"
             data-testid={`research-card-read-${research.id}`}
@@ -100,16 +100,17 @@ const ResearchCard: React.FC<ResearchCardProps> = ({ research }) => {
             <ArrowLeft size={16} className="mr-2 transform group-hover:translate-x-1 transition-transform" />
           </button>
 
-          <a
-            href={research.file_url}
-            download
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate(`/research/${research.id}?view=full`);
+            }}
             className="btn-primary inline-flex items-center"
-            onClick={(e) => e.stopPropagation()}
             data-testid={`research-card-download-${research.id}`}
           >
-            <Download size={16} className="ml-2" />
-            تحميل البحث
-          </a>
+            <Eye size={16} className="ml-2" />
+            عرض البحث
+          </button>
         </div>
       </div>
     </div>
