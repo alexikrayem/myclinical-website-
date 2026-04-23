@@ -7,8 +7,39 @@ import AuthorForm from './AuthorForm';
 import { api } from '../../context/AuthContext';
 
 interface ArticleFormProps {
-  article?: any;
+  article?: ArticleData | null;
   isEditing?: boolean;
+}
+
+interface ArticleData {
+  id: string;
+  title?: string;
+  excerpt?: string;
+  content?: string;
+  author?: string;
+  tags?: string[];
+  is_featured?: boolean;
+  cover_image?: string;
+  article_type?: string;
+  credits_required?: number;
+}
+
+interface CategoryApiItem {
+  name?: string;
+  name_ar?: string;
+}
+
+interface CreatedAuthor {
+  id: string;
+  name: string;
+}
+
+interface ErrorWithResponse {
+  response?: {
+    data?: {
+      error?: string;
+    };
+  };
 }
 
 const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false }) => {
@@ -26,7 +57,6 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
     credits_required: 0,
   });
   const [coverImageFile, setCoverImageFile] = useState<File | null>(null);
-  const [tagInput, setTagInput] = useState('');
   const [useImageUrl, setUseImageUrl] = useState(false);
   const [previewMode, setPreviewMode] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -60,7 +90,9 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
       try {
         const response = await api.get('/admin/categories');
         // Map response objects to just names if needed, or handle icons/colors
-        const categoryNames = response.data.map((cat: any) => cat.name_ar || cat.name);
+        const categoryNames = (response.data as CategoryApiItem[])
+          .map((cat) => cat.name_ar || cat.name || '')
+          .filter((name): name is string => Boolean(name));
         setCategories(categoryNames);
       } catch (error) {
         console.error('Error fetching categories:', error);
@@ -135,7 +167,7 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
     }
   };
 
-  const handleAuthorCreated = (createdAuthor: any) => {
+  const handleAuthorCreated = (createdAuthor: CreatedAuthor) => {
     if (createdAuthor?.name) {
       setAuthors(prev => {
         const exists = prev.some(a => a.id === createdAuthor.id);
@@ -166,26 +198,6 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
         setErrors(prev => ({ ...prev, cover_image: '' }));
       }
     }
-  };
-
-  const addTag = () => {
-    if (tagInput.trim() && !formData.tags.includes(tagInput.trim())) {
-      setFormData(prev => ({
-        ...prev,
-        tags: [...prev.tags, tagInput.trim()]
-      }));
-      setTagInput('');
-      if (errors.tags) {
-        setErrors(prev => ({ ...prev, tags: '' }));
-      }
-    }
-  };
-
-  const removeTag = (tagToRemove: string) => {
-    setFormData(prev => ({
-      ...prev,
-      tags: prev.tags.filter(tag => tag !== tagToRemove)
-    }));
   };
 
   const handleSuggestTags = async () => {
@@ -251,22 +263,22 @@ const ArticleForm: React.FC<ArticleFormProps> = ({ article, isEditing = false })
         submitData.append('cover_image', coverImageFile);
       }
 
-      let response;
       if (isEditing && article) {
-        response = await api.put(`/admin/articles/${article.id}`, submitData, {
+        await api.put(`/admin/articles/${article.id}`, submitData, {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
       } else {
-        response = await api.post('/admin/articles', submitData, {
+        await api.post('/admin/articles', submitData, {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
       }
 
       toast.success(isEditing ? 'تم تحديث المقال بنجاح' : 'تم إنشاء المقال بنجاح');
       navigate('/articles');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error saving article:', error);
-      const errorMessage = error.response?.data?.error || 'حدث خطأ أثناء حفظ المقال';
+      const candidate = error as ErrorWithResponse;
+      const errorMessage = candidate.response?.data?.error || 'حدث خطأ أثناء حفظ المقال';
       toast.error(errorMessage);
     } finally {
       setLoading(false);

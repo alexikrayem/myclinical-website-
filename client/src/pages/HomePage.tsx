@@ -18,7 +18,7 @@ const HomePage: React.FC = () => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const { displayedIds, addIds } = useDisplayedItems();
 
-  const handleItemsLoaded = useCallback((items: any[]) => {
+  const handleItemsLoaded = useCallback((items: { id: string }[]) => {
     addIds(items.map(i => i.id));
   }, [addIds]);
 
@@ -77,7 +77,7 @@ const HomePage: React.FC = () => {
       name: tag,
       image: getTagImage(tag)
     }));
-  }, [tags]);
+  }, [tags, getTagImage]);
 
   const scroll = useCallback((direction: 'left' | 'right') => {
     if (scrollContainerRef.current) {

@@ -12,6 +12,7 @@ import { articlesApi, creditsApi } from '../lib/api';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import Skeleton from '../components/ui/Skeleton';
+import DOMPurify from 'dompurify';
 
 interface ArticleDetail {
   id: string;
@@ -129,7 +130,7 @@ const ArticleDetailPage: React.FC = () => {
       const errorMsg = axios.isAxiosError(error)
         ? (error.response?.data as { error?: string } | undefined)?.error
         : undefined;
-      toast.error(errorMsg);
+      toast.error(errorMsg || 'حدث خطأ. يرجى المحاولة مرة أخرى.');
     } finally {
       setIsUnlocking(false);
     }
@@ -401,7 +402,7 @@ const ArticleDetailPage: React.FC = () => {
               ) : (
                 <div
                   className="text-gray-700 leading-relaxed text-lg space-y-6 article-body-content"
-                  dangerouslySetInnerHTML={{ __html: article.content.replace(/\n/g, '<br>') }}
+                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(article.content.replace(/\n/g, '<br>')) }}
                   data-testid="article-full-content"
                 />
               )}

@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event';
 vi.mock('react-quill', async () => {
   const React = await import('react');
   return {
-    default: React.forwardRef<HTMLTextAreaElement, any>((_props, ref) => {
+    default: React.forwardRef<HTMLTextAreaElement, React.TextareaHTMLAttributes<HTMLTextAreaElement>>((_props, ref) => {
       return <textarea ref={ref} data-testid="quill" />;
     }),
   };

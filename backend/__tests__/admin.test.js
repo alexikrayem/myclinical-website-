@@ -59,12 +59,15 @@ jest.unstable_mockModule('../middleware/rateLimiter.js', () => ({
     aiLimiter: (req, res, next) => next(),
     searchLimiter: (req, res, next) => next(),
     redeemLimiter: (req, res, next) => next(),
+    accountRedeemLimiter: (req, res, next) => next(),
     limiters: {}
 }));
 
 // Mock cache
 jest.unstable_mockModule('../middleware/cache.js', () => ({
-    cacheMiddleware: () => (req, res, next) => next()
+    cacheMiddleware: () => (req, res, next) => next(),
+    invalidateCache: jest.fn(),
+    invalidateCachePattern: jest.fn()
 }));
 
 // Mock jsonwebtoken

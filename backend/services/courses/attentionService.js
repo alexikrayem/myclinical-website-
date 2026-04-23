@@ -1,6 +1,11 @@
 import crypto from 'crypto';
+import { AppError, BadRequestError, ForbiddenError, NotFoundError } from '../../utils/errors.js';
+import logger from '../../config/logger.js';
 
-const ATTENTION_SECRET = process.env.ATTENTION_HMAC_SECRET || 'attention-verification-secret-key';
+const ATTENTION_SECRET = process.env.ATTENTION_HMAC_SECRET;
+if (!ATTENTION_SECRET) {
+  throw new Error('FATAL: ATTENTION_HMAC_SECRET environment variable is required');
+}
 const CHALLENGE_TIMEOUT_SECONDS = 15;
 
 // Available colors for color-pick challenges
@@ -29,7 +34,20 @@ function computeHmacToken(challengeId, expectedAnswer) {
  * Generate random integer between min and max (inclusive)
  */
 function randomInt(min, max) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
+  // crypto.randomInt is exclusive of the maximum limit
+  return crypto.randomInt(min, max + 1);
+}
+
+/**
+ * Securely shuffle an array using Fisher-Yates and cryptographic randomness
+ */
+function secureShuffle(array) {
+  const result = [...array];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = crypto.randomInt(0, i + 1);
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
 }
 
 /**
@@ -39,9 +57,9 @@ function generateChallengeData(type) {
   switch (type) {
     case 'color': {
       // Pick a random target color and 3 distractors
-      const shuffled = [...COLORS].sort(() => Math.random() - 0.5);
+      const shuffled = secureShuffle(COLORS);
       const target = shuffled[0];
-      const options = shuffled.slice(0, 4).sort(() => Math.random() - 0.5);
+      const options = secureShuffle(shuffled.slice(0, 4));
       return {
         question: `اضغط على اللون ${target.name}`,
         questionEn: `Tap the ${target.nameEn} color`,
@@ -85,7 +103,7 @@ export async function generateChallenges({ supabase, courseId, sessionId, userId
 
   while (currentSecond < courseDuration) {
     // Predominantly use color type (70%), with some math (30%)
-    const rand = Math.random();
+    const rand = crypto.randomInt(0, 100) / 100;
     const challengeType = rand < 0.7 ? 'color' : 'math';
 
     const data = generateChallengeData(challengeType);
@@ -121,8 +139,8 @@ export async function generateChallenges({ supabase, courseId, sessionId, userId
     .insert(challenges);
 
   if (error) {
-    console.error('Error inserting attention challenges:', error);
-    throw error;
+    logger.error('Error inserting attention challenges:', { error, courseId, sessionId });
+    throw new AppError('Failed to generate challenges', 500, 'CHALLENGE_GENERATION_FAILED');
   }
 
   return {
@@ -144,11 +162,15 @@ export async function getNextChallenge({ supabase, sessionId, currentSeconds, us
     .single();
 
   if (!session || session.custom_user_id !== userId) {
-    return { error: 'Invalid session', status: 403 };
+    throw new ForbiddenError('Invalid session');
   }
 
   if (session.status !== 'active') {
-    return { error: 'Session is no longer active', status: 400 };
+    throw new BadRequestError('Session is no longer active');
+  }
+  
+  if (session.expires_at && new Date(session.expires_at) < new Date()) {
+    throw new ForbiddenError('Session has expired');
   }
 
   // Find the earliest pending challenge where trigger_at_seconds <= currentSeconds
@@ -191,51 +213,42 @@ export async function verifyChallenge({ supabase, challengeId, answer, sessionId
     .single();
 
   if (error || !challenge) {
-    return { error: 'Challenge not found', status: 404 };
+    throw new NotFoundError('Challenge not found');
   }
 
   if (challenge.custom_user_id !== userId) {
-    return { error: 'Unauthorized', status: 403 };
+    throw new ForbiddenError('Unauthorized');
   }
 
   if (challenge.session_id !== sessionId) {
-    return { error: 'Session mismatch', status: 400 };
+    throw new BadRequestError('Session mismatch');
   }
 
   if (challenge.status !== 'pending') {
-    return { error: 'Challenge already responded to', status: 400 };
+    throw new BadRequestError('Challenge already responded to');
   }
 
   // Verify HMAC: recompute and compare
   const expectedToken = computeHmacToken(challengeId, answer);
-  const passed = crypto.timingSafeEqual(
-    Buffer.from(challenge.challenge_token, 'hex'),
-    Buffer.from(expectedToken, 'hex')
-  );
+  const storedBuf = Buffer.from(challenge.challenge_token, 'hex');
+  const computedBuf = Buffer.from(expectedToken, 'hex');
+  
+  let passed = false;
+  if (storedBuf.length === computedBuf.length) {
+    passed = crypto.timingSafeEqual(storedBuf, computedBuf);
+  }
 
-  const newStatus = passed ? 'passed' : 'failed';
-
-  // Update the challenge record
-  await supabase
-    .from('attention_checks')
-    .update({
-      status: newStatus,
-      responded_at: new Date().toISOString()
-    })
-    .eq('id', challengeId);
-
-  // Fetch the session to update counters
+  // Fetch course to get max failures
   const { data: session } = await supabase
     .from('course_playback_sessions')
-    .select('id, attention_failures, course_id')
+    .select('course_id')
     .eq('id', sessionId)
     .single();
 
   if (!session) {
-    return { error: 'Session not found', status: 404 };
+    throw new NotFoundError('Session not found');
   }
 
-  // Fetch course to get max failures
   const { data: course } = await supabase
     .from('video_courses')
     .select('attention_max_failures')
@@ -243,62 +256,25 @@ export async function verifyChallenge({ supabase, challengeId, answer, sessionId
     .single();
 
   const maxFailures = course?.attention_max_failures || 3;
-  let newFailures = session.attention_failures;
-  let sessionTerminated = false;
 
-  if (!passed) {
-    newFailures += 1;
+  // Call the atomic RPC to verify and update
+  const { data: rpcResult, error: rpcError } = await supabase.rpc('verify_attention_challenge', {
+    p_challenge_id: challengeId,
+    p_session_id: sessionId,
+    p_user_id: userId,
+    p_passed: passed,
+    p_max_failures: maxFailures
+  });
 
-    if (newFailures >= maxFailures) {
-      // Terminate the session
-      sessionTerminated = true;
-      await supabase
-        .from('course_playback_sessions')
-        .update({
-          status: 'terminated',
-          attention_failures: newFailures
-        })
-        .eq('id', sessionId);
-
-      // Mark all remaining pending challenges as expired
-      await supabase
-        .from('attention_checks')
-        .update({ status: 'expired' })
-        .eq('session_id', sessionId)
-        .eq('status', 'pending');
-    } else {
-      await supabase
-        .from('course_playback_sessions')
-        .update({ attention_failures: newFailures })
-        .eq('id', sessionId);
-    }
+  if (rpcError) {
+    throw new AppError('Failed to verify challenge', 500, 'VERIFY_CHALLENGE_FAILED');
+  }
+  
+  if (rpcResult.error) {
+    throw new AppError(rpcResult.error, rpcResult.status);
   }
 
-  // Calculate attention score
-  const { data: allChecks } = await supabase
-    .from('attention_checks')
-    .select('status')
-    .eq('session_id', sessionId)
-    .neq('status', 'pending');
-
-  const responded = allChecks || [];
-  const passedCount = responded.filter(c => c.status === 'passed').length;
-  const totalResponded = responded.length;
-  const attentionScore = totalResponded > 0 ? Math.round((passedCount / totalResponded) * 100) : 100;
-
-  // Update session attention score
-  await supabase
-    .from('course_playback_sessions')
-    .update({ attention_score: attentionScore })
-    .eq('id', sessionId);
-
-  return {
-    passed,
-    session_terminated: sessionTerminated,
-    attention_score: attentionScore,
-    failures: newFailures,
-    max_failures: maxFailures
-  };
+  return rpcResult;
 }
 
 /**
@@ -321,12 +297,12 @@ export async function expireChallenge({ supabase, challengeId, sessionId, userId
 export async function getAttentionStatus({ supabase, sessionId, userId }) {
   const { data: session } = await supabase
     .from('course_playback_sessions')
-    .select('id, attention_score, attention_failures, status, course_id')
+    .select('id, custom_user_id, attention_score, attention_failures, status, course_id')
     .eq('id', sessionId)
     .single();
 
   if (!session || session.custom_user_id !== userId) {
-    return { error: 'Session not found', status: 404 };
+    throw new NotFoundError('Session not found');
   }
 
   // Count total and remaining checks

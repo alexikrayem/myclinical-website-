@@ -4,9 +4,23 @@ import AdminLayout from '../components/layout/AdminLayout';
 import AuthorForm from '../components/forms/AuthorForm';
 import { api } from '../context/AuthContext';
 
+interface Author {
+  id: string;
+  name: string;
+  bio: string;
+  specialization: string;
+  experience_years: number;
+  education: string;
+  location: string;
+  email?: string;
+  website?: string;
+  is_active: boolean;
+  image?: string;
+}
+
 const EditAuthor: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const [author, setAuthor] = useState<any>(null);
+  const [author, setAuthor] = useState<Author | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

@@ -3,21 +3,22 @@ import dotenv from 'dotenv';
 import multer from "multer";
 import fs from "fs";
 import path from "path";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { createRequire } from "module";
-const require = createRequire(import.meta.url);
-const pdfParse = require("pdf-parse");
+import { getGenerativeModel } from '../config/gemini.js';
+import pdfParse from "pdf-parse";
 import { aiLimiter, searchLimiter, uploadLimiter } from '../middleware/rateLimiter.js';
 import { cacheMiddleware } from '../middleware/cache.js';
 import { validateUploadedFile } from '../middleware/fileValidation.js';
 import { body, query, validationResult } from 'express-validator';
 import { meiliSearch, orderByIdList } from '../services/search/searchService.js';
+import { sanitizeSearchInput } from '../utils/searchUtils.js';
+import { ARTICLE_LIST_SELECT, ARTICLE_DETAIL_SELECT } from '../utils/queryFields.js';
 import { optionalAuth } from '../middleware/userAuth.js';
 import { supabaseAdmin, supabasePublic } from '../config/supabase.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { AppError, NotFoundError } from '../utils/errors.js';
 
 dotenv.config();
+import logger from '../config/logger.js';
 
 const router = express.Router();
 
@@ -25,8 +26,7 @@ const router = express.Router();
 const upload = multer({ dest: "uploads/" });
 
 // === Gemini setup ===
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+const model = getGenerativeModel();
 // AI artciles 
 // AI artciles 
 router.post("/generate-article",
@@ -72,6 +72,10 @@ router.post("/generate-article",
       }
       `;
 
+      if (!model) {
+        throw new AppError('AI model is not configured', 501, 'AI_DISABLED');
+      }
+
       const result = await model.generateContent(prompt);
       const responseText = result.response.text();
 
@@ -94,7 +98,7 @@ router.post("/generate-article",
 
       res.json(responseData);
     } catch (error) {
-      console.error("Error generating article:", error);
+      logger.error("Error generating article:", { error });
       throw new AppError('فشل توليد المقال', 500, 'AI_ARTICLE_GENERATE_FAILED');
     }
   }));
@@ -126,6 +130,10 @@ router.post("/generate-article-from-file", aiLimiter, uploadLimiter, upload.sing
     - مؤلف (AI)
     النص: ${text}`;
 
+    if (!model) {
+      throw new AppError('AI model is not configured', 501, 'AI_DISABLED');
+    }
+
     const result = await model.generateContent(prompt);
     const response = result.response.text();
 
@@ -137,7 +145,7 @@ router.post("/generate-article-from-file", aiLimiter, uploadLimiter, upload.sing
       author: "AI",
     });
   } catch (error) {
-    console.error("Error generating article from file:", error);
+    logger.error("Error generating article from file:", { error });
     throw new AppError('فشل توليد المقال من الملف', 500, 'AI_ARTICLE_FILE_FAILED');
   }
 }));
@@ -181,43 +189,43 @@ router.get('/by-tags', cacheMiddleware(300), asyncHandler(async (req, res) => {
   const { limit = 5 } = req.query;
   const parsedLimit = Math.min(parseInt(limit) || 5, 10);
 
-    // Determine which tags to fetch
-    let tagsToFetch;
-    if (req.query.tags) {
-      tagsToFetch = req.query.tags.split(',').map(t => t.trim()).filter(Boolean);
-    } else {
-      // Fetch all known tags
-      const { data: tagData, error: tagError } = await supabasePublic
-        .from('articles')
-        .select('tags');
-      if (tagError) {
-        throw new AppError('Failed to fetch articles by tags', 500, 'ARTICLES_BY_TAGS_FAILED');
-      }
-      const allTags = tagData.flatMap(a => a.tags);
-      tagsToFetch = [...new Set(allTags)].sort();
+  // Determine which tags to fetch
+  let tagsToFetch;
+  if (req.query.tags) {
+    tagsToFetch = req.query.tags.split(',').map(t => t.trim()).filter(Boolean);
+  } else {
+    // Fetch all known tags
+    const { data: tagData, error: tagError } = await supabasePublic
+      .from('articles')
+      .select('tags');
+    if (tagError) {
+      throw new AppError('Failed to fetch articles by tags', 500, 'ARTICLES_BY_TAGS_FAILED');
     }
+    const allTags = tagData.flatMap(a => a.tags);
+    tagsToFetch = [...new Set(allTags)].sort();
+  }
 
-    // Fetch latest articles for each tag in parallel
-    const results = {};
-    await Promise.all(
-      tagsToFetch.map(async (tag) => {
-        const { data, error } = await supabasePublic
-          .from('articles')
-          .select('id, title, slug, excerpt, cover_image, publication_date, author, tags, article_type')
-          .contains('tags', [tag])
-          .order('publication_date', { ascending: false })
-          .limit(parsedLimit);
+  // Fetch latest articles for each tag in parallel
+  const results = {};
+  await Promise.all(
+    tagsToFetch.map(async (tag) => {
+      const { data, error } = await supabasePublic
+        .from('articles')
+        .select('id, title, slug, excerpt, cover_image, publication_date, author, tags, article_type')
+        .contains('tags', [tag])
+        .order('publication_date', { ascending: false })
+        .limit(parsedLimit);
 
-        if (error) {
-          console.error(`Error fetching articles for tag "${tag}":`, error);
-          results[tag] = [];
-        } else {
-          results[tag] = data || [];
-        }
-      })
-    );
+      if (error) {
+        console.error(`Error fetching articles for tag "${tag}":`, error);
+        results[tag] = [];
+      } else {
+        results[tag] = data || [];
+      }
+    })
+  );
 
-    res.json(results);
+  res.json(results);
 }));
 
 /**
@@ -287,67 +295,46 @@ router.get('/',
       return res.status(400).json({ error: 'Invalid search parameters' });
     }
 
-      const { tag, search, limit = 12, page = 1 } = req.query;
-      const offset = (page - 1) * limit;
+    const { tag, search, limit = 12, page = 1 } = req.query;
+    const offset = (page - 1) * limit;
 
-      let query = supabasePublic.from('articles').select('*', { count: 'exact' });
+    let query = supabasePublic.from('articles').select(`${ARTICLE_LIST_SELECT}`, { count: 'exact' });
 
-      // Tag filtering
-      if (tag) {
-        query = query.contains('tags', [tag]);
-      }
+    // Tag filtering
+    if (tag) {
+      query = query.contains('tags', [tag]);
+    }
 
-      // Type filtering (default to 'article' if not specified, or allow fetching all?)
-      // For now, let's allow optional filtering. If passed, filter.
-      // If client page needs specific type, it will pass it.
-      if (req.query.type) {
-        query = query.eq('article_type', req.query.type);
-      } else {
-        // Default behavior: show everything or just articles?
-        // Existing behavior showed everything. Let's keep it but arguably should filter by 'article' by default?
-        // No, let's keep it flexible.
-      }
+    // Type filtering (default to 'article' if not specified, or allow fetching all?)
+    // For now, let's allow optional filtering. If passed, filter.
+    // If client page needs specific type, it will pass it.
+    if (req.query.type) {
+      query = query.eq('article_type', req.query.type);
+    } else {
+      // Default behavior: show everything or just articles?
+      // Existing behavior showed everything. Let's keep it but arguably should filter by 'article' by default?
+      // No, let's keep it flexible.
+    }
 
-      // Full-text search using Postgres textSearch
-      // Falls back to trigram similarity for Arabic text
-      if (search) {
-        const meiliResult = await meiliSearch('articles', search, {
-          page,
-          limit,
-          filters: {
-            ...(tag ? { tags: tag } : {}),
-            ...(req.query.type ? { article_type: req.query.type } : {})
-          }
-        });
+    // Full-text search using Postgres textSearch
+    // Falls back to trigram similarity for Arabic text
+    if (search) {
+      const meiliResult = await meiliSearch('articles', search, {
+        page,
+        limit,
+        filters: {
+          ...(tag ? { tags: tag } : {}),
+          ...(req.query.type ? { article_type: req.query.type } : {})
+        }
+      });
 
-        if (meiliResult) {
-          const ids = meiliResult.hits.map(hit => hit.id);
-          const total = meiliResult.estimatedTotalHits || 0;
+      if (meiliResult) {
+        const ids = meiliResult.hits.map(hit => hit.id);
+        const total = meiliResult.estimatedTotalHits || 0;
 
-          if (!ids.length) {
-            return res.json({
-              data: [],
-              pagination: {
-                total,
-                page: parseInt(page),
-                limit: parseInt(limit),
-                pages: Math.ceil(total / limit)
-              }
-            });
-          }
-
-          const { data: rows, error: fetchError } = await supabasePublic
-            .from('articles')
-            .select('*')
-            .in('id', ids);
-
-          if (fetchError) {
-            throw new AppError('Failed to fetch articles', 500, 'ARTICLES_FETCH_FAILED');
-          }
-
-          const ordered = orderByIdList(rows, ids);
+        if (!ids.length) {
           return res.json({
-            data: ordered,
+            data: [],
             pagination: {
               total,
               page: parseInt(page),
@@ -357,19 +344,43 @@ router.get('/',
           });
         }
 
-        // Fallback: Use Supabase ilike for partial matches
+        const { data: rows, error: fetchError } = await supabasePublic
+          .from('articles')
+          .select(ARTICLE_LIST_SELECT)
+          .in('id', ids);
+
+        if (fetchError) {
+          throw new AppError('Failed to fetch articles', 500, 'ARTICLES_FETCH_FAILED');
+        }
+
+        const ordered = orderByIdList(rows, ids);
+        return res.json({
+          data: ordered,
+          pagination: {
+            total,
+            page: parseInt(page),
+            limit: parseInt(limit),
+            pages: Math.ceil(total / limit)
+          }
+        });
+      }
+
+      // Fallback: Use Supabase ilike for partial matches
+      const sanitizedSearch = sanitizeSearchInput(search);
+      if (sanitizedSearch) {
         query = query.or(
-          `title.ilike.%${search}%,excerpt.ilike.%${search}%,author.ilike.%${search}%`
+          `title.ilike.%${sanitizedSearch}%,excerpt.ilike.%${sanitizedSearch}%,author.ilike.%${sanitizedSearch}%`
         );
       }
+    }
 
-      const { data, error, count } = await query
-        .order('publication_date', { ascending: false })
-        .range(offset, offset + parseInt(limit) - 1);
+    const { data, error, count } = await query
+      .order('publication_date', { ascending: false })
+      .range(offset, offset + parseInt(limit) - 1);
 
-      if (error) {
-        throw new AppError('Failed to fetch articles', 500, 'ARTICLES_FETCH_FAILED');
-      }
+    if (error) {
+      throw new AppError('Failed to fetch articles', 500, 'ARTICLES_FETCH_FAILED');
+    }
 
     res.json({
       data,
@@ -386,7 +397,7 @@ router.get('/',
 router.get('/featured', cacheMiddleware(600), asyncHandler(async (req, res) => {
   const { data: articles, error } = await supabasePublic
     .from('articles')
-    .select('*')
+    .select(ARTICLE_LIST_SELECT)
     .eq('is_featured', true)
     .order('publication_date', { ascending: false })
     .limit(5);
@@ -395,20 +406,20 @@ router.get('/featured', cacheMiddleware(600), asyncHandler(async (req, res) => {
     throw new AppError('Failed to fetch featured articles', 500, 'ARTICLES_FEATURED_FAILED');
   }
 
-    // Fetch author details for all featured articles in one query (Refactored to avoid N+1)
-    const authorNames = [...new Set(articles.map(a => a.author))];
-    const { data: authorsData } = await supabasePublic
-      .from('authors')
-      .select('name, image')
-      .in('name', authorNames);
+  // Fetch author details for all featured articles in one query (Refactored to avoid N+1)
+  const authorNames = [...new Set(articles.map(a => a.author))];
+  const { data: authorsData } = await supabasePublic
+    .from('authors')
+    .select('name, image')
+    .in('name', authorNames);
 
-    const authorMap = new Map(authorsData?.map(a => [a.name, a.image]) || []);
-    const defaultImage = 'https://images.pexels.com/photos/5327585/pexels-photo-5327585.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2';
+  const authorMap = new Map(authorsData?.map(a => [a.name, a.image]) || []);
+  const defaultImage = 'https://images.pexels.com/photos/5327585/pexels-photo-5327585.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2';
 
-    const articlesWithAuthors = articles.map(article => ({
-      ...article,
-      author_image: authorMap.get(article.author) || defaultImage
-    }));
+  const articlesWithAuthors = articles.map(article => ({
+    ...article,
+    author_image: authorMap.get(article.author) || defaultImage
+  }));
 
   res.json(articlesWithAuthors);
 }));
@@ -443,89 +454,89 @@ router.get('/:idOrSlug', optionalAuth, asyncHandler(async (req, res) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
-    let userId = req.user?.id || null;
-    let hasAccess = false;
+  let userId = req.user?.id || null;
+  let hasAccess = false;
 
-    // 1. Verify User if token exists
-    if (!userId && token) {
-      const { data: { user }, error } = await supabasePublic.auth.getUser(token);
-      if (!error && user) {
-        userId = user.id;
-      }
+  // 1. Verify User if token exists
+  if (!userId && token) {
+    const { data: { user }, error } = await supabasePublic.auth.getUser(token);
+    if (!error && user) {
+      userId = user.id;
     }
+  }
 
-    // 2. Fetch Article by ID or slug
-    // Check if idOrSlug looks like a UUID
-    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrSlug);
+  // 2. Fetch Article by ID or slug
+  // Check if idOrSlug looks like a UUID
+  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrSlug);
 
-    let query = supabasePublic.from('articles').select('*');
-    if (isUUID) {
-      query = query.eq('id', idOrSlug);
+  let query = supabasePublic.from('articles').select(ARTICLE_DETAIL_SELECT);
+  if (isUUID) {
+    query = query.eq('id', idOrSlug);
+  } else {
+    query = query.eq('slug', idOrSlug);
+  }
+
+  const { data: article, error } = await query.single();
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      throw new NotFoundError('Article not found');
+    }
+    throw new AppError('Failed to fetch article', 500, 'ARTICLE_FETCH_FAILED');
+  }
+
+  // 3. Check Access (if user is logged in)
+  if (userId) {
+    // Check for Admin
+    const { data: admin } = await supabaseAdmin
+      .from('admins')
+      .select('id')
+      .eq('id', userId)
+      .single();
+
+    if (admin) {
+      hasAccess = true;
     } else {
-      query = query.eq('slug', idOrSlug);
-    }
-
-    const { data: article, error } = await query.single();
-
-    if (error) {
-      if (error.code === 'PGRST116') {
-        throw new NotFoundError('Article not found');
-      }
-      throw new AppError('Failed to fetch article', 500, 'ARTICLE_FETCH_FAILED');
-    }
-
-    // 3. Check Access (if user is logged in)
-    if (userId) {
-      // Check for Admin
-      const { data: admin } = await supabaseAdmin
-        .from('admins')
+      // Check Article Access table
+      const { data: access } = await supabaseAdmin
+        .from('article_access')
         .select('id')
-        .eq('id', userId)
+        .eq('user_id', userId)
+        .eq('article_id', article.id)
         .single();
 
-      if (admin) {
-        hasAccess = true;
-      } else {
-        // Check Article Access table
-        const { data: access } = await supabaseAdmin
-          .from('article_access')
-          .select('id')
-          .eq('user_id', userId)
-          .eq('article_id', article.id)
-          .single();
-
-        if (access) hasAccess = true;
-      }
+      if (access) hasAccess = true;
     }
+  }
 
-    // 4. Handle Content Delivery
-    // If article is free (credits_required = 0), grant access to everyone
-    if (article.credits_required === 0) hasAccess = true;
+  // 4. Handle Content Delivery
+  // If article is free (credits_required = 0), grant access to everyone
+  if (article.credits_required === 0) hasAccess = true;
 
-    // Return truncated content (Peek) when no access
-    const TRUNCATE_LENGTH = 600;
-    let content = article.content;
-    if (!hasAccess && article.content?.length > TRUNCATE_LENGTH) {
-      const cutIndex = article.content.indexOf(' ', TRUNCATE_LENGTH);
-      content = article.content.substring(0, cutIndex > 0 ? cutIndex : TRUNCATE_LENGTH) + '...';
-    }
+  // Return truncated content (Peek) when no access
+  const TRUNCATE_LENGTH = 600;
+  let content = article.content;
+  if (!hasAccess && article.content?.length > TRUNCATE_LENGTH) {
+    const cutIndex = article.content.indexOf(' ', TRUNCATE_LENGTH);
+    content = article.content.substring(0, cutIndex > 0 ? cutIndex : TRUNCATE_LENGTH) + '...';
+  }
 
-    const responsePayload = {
-      id: article.id,
-      slug: article.slug,
-      title: article.title,
-      excerpt: article.excerpt,
-      content: hasAccess ? article.content : content,
-      cover_image: article.cover_image,
-      publication_date: article.publication_date,
-      author: article.author,
-      tags: article.tags,
-      article_type: article.article_type,
-      is_featured: article.is_featured,
-      credits_required: article.credits_required,
-      is_preview: !hasAccess,
-      has_access: hasAccess
-    };
+  const responsePayload = {
+    id: article.id,
+    slug: article.slug,
+    title: article.title,
+    excerpt: article.excerpt,
+    content: hasAccess ? article.content : content,
+    cover_image: article.cover_image,
+    publication_date: article.publication_date,
+    author: article.author,
+    tags: article.tags,
+    article_type: article.article_type,
+    is_featured: article.is_featured,
+    credits_required: article.credits_required,
+    is_preview: !hasAccess,
+    has_access: hasAccess
+  };
 
   res.json(responsePayload);
 }));
@@ -535,71 +546,71 @@ router.get('/:id/related', asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { limit = 3 } = req.query;
 
-    // 1. Get current article details
-    const { data: article, error: articleError } = await supabasePublic
-      .from('articles')
-      .select('tags, article_type, categories')
-      .eq('id', id)
-      .single();
+  // 1. Get current article details
+  const { data: article, error: articleError } = await supabasePublic
+    .from('articles')
+    .select('tags, article_type, categories')
+    .eq('id', id)
+    .single();
 
-    if (articleError) {
-      throw new AppError('Failed to fetch related articles', 500, 'ARTICLES_RELATED_FAILED');
+  if (articleError) {
+    throw new AppError('Failed to fetch related articles', 500, 'ARTICLES_RELATED_FAILED');
+  }
+
+  // 2. Fetch candidates (pool of potentially related items)
+  // We fetch more than needed to sort them in memory
+  // Strategy: Get items with overlapping tags OR same category
+  const { data: candidates, error } = await supabasePublic
+    .from('articles')
+    .select('id, title, excerpt, cover_image, publication_date, author, tags, article_type')
+    .neq('id', id) // Exclude current
+    .overlaps('tags', article.tags || []) // Must have at least one tag in common
+    .limit(20); // Fetch pool of 20
+
+  if (error) {
+    throw new AppError('Failed to fetch related articles', 500, 'ARTICLES_RELATED_FAILED');
+  }
+
+  // 3. Score and Sort
+  const scoredCandidates = candidates.map(candidate => {
+    let score = 0;
+
+    // Rule 1: Same type (e.g. Clinical Case) gets big boost
+    if (candidate.article_type === article.article_type) {
+      score += 10;
     }
 
-    // 2. Fetch candidates (pool of potentially related items)
-    // We fetch more than needed to sort them in memory
-    // Strategy: Get items with overlapping tags OR same category
-    const { data: candidates, error } = await supabasePublic
+    // Rule 2: Tag overlap count
+    const sharedTags = candidate.tags.filter(t => article.tags.includes(t));
+    score += (sharedTags.length * 5);
+
+    return { ...candidate, score };
+  });
+
+  // Sort by score desc, then by date desc
+  scoredCandidates.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return new Date(b.publication_date) - new Date(a.publication_date);
+  });
+
+  // 4. Fallback if not enough results
+  let finalResults = scoredCandidates.slice(0, parseInt(limit));
+
+  // If we have fewer than requested, fill with recent articles
+  if (finalResults.length < parseInt(limit)) {
+    const { data: fallback } = await supabasePublic
       .from('articles')
       .select('id, title, excerpt, cover_image, publication_date, author, tags, article_type')
-      .neq('id', id) // Exclude current
-      .overlaps('tags', article.tags || []) // Must have at least one tag in common
-      .limit(20); // Fetch pool of 20
+      .neq('id', id)
+      .order('publication_date', { ascending: false })
+      .limit(parseInt(limit) - finalResults.length);
 
-    if (error) {
-      throw new AppError('Failed to fetch related articles', 500, 'ARTICLES_RELATED_FAILED');
-    }
+    // Filter out duplicates
+    const existingIds = new Set(finalResults.map(r => r.id));
+    const uniqueFallback = (fallback || []).filter(r => !existingIds.has(r.id));
 
-    // 3. Score and Sort
-    const scoredCandidates = candidates.map(candidate => {
-      let score = 0;
-
-      // Rule 1: Same type (e.g. Clinical Case) gets big boost
-      if (candidate.article_type === article.article_type) {
-        score += 10;
-      }
-
-      // Rule 2: Tag overlap count
-      const sharedTags = candidate.tags.filter(t => article.tags.includes(t));
-      score += (sharedTags.length * 5);
-
-      return { ...candidate, score };
-    });
-
-    // Sort by score desc, then by date desc
-    scoredCandidates.sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      return new Date(b.publication_date) - new Date(a.publication_date);
-    });
-
-    // 4. Fallback if not enough results
-    let finalResults = scoredCandidates.slice(0, parseInt(limit));
-
-    // If we have fewer than requested, fill with recent articles
-    if (finalResults.length < parseInt(limit)) {
-      const { data: fallback } = await supabasePublic
-        .from('articles')
-        .select('id, title, excerpt, cover_image, publication_date, author, tags, article_type')
-        .neq('id', id)
-        .order('publication_date', { ascending: false })
-        .limit(parseInt(limit) - finalResults.length);
-
-      // Filter out duplicates
-      const existingIds = new Set(finalResults.map(r => r.id));
-      const uniqueFallback = (fallback || []).filter(r => !existingIds.has(r.id));
-
-      finalResults = [...finalResults, ...uniqueFallback];
-    }
+    finalResults = [...finalResults, ...uniqueFallback];
+  }
 
   res.json(finalResults);
 }));

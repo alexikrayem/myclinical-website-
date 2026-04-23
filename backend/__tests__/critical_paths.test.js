@@ -54,12 +54,15 @@ jest.unstable_mockModule('../middleware/rateLimiter.js', () => ({
     searchLimiter: (req, res, next) => next(),
     uploadLimiter: (req, res, next) => next(),
     limiters: {},
-    redeemLimiter: (req, res, next) => next()
+    redeemLimiter: (req, res, next) => next(),
+    accountRedeemLimiter: (req, res, next) => next()
 }));
 
 // Mock cache middleware
 jest.unstable_mockModule('../middleware/cache.js', () => ({
-    cacheMiddleware: () => (req, res, next) => next()
+    cacheMiddleware: () => (req, res, next) => next(),
+    invalidateCache: jest.fn(),
+    invalidateCachePattern: jest.fn()
 }));
 
 // Mock bcryptjs
@@ -236,6 +239,8 @@ describe('Critical Paths Integration Tests (Mocked)', () => {
                 },
                 error: null
             });
+            // 3. profile route: typed credits query
+            mockSupabase.then.mockImplementationOnce((resolve) => resolve({ data: [], error: null }));
 
             const res = await request(app)
                 .get('/api/auth/profile')

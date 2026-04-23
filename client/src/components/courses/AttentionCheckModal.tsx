@@ -23,8 +23,8 @@ interface Challenge {
 interface AttentionCheckModalProps {
     challenge: Challenge;
     onResult: (result: { passed: boolean; session_terminated: boolean; failures: number; max_failures: number }) => void;
-    onVerify: (challengeId: string, answer: string) => Promise<any>;
-    onExpire: (challengeId: string) => Promise<any>;
+    onVerify: (challengeId: string, answer: string) => Promise<{ passed: boolean; session_terminated: boolean; failures: number; max_failures: number; attention_score?: number }>;
+    onExpire: (challengeId: string) => Promise<{ passed: boolean; session_terminated: boolean; failures: number; max_failures: number; attention_score?: number }>;
 }
 
 const AttentionCheckModal: React.FC<AttentionCheckModalProps> = ({
@@ -55,13 +55,6 @@ const AttentionCheckModal: React.FC<AttentionCheckModalProps> = ({
         return () => clearInterval(timer);
     }, [feedback]);
 
-    // Handle timeout
-    useEffect(() => {
-        if (timeLeft === 0 && !feedback && !isSubmitting) {
-            handleTimeout();
-        }
-    }, [timeLeft, feedback, isSubmitting]);
-
     const handleTimeout = useCallback(async () => {
         setIsSubmitting(true);
         try {
@@ -73,6 +66,12 @@ const AttentionCheckModal: React.FC<AttentionCheckModalProps> = ({
             onResult({ passed: false, session_terminated: false, failures: 0, max_failures: 3 });
         }
     }, [challenge.id, onExpire, onResult]);
+
+    useEffect(() => {
+        if (timeLeft === 0 && !feedback && !isSubmitting) {
+            handleTimeout();
+        }
+    }, [timeLeft, feedback, isSubmitting, handleTimeout]);
 
     const handleAnswer = useCallback(async (answer: string) => {
         if (isSubmitting || feedback) return;
@@ -95,24 +94,22 @@ const AttentionCheckModal: React.FC<AttentionCheckModalProps> = ({
                 {/* Timer Bar */}
                 <div className="h-1.5 bg-gray-100 w-full">
                     <div
-                        className={`h-full transition-all duration-1000 ease-linear rounded-full ${
-                            isUrgent ? 'bg-red-500' : 'bg-blue-500'
-                        }`}
+                        className={`h-full transition-all duration-1000 ease-linear rounded-full ${isUrgent ? 'bg-red-500' : 'bg-blue-500'
+                            }`}
                         style={{ width: `${progressPercent}%` }}
                     />
                 </div>
 
                 {/* Header */}
                 <div className="px-6 pt-6 pb-3 text-center">
-                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-3 ${
-                        feedback === 'correct'
-                            ? 'bg-green-100'
-                            : feedback === 'wrong'
-                                ? 'bg-red-100'
-                                : isUrgent
-                                    ? 'bg-red-100 animate-pulse'
-                                    : 'bg-blue-100'
-                    }`}>
+                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-3 ${feedback === 'correct'
+                        ? 'bg-green-100'
+                        : feedback === 'wrong'
+                            ? 'bg-red-100'
+                            : isUrgent
+                                ? 'bg-red-100 animate-pulse'
+                                : 'bg-blue-100'
+                        }`}>
                         {feedback === 'correct' ? (
                             <CheckCircle className="text-green-600" size={28} />
                         ) : feedback === 'wrong' ? (

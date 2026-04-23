@@ -4,12 +4,26 @@ import ArticleCard from './ArticleCard';
 import { useArticles } from '../../hooks/useArticles';
 import { Search, Filter, X, Loader, FileText } from 'lucide-react';
 
+export interface Article {
+  id: string;
+  title: string;
+  excerpt: string;
+  cover_image: string;
+  publication_date: string;
+  author: string;
+  tags: string[];
+  is_featured?: boolean;
+  author_image?: string;
+  article_type?: "article" | "clinical_case";
+  score?: number;
+}
+
 interface ArticleListProps {
   tag?: string;
   limit?: number;
   showFilters?: boolean;
   lazy?: boolean;
-  onItemsLoaded?: (items: any[]) => void;
+  onItemsLoaded?: (items: { id: string }[]) => void;
 }
 
 const ArticleList: React.FC<ArticleListProps> = ({ tag, limit = 12, showFilters = true, lazy = false, onItemsLoaded }) => {
@@ -287,10 +301,9 @@ const ArticleList: React.FC<ArticleListProps> = ({ tag, limit = 12, showFilters 
         </div>
       ) : (
         <div className="grid-modern">
-          {articles.map((article: Record<string, unknown>, index: number) => (
+          {articles.map((article: Article, index: number) => (
             <div key={String(article.id)} style={{ animationDelay: `${index * 0.1}s` }}>
-              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-              <ArticleCard article={article as any} />
+              <ArticleCard article={article} />
             </div>
           ))}
         </div>

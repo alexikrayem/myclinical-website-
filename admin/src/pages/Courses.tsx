@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Plus, Search, Edit, Trash2, Video, Star, BrainCircuit } from 'lucide-react';
 import AdminLayout from '../components/layout/AdminLayout';
@@ -10,7 +10,7 @@ const Courses: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
 
-    const fetchCourses = async () => {
+    const fetchCourses = useCallback(async () => {
         try {
             const data = await courseService.getAll({ search: searchQuery });
             setCourses(data.data || []);
@@ -20,14 +20,14 @@ const Courses: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [searchQuery]);
 
     useEffect(() => {
         const debounce = setTimeout(() => {
             fetchCourses();
         }, 500);
         return () => clearTimeout(debounce);
-    }, [searchQuery]);
+    }, [fetchCourses]);
 
     const handleDelete = async (id: string) => {
         if (window.confirm('هل أنت متأكد من حذف هذه الدورة؟')) {
@@ -36,6 +36,7 @@ const Courses: React.FC = () => {
                 setCourses(courses.filter(course => course.id !== id));
                 toast.success('تم حذف الدورة بنجاح');
             } catch (error) {
+                console.error('Error deleting course:', error);
                 toast.error('فشل حذف الدورة');
             }
         }
@@ -47,6 +48,7 @@ const Courses: React.FC = () => {
             await courseService.generateQuiz(id);
             toast.success('تم إنشاء الاختبار بنجاح', { id: toastId });
         } catch (error) {
+            console.error('Error generating quiz:', error);
             toast.error('فشل إنشاء الاختبار', { id: toastId });
         }
     };

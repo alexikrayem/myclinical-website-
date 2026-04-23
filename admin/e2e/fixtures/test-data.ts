@@ -22,14 +22,14 @@ type Fixtures = {
 };
 
 export const test = base.extend<Fixtures>({
-  adminUser: async ({}, use) => {
-    await use({
+  adminUser: async (_fixtures, applyFixture) => {
+    await applyFixture({
       email: 'admin@arabdental.com',
       password: 'Admin123!',
     });
   },
-  articles: async ({}, use) => {
-    await use([
+  articles: async (_fixtures, applyFixture) => {
+    await applyFixture([
       {
         id: '1',
         title: 'تقويم الأسنان للأطفال',

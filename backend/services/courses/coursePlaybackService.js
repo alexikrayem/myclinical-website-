@@ -1,6 +1,8 @@
 import { getVdoPlaybackInfo } from '../vdoService.js';
 import { parseSupabaseSource } from './hlsService.js';
 import { generateChallenges } from './attentionService.js';
+import { AppError, BadRequestError, ForbiddenError, NotFoundError } from '../../utils/errors.js';
+import logger from '../../config/logger.js';
 
 const PLAYBACK_SESSION_TTL_SECONDS = parseInt(process.env.PLAYBACK_SESSION_TTL_SECONDS || '600', 10);
 
@@ -14,7 +16,7 @@ export async function createPlaybackSession({ supabase, courseId, user, baseUrl 
     .single();
 
   if (error || !course) {
-    return { error: 'Course not found', status: 404 };
+    throw new NotFoundError('Course not found');
   }
 
   if (course.billing_model === 'per_course') {
@@ -26,7 +28,7 @@ export async function createPlaybackSession({ supabase, courseId, user, baseUrl 
       .single();
 
     if (!access) {
-      return { error: 'Course access required', status: 403 };
+      throw new ForbiddenError('Course access required');
     }
   }
 
@@ -47,7 +49,7 @@ export async function createPlaybackSession({ supabase, courseId, user, baseUrl 
 
     const minuteCost = course.minute_cost || 1;
     if (minuteCost > 0 && videoMinutes < minuteCost && balance < minuteCost) {
-      return { error: 'رصيد غير كافي', status: 400 };
+      throw new BadRequestError('رصيد غير كافي');
     }
   }
 
@@ -64,7 +66,8 @@ export async function createPlaybackSession({ supabase, courseId, user, baseUrl 
     .single();
 
   if (sessionError) {
-    return { error: 'Failed to create playback session', status: 500 };
+    logger.error('Failed to insert new playback session', { error: sessionError, courseId, userId: user.id });
+    throw new AppError('Failed to create playback session', 500, 'PLAYBACK_SESSION_CREATE_FAILED');
   }
 
   let playback = null;
@@ -72,7 +75,7 @@ export async function createPlaybackSession({ supabase, courseId, user, baseUrl 
   switch (course.playback_provider) {
     case 'vdocipher': {
       if (!course.playback_source) {
-        return { error: 'Missing playback source', status: 400 };
+        throw new BadRequestError('Missing playback source');
       }
       try {
         const vdoPlayback = await getVdoPlaybackInfo(course.playback_source, { user });
@@ -82,13 +85,14 @@ export async function createPlaybackSession({ supabase, courseId, user, baseUrl 
           playbackInfo: vdoPlayback.playbackInfo
         };
       } catch (err) {
-        return { error: 'Failed to get playback info', status: 502 };
+        logger.error('VdoCipher playback info acquisition failed', { error: err, playbackSource: course.playback_source });
+        throw new AppError('Failed to get playback info', 502, 'VDO_PLAYBACK_INFO_FAILED');
       }
       break;
     }
     case 'hls': {
       if (!course.playback_source) {
-        return { error: 'Missing playback source', status: 400 };
+        throw new BadRequestError('Missing playback source');
       }
       const supabaseSource = parseSupabaseSource(course.playback_source);
       const manifestUrl = supabaseSource
@@ -103,7 +107,7 @@ export async function createPlaybackSession({ supabase, courseId, user, baseUrl 
     }
     case 'youtube': {
       if (!course.playback_source) {
-        return { error: 'Missing playback source', status: 400 };
+        throw new BadRequestError('Missing playback source');
       }
       playback = {
         type: 'youtube',
@@ -114,7 +118,7 @@ export async function createPlaybackSession({ supabase, courseId, user, baseUrl 
     case 'mp4':
     default: {
       if (!course.playback_source) {
-        return { error: 'Missing playback source', status: 400 };
+        throw new BadRequestError('Missing playback source');
       }
       playback = {
         type: 'mp4',
@@ -138,7 +142,7 @@ export async function createPlaybackSession({ supabase, courseId, user, baseUrl 
         intervalMax: course.attention_check_interval_max || 420
       });
     } catch (err) {
-      console.error('Failed to generate attention challenges:', err);
+      logger.error('Failed to generate attention challenges:', { error: err, courseId, sessionId: session.id });
       // Non-fatal: playback can proceed, but attention won't be tracked
     }
   }

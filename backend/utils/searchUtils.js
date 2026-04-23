@@ -25,6 +25,9 @@ export function sanitizeSearchInput(input) {
         sanitized = sanitized.substring(0, MAX_SEARCH_LENGTH);
     }
 
+    // Escape backslashes first so we don't double-escape the wildcards we add below
+    sanitized = sanitized.replace(/\\/g, '\\\\');
+
     // Escape PostgreSQL LIKE special characters: % and _
     // These are wildcards in LIKE patterns
     sanitized = sanitized
@@ -33,9 +36,8 @@ export function sanitizeSearchInput(input) {
 
     // Escape characters that could break Supabase filter string syntax
     // The .or() filter uses dots and commas as separators
-    // We also need to handle quotes and backslashes
+    // We also need to handle quotes
     sanitized = sanitized
-        .replace(/\\/g, '\\\\')  // Escape backslashes first
         .replace(/'/g, "''")     // Escape single quotes (PostgreSQL style)
         .replace(/"/g, '\\"');   // Escape double quotes
 

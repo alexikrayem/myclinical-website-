@@ -187,7 +187,7 @@ export const schemas = {
     query: z.object({
       page: queryInt(1, 1000, 1),
       limit: queryInt(1, 100, 10),
-      type: optionalTrimmedString
+      type: z.enum(['redeem', 'usage', 'refund', 'adjustment', 'earn']).optional()
     })
   }),
 

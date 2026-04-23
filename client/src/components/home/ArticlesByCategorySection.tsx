@@ -21,7 +21,7 @@ interface ArticlesByCategorySectionProps {
     tag: string;
     isPriority?: boolean;
     excludeIds?: string[];
-    onItemsLoaded?: (items: any[]) => void;
+    onItemsLoaded?: (items: { id: string }[]) => void;
 }
 
 const ArticlesByCategorySection: React.FC<ArticlesByCategorySectionProps> = ({ tag, isPriority = false, excludeIds = [], onItemsLoaded }) => {

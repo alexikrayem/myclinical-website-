@@ -6,11 +6,24 @@ import AdminLayout from '../components/layout/AdminLayout';
 import { api } from '../context/AuthContext';
 import { filterAuthors } from '../utils/filters';
 
+interface Author {
+  id: string;
+  name: string;
+  specialization: string;
+  location: string;
+  bio: string;
+  image: string;
+  experience_years: number;
+  email?: string;
+  website?: string;
+  is_active: boolean;
+}
+
 const Authors: React.FC = () => {
-  const [authors, setAuthors] = useState<any[]>([]);
+  const [authors, setAuthors] = useState<Author[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filteredAuthors, setFilteredAuthors] = useState<any[]>([]);
+  const [filteredAuthors, setFilteredAuthors] = useState<Author[]>([]);
   const [totalAuthors, setTotalAuthors] = useState(0);
 
   useEffect(() => {

@@ -4,9 +4,18 @@ import AdminLayout from '../components/layout/AdminLayout';
 import ResearchForm from '../components/forms/ResearchForm';
 import { api } from '../context/AuthContext';
 
+interface Research {
+  id: string;
+  title?: string;
+  abstract?: string;
+  journal?: string;
+  publication_date?: string;
+  authors?: string[];
+}
+
 const EditResearch: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const [research, setResearch] = useState<any>(null);
+  const [research, setResearch] = useState<Research | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

@@ -10,6 +10,9 @@ import { authenticateToken, trackLoginAttempt, checkLoginAllowed } from '../midd
 import { authLimiter, uploadLimiter } from '../middleware/rateLimiter.js';
 import { validateUploadedFile } from '../middleware/fileValidation.js';
 import { sanitizeFileName, sanitizeContent } from '../middleware/inputSanitizer.js';
+import { invalidateCachePattern } from '../middleware/cache.js';
+import { sanitizeSearchInput } from '../utils/searchUtils.js';
+import { ADMIN_SELECT } from '../utils/queryFields.js';
 import { body, validationResult, query } from 'express-validator';
 import { indexArticle, indexResearch, removeArticle, removeResearch, indexCourse, removeCourse } from '../services/search/indexer.js';
 import { supabaseAdmin as supabase } from '../config/supabase.js';
@@ -56,7 +59,7 @@ const uploadToSupabase = async (file, bucket = 'images') => {
         upsert: false
       });
 
-    if (error) throw error;
+    if (error) throw new AppError('Database operation failed', 500, 'ADMIN_DB_ERROR');
 
     const { data: publicUrlData } = supabase.storage
       .from(bucket)
@@ -136,7 +139,7 @@ router.post('/login',
 
       const { data: adminData, error: adminError } = await supabase
         .from('admins')
-        .select('*')
+        .select(ADMIN_SELECT)
         .eq('id', authData.user.id)
         .single();
 
@@ -291,13 +294,15 @@ router.post('/articles',
         ])
         .select();
 
-      if (error) throw error;
+      if (error) throw new AppError('Database operation failed', 500, 'ADMIN_DB_ERROR');
 
       try {
         await indexArticle(data[0]);
       } catch (indexError) {
         console.error('Search index error (article create):', indexError);
       }
+
+      await invalidateCachePattern('cache:/api/articles*');
 
       res.status(201).json(data[0]);
     } catch (error) {
@@ -349,13 +354,15 @@ router.put('/articles/:id', authenticateToken, uploadLimiter, upload.single('cov
       .eq('id', id)
       .select();
 
-    if (error) throw error;
+    if (error) throw new AppError('Database operation failed', 500, 'ADMIN_DB_ERROR');
 
     try {
       await indexArticle(data[0]);
     } catch (indexError) {
       console.error('Search index error (article update):', indexError);
     }
+
+    await invalidateCachePattern('cache:/api/articles*');
 
     res.json(data[0]);
   } catch (error) {
@@ -384,13 +391,15 @@ router.delete('/articles/:id', authenticateToken, asyncHandler(async (req, res) 
       .delete()
       .eq('id', id);
 
-    if (error) throw error;
+    if (error) throw new AppError('Database operation failed', 500, 'ADMIN_DB_ERROR');
 
     try {
       await removeArticle(id);
     } catch (indexError) {
       console.error('Search index error (article delete):', indexError);
     }
+
+    await invalidateCachePattern('cache:/api/articles*');
 
     // Note: We are not deleting files from Supabase storage automatically to prevent accidental data loss
     // and because we don't track file references perfectly. 
@@ -479,7 +488,7 @@ router.post('/courses',
         ])
         .select();
 
-      if (error) throw error;
+      if (error) throw new AppError('Database operation failed', 500, 'ADMIN_DB_ERROR');
 
       try {
         await indexCourse(data[0]);
@@ -568,7 +577,7 @@ router.put('/courses/:id',
         .eq('id', id)
         .select();
 
-      if (error) throw error;
+      if (error) throw new AppError('Database operation failed', 500, 'ADMIN_DB_ERROR');
 
       try {
         await indexCourse(data[0]);
@@ -597,14 +606,17 @@ router.get('/courses', authenticateToken, asyncHandler(async (req, res) => {
       .select('id, title, cover_image, author, categories, is_featured, credits_required, billing_model, minute_cost, playback_provider', { count: 'exact' });
 
     if (search) {
-      query = query.or(`title.ilike.%${search}%,author.ilike.%${search}%`);
+      const sanitizedSearch = sanitizeSearchInput(search);
+      if (sanitizedSearch) {
+        query = query.or(`title.ilike.%${sanitizedSearch}%,author.ilike.%${sanitizedSearch}%`);
+      }
     }
 
     const { data, error, count } = await query
       .order('publication_date', { ascending: false })
       .range(offset, offset + limitNum - 1);
 
-    if (error) throw error;
+    if (error) throw new AppError('Database operation failed', 500, 'ADMIN_DB_ERROR');
 
     res.json({
       data,
@@ -651,7 +663,7 @@ router.delete('/courses/:id', authenticateToken, asyncHandler(async (req, res) =
       .delete()
       .eq('id', id);
 
-    if (error) throw error;
+    if (error) throw new AppError('Database operation failed', 500, 'ADMIN_DB_ERROR');
 
     try {
       await removeCourse(id);
@@ -705,7 +717,7 @@ router.post('/research', authenticateToken, uploadLimiter, upload.single('resear
       ])
       .select();
 
-    if (error) throw error;
+    if (error) throw new AppError('Database operation failed', 500, 'ADMIN_DB_ERROR');
 
     try {
       await indexResearch(data[0]);
@@ -757,7 +769,7 @@ router.put('/research/:id', authenticateToken, uploadLimiter, upload.single('res
       .eq('id', id)
       .select();
 
-    if (error) throw error;
+    if (error) throw new AppError('Database operation failed', 500, 'ADMIN_DB_ERROR');
 
     try {
       await indexResearch(data[0]);
@@ -783,7 +795,7 @@ router.delete('/research/:id', authenticateToken, asyncHandler(async (req, res) 
       .delete()
       .eq('id', id);
 
-    if (error) throw error;
+    if (error) throw new AppError('Database operation failed', 500, 'ADMIN_DB_ERROR');
 
     try {
       await removeResearch(id);
@@ -845,7 +857,7 @@ router.post('/authors', authenticateToken, uploadLimiter, upload.single('image')
       ])
       .select();
 
-    if (error) throw error;
+    if (error) throw new AppError('Database operation failed', 500, 'ADMIN_DB_ERROR');
 
     res.status(201).json(data[0]);
   } catch (error) {
@@ -906,7 +918,7 @@ router.put('/authors/:id', authenticateToken, uploadLimiter, upload.single('imag
       .eq('id', id)
       .select();
 
-    if (error) throw error;
+    if (error) throw new AppError('Database operation failed', 500, 'ADMIN_DB_ERROR');
 
     res.json(data[0]);
   } catch (error) {
@@ -926,7 +938,7 @@ router.delete('/authors/:id', authenticateToken, asyncHandler(async (req, res) =
       .delete()
       .eq('id', id);
 
-    if (error) throw error;
+    if (error) throw new AppError('Database operation failed', 500, 'ADMIN_DB_ERROR');
 
     res.json({ message: 'Author deleted successfully' });
   } catch (error) {
@@ -963,14 +975,17 @@ router.get('/reports/licenses', authenticateToken, asyncHandler(async (req, res)
       .select('*', { count: 'exact' });
 
     if (search) {
-      query = query.or(`code.ilike.%${search}%,user_email.ilike.%${search}%`);
+      const sanitizedSearch = sanitizeSearchInput(search);
+      if (sanitizedSearch) {
+        query = query.or(`code.ilike.%${sanitizedSearch}%,user_email.ilike.%${sanitizedSearch}%`);
+      }
     }
 
     const { data, error, count } = await query
       .range(offset, offset + parseInt(limit) - 1)
       .order('redeemed_at', { ascending: false });
 
-    if (error) throw error;
+    if (error) throw new AppError('Database operation failed', 500, 'ADMIN_DB_ERROR');
 
     res.json({
       data,
@@ -1040,7 +1055,7 @@ router.post('/codes/generate', authenticateToken, asyncHandler(async (req, res) 
         p_credit_type_id: credit_type_id || null
       });
 
-    if (error) throw error;
+    if (error) throw new AppError('Database operation failed', 500, 'ADMIN_DB_ERROR');
 
     res.json({
       message: 'Codes generated successfully',
@@ -1128,7 +1143,7 @@ router.put('/categories/:id', authenticateToken, asyncHandler(async (req, res) =
       .eq('id', id)
       .select();
 
-    if (error) throw error;
+    if (error) throw new AppError('Database operation failed', 500, 'ADMIN_DB_ERROR');
     res.json(data[0]);
   } catch (error) {
     console.error('Error updating category:', error);
@@ -1146,7 +1161,7 @@ router.delete('/categories/:id', authenticateToken, asyncHandler(async (req, res
       .delete()
       .eq('id', id);
 
-    if (error) throw error;
+    if (error) throw new AppError('Database operation failed', 500, 'ADMIN_DB_ERROR');
     res.json({ message: 'Category deleted successfully' });
   } catch (error) {
     console.error('Error deleting category:', error);
@@ -1178,7 +1193,7 @@ router.get('/codes/history',
         .order('created_at', { ascending: false })
         .range(offset, offset + limit - 1);
 
-      if (error) throw error;
+      if (error) throw new AppError('Database operation failed', 500, 'ADMIN_DB_ERROR');
 
       res.json({
         data,
@@ -1276,7 +1291,7 @@ router.post('/credit-types', authenticateToken, asyncHandler(async (req, res) =>
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) throw new AppError('Database operation failed', 500, 'ADMIN_DB_ERROR');
 
     // Link courses if provided
     if (course_ids && Array.isArray(course_ids) && course_ids.length > 0) {
@@ -1323,7 +1338,7 @@ router.put('/credit-types/:id', authenticateToken, asyncHandler(async (req, res)
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) throw new AppError('Database operation failed', 500, 'ADMIN_DB_ERROR');
 
     // If course_ids provided, replace the full collection
     if (course_ids && Array.isArray(course_ids)) {
@@ -1370,7 +1385,7 @@ router.delete('/credit-types/:id', authenticateToken, asyncHandler(async (req, r
       .delete()
       .eq('id', id);
 
-    if (error) throw error;
+    if (error) throw new AppError('Database operation failed', 500, 'ADMIN_DB_ERROR');
     res.json({ message: 'Credit type deleted successfully' });
   } catch (error) {
     console.error('Error deleting credit type:', error);
@@ -1398,7 +1413,7 @@ router.post('/credit-types/:id/courses', authenticateToken, asyncHandler(async (
       .upsert(courseLinks, { onConflict: 'credit_type_id,course_id' })
       .select();
 
-    if (error) throw error;
+    if (error) throw new AppError('Database operation failed', 500, 'ADMIN_DB_ERROR');
     res.json({ message: 'Courses added successfully', data });
   } catch (error) {
     console.error('Error adding courses to credit type:', error);
@@ -1417,7 +1432,7 @@ router.delete('/credit-types/:id/courses/:courseId', authenticateToken, asyncHan
       .eq('credit_type_id', id)
       .eq('course_id', courseId);
 
-    if (error) throw error;
+    if (error) throw new AppError('Database operation failed', 500, 'ADMIN_DB_ERROR');
     res.json({ message: 'Course removed from credit type' });
   } catch (error) {
     console.error('Error removing course from credit type:', error);

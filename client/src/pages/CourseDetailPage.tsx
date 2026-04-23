@@ -8,6 +8,22 @@ import toast from 'react-hot-toast';
 import QuizModal from '../components/courses/QuizModal';
 import SecureVideoPlayer from '../components/courses/SecureVideoPlayer';
 import AttentionCheckModal from '../components/courses/AttentionCheckModal';
+import axios from 'axios';
+
+interface QuizData {
+    id: string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    questions: any[];
+}
+
+export interface Challenge {
+    id: string;
+    type: "color" | "math" | "confirm";
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    data: any;
+    trigger_at_seconds: number;
+    timeout_seconds: number;
+}
 
 type BillingModel = 'free' | 'per_course' | 'per_minute';
 
@@ -50,7 +66,7 @@ const CourseDetailPage = () => {
     const [course, setCourse] = useState<Course | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [hasAccess, setHasAccess] = useState(false);
-    const [quiz, setQuiz] = useState<any>(null);
+    const [quiz, setQuiz] = useState<QuizData | null>(null);
     const [showQuiz, setShowQuiz] = useState(false);
     const [playback, setPlayback] = useState<PlaybackDescriptor | null>(null);
     const [playbackSessionId, setPlaybackSessionId] = useState<string | null>(null);
@@ -62,7 +78,7 @@ const CourseDetailPage = () => {
 
     // Attention verification state
     const [attentionRequired, setAttentionRequired] = useState(false);
-    const [currentChallenge, setCurrentChallenge] = useState<any>(null);
+    const [currentChallenge, setCurrentChallenge] = useState<Challenge | null>(null);
     const [attentionScore, setAttentionScore] = useState<number | null>(null);
     const [sessionTerminated, setSessionTerminated] = useState(false);
     const [currentVideoTime, setCurrentVideoTime] = useState(0);
@@ -166,9 +182,9 @@ const CourseDetailPage = () => {
             }
             setSessionTerminated(false);
             setAttentionScore(null);
-        } catch (error: any) {
-            const message = error?.response?.data?.error || 'تعذر بدء التشغيل';
-            toast.error(message);
+        } catch (error: unknown) {
+            const message = axios.isAxiosError(error) ? error.response?.data?.error : undefined;
+            toast.error(message || 'تعذر بدء التشغيل');
         } finally {
             setPlaybackLoading(false);
         }
@@ -201,9 +217,9 @@ const CourseDetailPage = () => {
                         remaining_balance: result.remaining_balance
                     });
                 }
-            } catch (error: any) {
-                const message = error?.response?.data?.error || 'رصيد غير كافي';
-                toast.error(message);
+            } catch (error: unknown) {
+                const message = axios.isAxiosError(error) ? error.response?.data?.error : undefined;
+                toast.error(message || 'رصيد غير كافي');
                 setIsPlaying(false);
                 setPlayback(null);
                 setPlaybackSessionId(null);
@@ -450,11 +466,10 @@ const CourseDetailPage = () => {
 
                             {/* Attention Score Badge */}
                             {attentionRequired && playbackSessionId && attentionScore !== null && (
-                                <div className={`rounded-2xl p-4 border text-center ${
-                                    attentionScore >= 80
-                                        ? 'bg-green-500/10 border-green-500/20 text-green-400'
-                                        : 'bg-amber-500/10 border-amber-500/20 text-amber-400'
-                                }`}>
+                                <div className={`rounded-2xl p-4 border text-center ${attentionScore >= 80
+                                    ? 'bg-green-500/10 border-green-500/20 text-green-400'
+                                    : 'bg-amber-500/10 border-amber-500/20 text-amber-400'
+                                    }`}>
                                     <ShieldCheck size={20} className="inline ml-1" />
                                     <span className="font-bold text-lg">{attentionScore}%</span>
                                     <span className="block text-sm opacity-75 mt-1">نسبة الانتباه</span>

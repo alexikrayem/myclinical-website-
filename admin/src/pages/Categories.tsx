@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Tag, Check, X } from 'lucide-react';
+import { Plus, Edit2, Trash2, Tag, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import AdminLayout from '../components/layout/AdminLayout';
 import { api } from '../context/AuthContext';
@@ -12,6 +12,14 @@ interface Category {
     color: string;
     is_active: boolean;
     created_at: string;
+}
+
+interface ErrorWithResponse {
+    response?: {
+        data?: {
+            error?: string;
+        };
+    };
 }
 
 const Categories: React.FC = () => {
@@ -62,8 +70,9 @@ const Categories: React.FC = () => {
 
             resetForm();
             fetchCategories();
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'فشل في حفظ التصنيف');
+        } catch (error: unknown) {
+            const candidate = error as ErrorWithResponse;
+            toast.error(candidate.response?.data?.error || 'فشل في حفظ التصنيف');
         }
     };
 
@@ -87,6 +96,7 @@ const Categories: React.FC = () => {
             toast.success('تم حذف التصنيف بنجاح');
             fetchCategories();
         } catch (error) {
+            console.error('Error deleting category:', error);
             toast.error('فشل في حذف التصنيف');
         }
     };

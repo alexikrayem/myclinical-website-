@@ -22,7 +22,8 @@ jest.unstable_mockModule('../middleware/rateLimiter.js', () => ({
     aiLimiter: (req, res, next) => next(),
     searchLimiter: (req, res, next) => next(),
     uploadLimiter: (req, res, next) => next(),
-    redeemLimiter: (req, res, next) => next()
+    redeemLimiter: (req, res, next) => next(),
+    accountRedeemLimiter: (req, res, next) => next()
 }));
 
 jest.unstable_mockModule('../middleware/fileValidation.js', () => ({

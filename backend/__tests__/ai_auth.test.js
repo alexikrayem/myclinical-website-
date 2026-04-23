@@ -32,22 +32,21 @@ jest.unstable_mockModule('../config/redis.js', () => ({
     getRedisClient: jest.fn(() => Promise.resolve(null))
 }));
 
-jest.unstable_mockModule('@google/generative-ai', () => ({
-    GoogleGenerativeAI: jest.fn(() => ({
-        getGenerativeModel: jest.fn(() => ({
-            generateContent: jest.fn(() => Promise.resolve({
-                response: {
-                    text: () => JSON.stringify({
-                        title: "Mock AI Title",
-                        excerpt: "Mock AI Excerpt",
-                        content: "<p>Mock Content</p>",
-                        tags: ["mock"],
-                        author: "AI"
-                    })
-                }
-            }))
+jest.unstable_mockModule('../config/gemini.js', () => ({
+    getGenerativeModel: jest.fn(() => ({
+        generateContent: jest.fn(() => Promise.resolve({
+            response: {
+                text: () => JSON.stringify({
+                    title: "Mock AI Title",
+                    excerpt: "Mock AI Excerpt",
+                    content: "<p>Mock Content</p>",
+                    tags: ["mock"],
+                    author: "AI"
+                })
+            }
         }))
-    }))
+    })),
+    default: jest.fn(() => ({}))
 }));
 
 jest.unstable_mockModule('../middleware/rateLimiter.js', () => ({
@@ -56,11 +55,14 @@ jest.unstable_mockModule('../middleware/rateLimiter.js', () => ({
     uploadLimiter: (req, res, next) => next(),
     authLimiter: (req, res, next) => next(),
     apiLimiter: (req, res, next) => next(),
-    redeemLimiter: (req, res, next) => next()
+    redeemLimiter: (req, res, next) => next(),
+    accountRedeemLimiter: (req, res, next) => next()
 }));
 
 jest.unstable_mockModule('../middleware/cache.js', () => ({
-    cacheMiddleware: () => (req, res, next) => next()
+    cacheMiddleware: () => (req, res, next) => next(),
+    invalidateCache: jest.fn(),
+    invalidateCachePattern: jest.fn()
 }));
 
 // Import app

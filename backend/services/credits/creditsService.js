@@ -1,4 +1,6 @@
 import { AppError } from '../../utils/errors.js';
+import { TRANSACTION_SELECT } from '../../utils/queryFields.js';
+import logger from '../../config/logger.js';
 
 const DEFAULT_CREDITS = {
   balance: 0,
@@ -17,6 +19,7 @@ export async function getCreditBalance(supabase, userId) {
     .single();
 
   if (error && error.code !== 'PGRST116') {
+    logger.error('Failed to fetch credit balance', { error, userId });
     throw new AppError('فشل في جلب الرصيد', 500, 'CREDITS_BALANCE_FAILED');
   }
 
@@ -29,7 +32,7 @@ export async function getCreditBalance(supabase, userId) {
     .gt('balance', 0);
 
   if (typedError) {
-    console.error('Error fetching typed credits:', typedError);
+    logger.error('Error fetching typed credits', { error: typedError, userId });
   }
 
   const typed_credits = (typedCredits || []).map(tc => ({
@@ -56,68 +59,26 @@ export async function redeemLicenseCode(supabase, { code, userId, metadata }) {
     });
 
   if (error) {
-    // Fall back to v2 if v3 is not yet deployed
-    if (error.code === '42883') {
-      const { data: v2Data, error: v2Error } = await supabase
-        .rpc('redeem_license_code_v2', {
-          p_code: normalizedCode,
-          p_user_id: userId
-        });
-
-      if (v2Error) {
-        // Fall back to the old function only when v2 is missing
-        if (v2Error.code === '42883') {
-          const { data: legacyData, error: legacyError } = await supabase
-            .rpc('redeem_license_code', { p_code: normalizedCode });
-
-          if (legacyError) {
-            throw new AppError('فشل في استخدام الكود', 500, 'CREDITS_REDEEM_FAILED');
-          }
-          if (!legacyData.success) {
-            return { status: 400, body: { error: legacyData.message } };
-          }
-          return { status: 200, body: legacyData };
-        }
-        throw new AppError('فشل في استخدام الكود', 500, 'CREDITS_REDEEM_FAILED');
-      }
-
-      if (!v2Data.success) {
-        return { status: 400, body: { error: v2Data.message } };
-      }
-
-      return {
-        status: 200,
-        body: {
-          success: true,
-          message: v2Data.message,
-          credits: {
-            balance: v2Data.new_balance,
-            video_minutes: v2Data.video_minutes,
-            article_credits: v2Data.article_credits
-          },
-          credit_type: v2Data.credit_type
-        }
-      };
-    }
+    logger.error('License code redemption RPC failed', { error, userId, code: normalizedCode });
     throw new AppError('فشل في استخدام الكود', 500, 'CREDITS_REDEEM_FAILED');
   }
 
   if (!data.success) {
-    return { status: 400, body: { error: data.message } };
+    throw new AppError(data.message || 'فشل استخدام الكود', 400, 'CREDITS_REDEEM_REJECTED');
   }
 
   return {
-    status: 200,
-    body: {
-      success: true,
-      message: data.message,
-      credits: {
-        balance: data.new_balance,
-        video_minutes: data.video_minutes,
-        article_credits: data.article_credits
-      },
-      credit_type: data.credit_type
-    }
+    success: true,
+    message: data.message,
+    credits: {
+      balance: data.new_balance,
+      video_minutes: data.video_minutes,
+      article_credits: data.article_credits,
+      research_credits: data.research_credits,
+    },
+    credit_type: data.credit_type,
+    typed_balance: data.typed_balance,
+    credit_type_name: data.credit_type_name
   };
 }
 
@@ -130,20 +91,18 @@ export async function consumeVideoMinutes(supabase, { userId, minutes, courseId 
     });
 
   if (error) {
+    logger.error('Consume video minutes RPC failed', { error, userId, courseId, minutes });
     throw new AppError('فشل في خصم الرصيد', 500, 'CREDITS_CONSUME_VIDEO_FAILED');
   }
 
   if (!data.success) {
-    return { status: 400, body: { error: data.message } };
+    throw new AppError(data.message || 'رصيد غير كافي', 400, 'CREDITS_INSUFFICIENT');
   }
 
   return {
-    status: 200,
-    body: {
-      success: true,
-      remaining_minutes: data.remaining_minutes,
-      remaining_balance: data.remaining_balance
-    }
+    success: true,
+    remaining_minutes: data.remaining_minutes,
+    remaining_balance: data.remaining_balance
   };
 }
 
@@ -155,63 +114,80 @@ export async function consumeArticleCredit(supabase, { userId, articleId }) {
     });
 
   if (error) {
+    // Unique constraint violation (23505) indicates they already have access
+    if (error.code === '23505') {
+       return { success: true, message: 'لديك صلاحية الوصول بالفعل' };
+    }
+    logger.error('Consume article credit RPC failed', { error, userId, articleId });
     throw new AppError('فشل في خصم الرصيد', 500, 'CREDITS_CONSUME_ARTICLE_FAILED');
   }
 
   if (!data.success) {
-    return { status: 400, body: { error: data.message } };
+    throw new AppError(data.message || 'رصيد غير كافي', 400, 'CREDITS_INSUFFICIENT');
   }
 
   return {
-    status: 200,
-    body: {
-      success: true,
-      message: 'تم فتح المقال بنجاح',
-      remaining_credits: data.remaining_credits,
-      remaining_balance: data.remaining_balance
-    }
+    success: true,
+    message: data.message || 'تم فتح المقال بنجاح',
+    remaining_credits: data.remaining_credits,
+    remaining_balance: data.remaining_balance
   };
 }
 
 export async function checkArticleAccess(supabase, { articleId, userId }) {
-  const { data: article } = await supabase
+  const { data: article, error: articleError } = await supabase
     .from('articles')
     .select('credits_required')
     .eq('id', articleId)
     .single();
 
-  if (!article) {
-    return { status: 404, body: { error: 'المقال غير موجود' } };
+  if (articleError) {
+    if (articleError.code === 'PGRST116') {
+      throw new AppError('المقال غير موجود', 404, 'ARTICLE_NOT_FOUND');
+    }
+    logger.error('Check article access fetch failed', { error: articleError, articleId });
+    throw new AppError('فشل التحقق من الوصول للمقال', 500, 'CREDIT_ACCESS_CHECK_FAILED');
   }
+
+  const creditsRequired = article.credits_required || 0;
 
   if (!userId) {
     return {
-      status: 200,
-      body: {
-        has_access: false,
-        requires_auth: true,
-        credits_required: article.credits_required
-      }
+      has_access: false,
+      requires_auth: true,
+      credits_required: creditsRequired
     };
   }
 
-  if (article.credits_required === 0) {
-    return { status: 200, body: { has_access: true, free: true, credits_required: 0 } };
+  if (creditsRequired === 0) {
+    return { has_access: true, free: true, credits_required: 0 };
   }
 
-  const { data: access } = await supabase
+  // Admin Bypass
+  const { data: adminCheck } = await supabase
+    .from('admins')
+    .select('id')
+    .eq('id', userId)
+    .single();
+
+  if (adminCheck) {
+    return { has_access: true, credits_required: creditsRequired, is_admin: true };
+  }
+
+  const { data: access, error: accessError } = await supabase
     .from('article_access')
     .select('id')
     .eq('user_id', userId)
     .eq('article_id', articleId)
     .single();
 
+  if (accessError && accessError.code !== 'PGRST116') {
+    logger.error('Article access check failed', { error: accessError, userId, articleId });
+  }
+
   return {
-    status: 200,
-    body: {
-      has_access: !!access,
-      credits_required: article.credits_required
-    }
+    has_access: !!access,
+    credits_required: creditsRequired
   };
 }
 
@@ -223,44 +199,55 @@ export async function consumeResearchCredit(supabase, { userId, researchId }) {
     });
 
   if (error) {
+    if (error.code === '23505') {
+       return { success: true, message: 'لديك صلاحية الوصول بالفعل' };
+    }
+    logger.error('Consume research credit RPC failed', { error, userId, researchId });
     throw new AppError('فشل في خصم الرصيد للبحث', 500, 'CREDITS_CONSUME_RESEARCH_FAILED');
   }
 
   if (!data.success) {
-    return { status: 400, body: { error: data.message } };
+     throw new AppError(data.message || 'رصيد غير كافي', 400, 'CREDITS_INSUFFICIENT');
   }
 
-  return { status: 200, body: { success: true, message: 'تم فتح البحث بنجاح' } };
+  return { 
+    success: true, 
+    message: data.message || 'تم فتح البحث بنجاح',
+    remaining_credits: data.remaining_credits,
+    remaining_balance: data.remaining_balance
+  };
 }
 
 export async function checkResearchAccess(supabase, { researchId, userId }) {
-  const { data: research } = await supabase
+  const { data: research, error: researchError } = await supabase
     .from('researches')
     .select('credits_required')
     .eq('id', researchId)
     .single();
 
-  if (!research) {
-    return { status: 404, body: { error: 'البحث غير موجود' } };
+  if (researchError) {
+    if (researchError.code === 'PGRST116') {
+       throw new AppError('البحث غير موجود', 404, 'RESEARCH_NOT_FOUND');
+    }
+    logger.error('Check research access fetch failed', { error: researchError, researchId });
+    throw new AppError('فشل التحقق من الوصول للبحث', 500, 'CREDIT_ACCESS_CHECK_FAILED');
   }
 
   const creditsRequired = research.credits_required || 0;
 
   if (!userId) {
     return {
-      status: 200,
-      body: {
-        has_access: false,
-        requires_auth: true,
-        credits_required: creditsRequired
-      }
+      has_access: false,
+      requires_auth: true,
+      credits_required: creditsRequired
     };
   }
 
   if (creditsRequired === 0) {
-    return { status: 200, body: { has_access: true, free: true, credits_required: 0 } };
+    return { has_access: true, free: true, credits_required: 0 };
   }
 
+  // Admin Bypass
   const { data: adminCheck } = await supabase
     .from('admins')
     .select('id')
@@ -268,33 +255,34 @@ export async function checkResearchAccess(supabase, { researchId, userId }) {
     .single();
 
   if (adminCheck) {
-    return { status: 200, body: { has_access: true, credits_required: creditsRequired } };
+    return { has_access: true, credits_required: creditsRequired, is_admin: true };
   }
 
-  const { data: access } = await supabase
+  const { data: access, error: accessError } = await supabase
     .from('research_access')
     .select('id')
     .eq('user_id', userId)
     .eq('research_id', researchId)
     .single();
 
+  if (accessError && accessError.code !== 'PGRST116') {
+     logger.error('Research access check failed', { error: accessError, userId, researchId });
+  }
+
   return {
-    status: 200,
-    body: {
-      has_access: !!access,
-      credits_required: creditsRequired
-    }
+    has_access: !!access,
+    credits_required: creditsRequired
   };
 }
 
 export async function getTransactions(supabase, { userId, page = 1, limit = 10, type }) {
-  const pageNum = parseInt(page);
-  const limitNum = parseInt(limit);
+  const limitNum = Math.min(Math.max(parseInt(limit) || 10, 1), 100);
+  const pageNum = Math.max(parseInt(page) || 1, 1);
   const offset = (pageNum - 1) * limitNum;
 
   let query = supabase
     .from('credit_transactions')
-    .select('*', { count: 'exact' })
+    .select(`${TRANSACTION_SELECT}`, { count: 'exact' })
     .eq('custom_user_id', userId)
     .order('transaction_date', { ascending: false })
     .range(offset, offset + limitNum - 1);
@@ -306,6 +294,7 @@ export async function getTransactions(supabase, { userId, page = 1, limit = 10, 
   const { data, error, count } = await query;
 
   if (error) {
+    logger.error('Get transactions failed', { error, userId, page });
     throw new AppError('فشل في جلب السجل', 500, 'CREDITS_TRANSACTIONS_FAILED');
   }
 
@@ -313,7 +302,7 @@ export async function getTransactions(supabase, { userId, page = 1, limit = 10, 
     data,
     pagination: {
       total: count,
-      page: pageNum,
+      page: page,
       limit: limitNum,
       pages: Math.ceil((count || 0) / limitNum)
     }

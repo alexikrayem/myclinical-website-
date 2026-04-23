@@ -63,7 +63,7 @@ async function fetchArticles(ids) {
     .from('articles')
     .select('id, title, excerpt, cover_image, author, tags, is_featured, publication_date, article_type, slug')
     .in('id', ids);
-  if (error) throw error;
+  if (error) throw new AppError('Search query failed', 500, 'SEARCH_QUERY_FAILED');
   return orderByIdList(data, ids);
 }
 
@@ -73,7 +73,7 @@ async function fetchResearch(ids) {
     .from('researches')
     .select('id, title, journal, abstract, publication_date, authors')
     .in('id', ids);
-  if (error) throw error;
+  if (error) throw new AppError('Search query failed', 500, 'SEARCH_QUERY_FAILED');
   return orderByIdList(data, ids);
 }
 
@@ -83,7 +83,7 @@ async function fetchCourses(ids) {
     .from('video_courses')
     .select('id, title, description, cover_image, publication_date, author, categories, is_featured, credits_required, rating, total_students, duration, level')
     .in('id', ids);
-  if (error) throw error;
+  if (error) throw new AppError('Search query failed', 500, 'SEARCH_QUERY_FAILED');
   return orderByIdList(data, ids);
 }
 

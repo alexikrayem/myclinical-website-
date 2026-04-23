@@ -106,19 +106,6 @@ const GenerateCodes: React.FC = () => {
     }
   };
 
-  const getCreditTypeIcon = (type: CreditType) => {
-    switch (type) {
-      case 'video':
-        return <Video size={16} className="text-blue-400" />;
-      case 'article':
-        return <FileText size={16} className="text-green-400" />;
-      case 'both':
-        return <CreditCard size={16} className="text-purple-400" />;
-      default:
-        return <Coins size={16} className="text-yellow-400" />;
-    }
-  };
-
   const getValueDisplay = () => {
     switch (formData.creditType) {
       case 'video':

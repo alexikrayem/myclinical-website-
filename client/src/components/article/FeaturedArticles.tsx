@@ -6,8 +6,17 @@ import { ar } from 'date-fns/locale';
 import ArticleCard from './ArticleCard';
 import { useFeaturedArticles } from '../../hooks/useArticles';
 
+export interface FeaturedArticle {
+  id: string;
+  title: string;
+  cover_image: string;
+  publication_date: string;
+  author: string;
+  [key: string]: unknown;
+}
+
 interface FeaturedArticlesProps {
-  onItemsLoaded?: (items: any[]) => void;
+  onItemsLoaded?: (items: { id: string }[]) => void;
 }
 
 const FeaturedArticles: React.FC<FeaturedArticlesProps> = ({ onItemsLoaded }) => {
@@ -46,9 +55,9 @@ const FeaturedArticles: React.FC<FeaturedArticlesProps> = ({ onItemsLoaded }) =>
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
       {/* Primary Highlight */}
       <div className={`lg:col-span-${sideArticles.length > 0 ? '8' : '12'} h-full flex flex-col`}>
-         <div className="flex-1">
-           <ArticleCard article={mainArticle} featured={true} />
-         </div>
+        <div className="flex-1">
+          <ArticleCard article={mainArticle} featured={true} />
+        </div>
       </div>
 
       {/* Secondary List */}
@@ -59,9 +68,9 @@ const FeaturedArticles: React.FC<FeaturedArticlesProps> = ({ onItemsLoaded }) =>
               <span className="w-1.5 h-6 bg-gradient-to-b from-blue-500 to-purple-600 rounded-full ml-3"></span>
               الأكثر قراءة
             </h3>
-            
+
             <div className="flex flex-col gap-6 flex-1">
-              {sideArticles.map((article: any) => {
+              {sideArticles.map((article: FeaturedArticle) => {
                 const formattedDate = formatDistance(
                   new Date(article.publication_date),
                   new Date(),
@@ -69,18 +78,18 @@ const FeaturedArticles: React.FC<FeaturedArticlesProps> = ({ onItemsLoaded }) =>
                 );
 
                 return (
-                  <div 
+                  <div
                     key={article.id}
                     onClick={() => {
-                        navigate(`/articles/${article.id}`);
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      navigate(`/articles/${article.id}`);
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
                     }}
                     className="group cursor-pointer flex gap-4 items-center bg-transparent hover:bg-gray-50 rounded-2xl p-2 -mx-2 transition-colors duration-300"
                     data-testid={`featured-side-article-${article.id}`}
                   >
                     <div className="relative w-24 h-24 flex-shrink-0 rounded-2xl overflow-hidden shadow-sm border border-gray-100">
-                      <img 
-                        src={article.cover_image} 
+                      <img
+                        src={article.cover_image}
                         alt={article.title}
                         loading="lazy"
                         className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
@@ -92,10 +101,10 @@ const FeaturedArticles: React.FC<FeaturedArticlesProps> = ({ onItemsLoaded }) =>
                       </h4>
                       <div className="flex items-center text-xs text-gray-500 gap-3">
                         <span className="flex items-center truncate max-w-[80px]" title={article.author}>
-                           <User size={12} className="ml-1 flex-shrink-0"/> {article.author}
+                          <User size={12} className="ml-1 flex-shrink-0" /> {article.author}
                         </span>
                         <span className="flex items-center text-gray-400 whitespace-nowrap">
-                           <Clock size={12} className="ml-1 flex-shrink-0"/> {formattedDate}
+                          <Clock size={12} className="ml-1 flex-shrink-0" /> {formattedDate}
                         </span>
                       </div>
                     </div>
@@ -103,9 +112,9 @@ const FeaturedArticles: React.FC<FeaturedArticlesProps> = ({ onItemsLoaded }) =>
                 );
               })}
             </div>
-            
-            <Link 
-              to="/articles" 
+
+            <Link
+              to="/articles"
               className="mt-6 flex items-center justify-center w-full py-3 bg-gray-50 border border-gray-100 hover:border-blue-200 hover:bg-blue-50 text-blue-600 font-bold rounded-xl transition-all duration-300 group shadow-sm"
             >
               عرض جميع المقالات

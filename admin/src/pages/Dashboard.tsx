@@ -4,8 +4,24 @@ import { Link } from 'react-router-dom';
 import AdminLayout from '../components/layout/AdminLayout';
 import { api } from '../context/AuthContext';
 
+interface DashboardArticle {
+  id: string;
+  title: string;
+  author: string;
+  cover_image: string;
+  is_featured: boolean;
+}
+
+interface DashboardStats {
+  totalArticles: number;
+  totalResearch: number;
+  featuredArticles: number;
+  totalAuthors: number;
+  recentArticles: DashboardArticle[];
+}
+
 const Dashboard: React.FC = () => {
-  const [stats, setStats] = useState({
+  const [stats, setStats] = useState<DashboardStats>({
     totalArticles: 0,
     totalResearch: 0,
     featuredArticles: 0,
@@ -24,11 +40,11 @@ const Dashboard: React.FC = () => {
           api.get('/authors')
         ]);
         
-        const articles = articlesRes.data.data || articlesRes.data || [];
+        const articles: DashboardArticle[] = articlesRes.data.data || articlesRes.data || [];
         const research = researchRes.data.data || researchRes.data || [];
         const authors = authorsRes.data || [];
         
-        const featuredCount = articles.filter((article: any) => article.is_featured).length;
+        const featuredCount = articles.filter((article) => article.is_featured).length;
         
         setStats({
           totalArticles: articles.length,
@@ -173,7 +189,7 @@ const Dashboard: React.FC = () => {
           <div className="form-section">
             <div className="form-section-title">أحدث المقالات</div>
             <div className="space-y-4">
-              {stats.recentArticles.map((article: any) => (
+              {stats.recentArticles.map((article) => (
                 <div key={article.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
                   <div className="flex items-center space-x-4 space-x-reverse">
                     <img

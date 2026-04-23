@@ -12,6 +12,14 @@ interface RichTextEditorProps {
   height?: string;
 }
 
+interface ErrorWithResponse {
+  response?: {
+    data?: {
+      error?: string;
+    };
+  };
+}
+
 const RichTextEditor: React.FC<RichTextEditorProps> = ({
   value,
   onChange,
@@ -72,7 +80,8 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                 const quill = reactQuillRef.current?.getEditor();
                 if (quill) {
                   const range = quill.getSelection(true);
-                  const fullUrl = (import.meta as any).env.VITE_API_URL ? `${(import.meta as any).env.VITE_API_URL.replace('/api', '')}${url}` : url;
+                  const apiBaseUrl = import.meta.env.VITE_API_URL;
+                  const fullUrl = apiBaseUrl ? `${apiBaseUrl.replace('/api', '')}${url}` : url;
                   quill.insertEmbed(range.index, 'image', fullUrl);
                 }
 
@@ -146,9 +155,10 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         setTextInput('');
       }
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error generating content:', error);
-      const errorMessage = error.response?.data?.error || 'حدث خطأ أثناء توليد المحتوى';
+      const candidate = error as ErrorWithResponse;
+      const errorMessage = candidate.response?.data?.error || 'حدث خطأ أثناء توليد المحتوى';
       toast.error(errorMessage);
     } finally {
       setAiLoading(false);

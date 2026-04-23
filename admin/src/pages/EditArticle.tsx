@@ -4,9 +4,22 @@ import AdminLayout from '../components/layout/AdminLayout';
 import ArticleForm from '../components/forms/ArticleForm';
 import { api } from '../context/AuthContext';
 
+interface Article {
+  id: string;
+  title?: string;
+  excerpt?: string;
+  content?: string;
+  author?: string;
+  tags?: string[];
+  is_featured?: boolean;
+  cover_image?: string;
+  article_type?: string;
+  credits_required?: number;
+}
+
 const EditArticle: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const [article, setArticle] = useState<any>(null);
+  const [article, setArticle] = useState<Article | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

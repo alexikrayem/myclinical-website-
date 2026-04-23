@@ -43,7 +43,8 @@ jest.unstable_mockModule('../middleware/rateLimiter.js', () => ({
     uploadLimiter: (req, res, next) => next(),
     searchLimiter: (req, res, next) => next(),
     aiLimiter: (req, res, next) => next(),
-    redeemLimiter: (req, res, next) => next()
+    redeemLimiter: (req, res, next) => next(),
+    accountRedeemLimiter: (req, res, next) => next()
 }));
 
 // Import app

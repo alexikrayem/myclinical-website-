@@ -1,17 +1,28 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Edit, Trash2, Eye, Search, X, Loader } from 'lucide-react';
+import { Plus, Edit, Trash2, Eye, Search, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import AdminLayout from '../components/layout/AdminLayout';
 import { api } from '../context/AuthContext';
 
+interface Article {
+  id: string;
+  title: string;
+  excerpt: string;
+  author: string;
+  cover_image: string;
+  publication_date: string;
+  is_featured: boolean;
+  tags: string[];
+}
+
 const Articles: React.FC = () => {
-  const [articles, setArticles] = useState<any[]>([]);
+  const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [totalArticles, setTotalArticles] = useState(0);
 
-  const fetchArticles = async () => {
+  const fetchArticles = useCallback(async () => {
     try {
       setLoading(true);
       const response = await api.get('/articles', { params: { search: searchTerm } });
@@ -25,14 +36,14 @@ const Articles: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [searchTerm]);
 
   useEffect(() => {
     const debounce = setTimeout(() => {
       fetchArticles();
     }, 500);
     return () => clearTimeout(debounce);
-  }, [searchTerm]);
+  }, [fetchArticles]);
 
   const handleDelete = async (id: string) => {
     if (!confirm('هل أنت متأكد من حذف هذا المقال؟')) {

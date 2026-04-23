@@ -1,17 +1,27 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Plus, Edit, Trash2, Download, Search, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import AdminLayout from '../components/layout/AdminLayout';
 import { api } from '../context/AuthContext';
 
+interface ResearchItem {
+  id: string;
+  title: string;
+  abstract: string;
+  journal: string;
+  authors: string[];
+  publication_date: string;
+  file_url: string;
+}
+
 const Research: React.FC = () => {
-  const [researches, setResearches] = useState<any[]>([]);
+  const [researches, setResearches] = useState<ResearchItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [totalResearches, setTotalResearches] = useState(0);
 
-  const fetchResearches = async () => {
+  const fetchResearches = useCallback(async () => {
     try {
       setLoading(true);
       const response = await api.get('/research', { params: { search: searchTerm } });
@@ -25,14 +35,14 @@ const Research: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [searchTerm]);
 
   useEffect(() => {
     const debounce = setTimeout(() => {
       fetchResearches();
     }, 500);
     return () => clearTimeout(debounce);
-  }, [searchTerm]);
+  }, [fetchResearches]);
 
   const handleDelete = async (id: string) => {
     if (!confirm('هل أنت متأكد من حذف هذا البحث؟')) {

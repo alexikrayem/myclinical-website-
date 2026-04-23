@@ -15,14 +15,25 @@ interface AuthContextType {
   isAuthenticated: boolean;
 }
 
+interface ErrorWithResponse {
+  response?: {
+    data?: {
+      error?: string;
+      message?: string;
+    };
+  };
+  message?: string;
+}
+
 const defaultContext: AuthContextType = {
   user: null,
   loading: true,
-  login: async () => {},
-  logout: async () => {},
+  login: async () => { },
+  logout: async () => { },
   isAuthenticated: false,
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const AuthContext = createContext<AuthContextType>(defaultContext);
 
 interface AuthProviderProps {
@@ -37,6 +48,19 @@ const api = axios.create({
   },
 });
 
+// Intercept responses to map standardized AppError payloads to axios error messages
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.data?.error) {
+      error.message = error.response.data.error;
+    } else if (error.response?.data?.message) {
+      error.message = error.response.data.message;
+    }
+    return Promise.reject(error);
+  }
+);
+
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -49,7 +73,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (token) {
           // Set authorization header
           api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-          
+
           // Verify token by fetching admin profile
           const response = await api.get('/admin/profile');
           setUser(response.data);
@@ -70,29 +94,30 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const login = async (email: string, password: string) => {
     try {
       setLoading(true);
-      
+
       const response = await api.post('/admin/login', {
         email,
         password,
       });
 
       const { user: userData, session } = response.data;
-      
+
       if (session && session.access_token) {
         // Store token
         localStorage.setItem('admin_token', session.access_token);
-        
+
         // Set authorization header for future requests
         api.defaults.headers.common['Authorization'] = `Bearer ${session.access_token}`;
-        
+
         // Set user data
         setUser(userData);
       } else {
         throw new Error('No session data received');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Login error:', error);
-      const errorMessage = error.response?.data?.error || error.message || 'Login failed';
+      const candidate = error as ErrorWithResponse;
+      const errorMessage = candidate.response?.data?.error || candidate.message || 'Login failed';
       throw new Error(errorMessage);
     } finally {
       setLoading(false);
@@ -103,10 +128,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       // Clear local storage
       localStorage.removeItem('admin_token');
-      
+
       // Clear authorization header
       delete api.defaults.headers.common['Authorization'];
-      
+
       // Clear user state
       setUser(null);
     } catch (error) {
@@ -129,7 +154,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   );
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => React.useContext(AuthContext);
 
 // Export the configured axios instance for use in other components
+// eslint-disable-next-line react-refresh/only-export-components
 export { api };

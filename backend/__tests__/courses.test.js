@@ -42,11 +42,14 @@ jest.unstable_mockModule('../middleware/rateLimiter.js', () => ({
     aiLimiter: (req, res, next) => next(),
     searchLimiter: (req, res, next) => next(),
     limiters: {},
-    redeemLimiter: (req, res, next) => next()
+    redeemLimiter: (req, res, next) => next(),
+    accountRedeemLimiter: (req, res, next) => next()
 }));
 
 jest.unstable_mockModule('../middleware/cache.js', () => ({
-    cacheMiddleware: () => (req, res, next) => next()
+    cacheMiddleware: () => (req, res, next) => next(),
+    invalidateCache: jest.fn(),
+    invalidateCachePattern: jest.fn()
 }));
 
 // Mock jsonwebtoken
@@ -70,6 +73,7 @@ const { default: app } = await import('../server.js');
 
 describe('Courses Routes Integration Tests', () => {
     const validToken = 'valid-token';
+    const validCourseId = '11111111-1111-4111-8111-111111111111';
 
     beforeEach(() => {
         jest.clearAllMocks();
@@ -96,7 +100,7 @@ describe('Courses Routes Integration Tests', () => {
     describe('GET /api/courses/:id', () => {
         it('should return public info if not purchased', async () => {
             const course = {
-                id: 'c1',
+                id: validCourseId,
                 title: 'Course 1',
                 billing_model: 'per_course',
                 credits_required: 100
@@ -109,7 +113,7 @@ describe('Courses Routes Integration Tests', () => {
             // Wait, route uses optionalAuth. If we don't send token, req.user is null.
             // If req.user is null, hasAccess = false.
 
-            const res = await request(app).get('/api/courses/c1');
+            const res = await request(app).get(`/api/courses/${validCourseId}`);
 
             expect(res.status).toBe(200);
             expect(res.body.title).toBe('Course 1');
@@ -120,7 +124,7 @@ describe('Courses Routes Integration Tests', () => {
 
         it('should return full info if purchased', async () => {
             const course = {
-                id: 'c1',
+                id: validCourseId,
                 title: 'Course 1',
                 billing_model: 'per_course',
                 credits_required: 100
@@ -143,7 +147,7 @@ describe('Courses Routes Integration Tests', () => {
             });
 
             const res = await request(app)
-                .get('/api/courses/c1')
+                .get(`/api/courses/${validCourseId}`)
                 .set('Authorization', `Bearer ${validToken}`);
 
             expect(res.status).toBe(200);

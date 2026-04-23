@@ -4,6 +4,10 @@ import { Lock, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 
+interface LoginError {
+  message?: string;
+}
+
 const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -25,9 +29,10 @@ const LoginPage: React.FC = () => {
       await login(email, password);
       toast.success('تم تسجيل الدخول بنجاح');
       navigate('/');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Login error:', error);
-      const errorMessage = error.message || 'فشل تسجيل الدخول. يرجى التحقق من بيانات الاعتماد الخاصة بك';
+      const candidate = error as LoginError;
+      const errorMessage = candidate.message || 'فشل تسجيل الدخول. يرجى التحقق من بيانات الاعتماد الخاصة بك';
       toast.error(errorMessage);
     } finally {
       setLoading(false);

@@ -1,4 +1,6 @@
 import { MeiliSearch } from 'meilisearch';
+import logger from '../../config/logger.js';
+import { AppError } from '../../utils/errors.js';
 import { SEARCH_INDEXES } from './searchConfig.js';
 
 let clientInstance = null;
@@ -36,7 +38,7 @@ async function ensureIndex(client, config) {
   try {
     index = await client.getIndex(config.name);
   } catch (error) {
-    if (!isIndexNotFound(error)) throw error;
+    if (!isIndexNotFound(error)) throw new AppError('Failed to verify Meilisearch index', 500, 'MEILI_VERIFY_FAILED');
     const task = await client.createIndex(config.name, { primaryKey: config.primaryKey });
     await client.waitForTask(task.taskUid);
     index = client.index(config.name);

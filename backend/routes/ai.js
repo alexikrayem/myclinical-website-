@@ -11,6 +11,8 @@ import dotenv from 'dotenv';
 import { supabaseAdmin as supabase } from '../config/supabase.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { AppError } from '../utils/errors.js';
+import { getGenerativeModel } from '../config/gemini.js';
+import logger from '../config/logger.js';
 
 dotenv.config();
 
@@ -21,8 +23,7 @@ const router = express.Router();
 
 // Initialize Supabase
 
-// Initialize Google Gemini AI
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY);
+// Initialize Supabase
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -34,8 +35,15 @@ const storage = multer.diskStorage({
     cb(null, uploadDir);
   },
   filename: function (req, file, cb) {
+    const extmap = {
+      'application/pdf': '.pdf',
+      'text/plain': '.txt',
+      'application/msword': '.doc',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx'
+    };
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, 'ai-upload-' + uniqueSuffix + path.extname(file.originalname));
+    const safeExt = extmap[file.mimetype] || '.bin';
+    cb(null, 'ai-upload-' + uniqueSuffix + safeExt);
   }
 });
 
@@ -70,7 +78,7 @@ async function extractTextFromFile(filePath, mimetype) {
     }
     return '';
   } catch (error) {
-    console.error('Error extracting text from file:', error);
+    logger.error('Error extracting text from file:', { error });
     throw new Error('Failed to extract text from file');
   }
 }
@@ -126,7 +134,10 @@ Make sure the content is:
 `;
 
     // Get the generative model
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = getGenerativeModel();
+    if (!model) {
+      throw new AppError('AI model is not configured', 501, 'AI_DISABLED');
+    }
 
     // Generate content
     const result = await model.generateContent(prompt);
@@ -146,7 +157,7 @@ Make sure the content is:
     });
 
   } catch (error) {
-    console.error('Error generating content with Gemini AI:', error);
+    logger.error('Error generating content with Gemini AI:', { error });
 
     // Handle specific Gemini API errors
     if (error.message.includes('API_KEY')) {
@@ -204,7 +215,10 @@ Example Response:
 `;
 
     // 3. Generate content
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const model = getGenerativeModel();
+    if (!model) {
+      throw new AppError('AI model is not configured', 501, 'AI_DISABLED');
+    }
     const result = await model.generateContent(prompt);
     const response = await result.response;
     const text = response.text();
@@ -223,17 +237,18 @@ Example Response:
       message: 'Tags suggested successfully'
     });
   } catch (parseError) {
-      console.error('Error parsing AI response:', text);
+      logger.error('Error parsing AI response:', { text });
       throw new AppError('Failed to parse suggested tags from AI', 500, 'AI_TAGS_PARSE_FAILED');
     }
 
   } catch (error) {
-    console.error('Error suggesting tags with Gemini AI:', error);
+    logger.error('Error suggesting tags with Gemini AI:', { error });
     throw new AppError('Failed to suggest tags', 500, 'AI_TAGS_FAILED');
   }
 }));
 router.get('/health', authenticateToken, asyncHandler(async (req, res) => {
-  if (!process.env.GOOGLE_GEMINI_API_KEY) {
+  const model = getGenerativeModel();
+  if (!model) {
     throw new AppError('Google Gemini API key not configured', 500, 'AI_CONFIG_ERROR');
   }
 

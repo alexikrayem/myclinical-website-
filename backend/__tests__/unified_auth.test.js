@@ -89,7 +89,8 @@ jest.unstable_mockModule('../middleware/rateLimiter.js', () => ({
     uploadLimiter: (req, res, next) => next(),
     apiLimiter: (req, res, next) => next(),
     authLimiter: (req, res, next) => next(),
-    redeemLimiter: (req, res, next) => next()
+    redeemLimiter: (req, res, next) => next(),
+    accountRedeemLimiter: (req, res, next) => next()
 }));
 
 // Mock global fetch to prevent network errors
@@ -101,11 +102,15 @@ global.fetch = jest.fn(() =>
 );
 
 jest.unstable_mockModule('../middleware/cache.js', () => ({
-    cacheMiddleware: () => (req, res, next) => next()
+    cacheMiddleware: () => (req, res, next) => next(),
+    invalidateCache: jest.fn(),
+    invalidateCachePattern: jest.fn()
 }));
 
 jest.unstable_mockModule('../middleware/cache.js', () => ({
-    cacheMiddleware: () => (req, res, next) => next()
+    cacheMiddleware: () => (req, res, next) => next(),
+    invalidateCache: jest.fn(),
+    invalidateCachePattern: jest.fn()
 }));
 
 const { default: app } = await import('../server.js');

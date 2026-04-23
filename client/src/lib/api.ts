@@ -11,6 +11,31 @@ const api = axios.create({
   },
 });
 
+// Intercept requests to attach tokens automatically
+api.interceptors.request.use((config) => {
+  // If authorization header is already present (e.g. admin token), skip
+  if (!config.headers.Authorization) {
+    const token = localStorage.getItem('user_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+  }
+  return config;
+});
+
+// Intercept responses to map standardized AppError payloads to axios error messages
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.data?.error) {
+      error.message = error.response.data.error;
+    } else if (error.response?.data?.message) {
+      error.message = error.response.data.message;
+    }
+    return Promise.reject(error);
+  }
+);
+
 export type GlobalSearchType = 'article' | 'research' | 'course';
 
 export interface GlobalSearchResult {
@@ -39,7 +64,7 @@ export const searchApi = {
       }));
     } catch (error) {
       console.error('Error in global search:', error);
-      return [];
+      throw error;
     }
   }
 };
@@ -75,7 +100,7 @@ export const articlesApi = {
       return response.data;
     } catch (error) {
       console.error('Error fetching tags:', error);
-      return [];
+      throw error;
     }
   },
 
@@ -97,7 +122,7 @@ export const articlesApi = {
       return response.data;
     } catch (error) {
       console.error('Error fetching related articles:', error);
-      return [];
+      throw error;
     }
   },
 
@@ -129,7 +154,7 @@ export const articlesApi = {
       return response.data;
     } catch (error) {
       console.error('Error fetching articles by tags:', error);
-      return {};
+      throw error;
     }
   },
 };
@@ -165,7 +190,7 @@ export const researchApi = {
       return response.data;
     } catch (error) {
       console.error('Error fetching related research:', error);
-      return [];
+      throw error;
     }
   },
 
@@ -176,7 +201,7 @@ export const researchApi = {
       return response.data;
     } catch (error) {
       console.error('Error fetching journals:', error);
-      return [];
+      throw error;
     }
   },
 
@@ -207,7 +232,7 @@ export const authorsApi = {
       return response.data;
     } catch (error) {
       console.error('Error fetching author:', error);
-      return null;
+      throw error;
     }
   },
 };

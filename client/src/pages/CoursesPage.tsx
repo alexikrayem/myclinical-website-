@@ -5,9 +5,24 @@ import CourseList from '../components/courses/CourseList';
 import VideoCourseCard from '../components/courses/CourseCard';
 import CourseListSkeleton from '../components/loaders/CourseListSkeleton';
 
+export interface Course {
+    id: string;
+    title: string;
+    description: string;
+    cover_image: string;
+    publication_date: string;
+    author: string;
+    categories: string[];
+    credits_required: number;
+    billing_model?: "free" | "per_course" | "per_minute";
+    minute_cost?: number;
+    duration: number;
+    is_featured?: boolean;
+}
+
 const CoursesPage = () => {
-    const [courses, setCourses] = useState([]);
-    const [featuredCourses, setFeaturedCourses] = useState([]);
+    const [courses, setCourses] = useState<Course[]>([]);
+    const [featuredCourses, setFeaturedCourses] = useState<Course[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [activeCategory, setActiveCategory] = useState('');
@@ -72,8 +87,7 @@ const CoursesPage = () => {
                         </h2>
                     </div>
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                        {featuredCourses.slice(0, 2).map((course: any) => (
+                        {featuredCourses.slice(0, 2).map((course: Course) => (
                             <VideoCourseCard key={course.id} course={course} featured={true} />
                         ))}
                     </div>

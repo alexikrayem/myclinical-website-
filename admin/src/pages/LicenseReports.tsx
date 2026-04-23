@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Search, Download, Shield, CheckCircle, XCircle } from 'lucide-react';
 import AdminLayout from '../components/layout/AdminLayout';
 import { reportService, LicenseReport } from '../services/reportService';
@@ -11,7 +11,7 @@ const LicenseReports: React.FC = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [pagination, setPagination] = useState({ page: 1, total: 0, pages: 1 });
 
-    const fetchReports = async () => {
+    const fetchReports = useCallback(async () => {
         setIsLoading(true);
         try {
             const data = await reportService.getLicenseReport({
@@ -21,18 +21,18 @@ const LicenseReports: React.FC = () => {
             setReports(data.data);
             setPagination(data.pagination);
         } catch (error) {
-            console.error('Failed to fetch reports');
+            console.error('Failed to fetch reports', error);
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [searchQuery, pagination.page]);
 
     useEffect(() => {
         const debounce = setTimeout(() => {
             fetchReports();
         }, 500);
         return () => clearTimeout(debounce);
-    }, [searchQuery, pagination.page]);
+    }, [fetchReports]);
 
     return (
         <AdminLayout>

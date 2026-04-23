@@ -7,8 +7,30 @@ import AuthorForm from './AuthorForm';
 import { api } from '../../context/AuthContext';
 
 interface ResearchFormProps {
-  research?: any;
+  research?: ResearchData | null;
   isEditing?: boolean;
+}
+
+interface ResearchData {
+  id: string;
+  title?: string;
+  abstract?: string;
+  journal?: string;
+  publication_date?: string;
+  authors?: string[];
+}
+
+interface CreatedAuthor {
+  id: string;
+  name: string;
+}
+
+interface ErrorWithResponse {
+  response?: {
+    data?: {
+      error?: string;
+    };
+  };
 }
 
 const ResearchForm: React.FC<ResearchFormProps> = ({ research, isEditing = false }) => {
@@ -144,7 +166,7 @@ const ResearchForm: React.FC<ResearchFormProps> = ({ research, isEditing = false
     setAuthorInput('');
   };
 
-  const handleAuthorCreated = (createdAuthor: any) => {
+  const handleAuthorCreated = (createdAuthor: CreatedAuthor) => {
     if (createdAuthor?.name) {
       setAuthors(prev => {
         const exists = prev.some(a => a.id === createdAuthor.id);
@@ -186,22 +208,22 @@ const ResearchForm: React.FC<ResearchFormProps> = ({ research, isEditing = false
         submitData.append('research_file', researchFile);
       }
 
-      let response;
       if (isEditing && research) {
-        response = await api.put(`/admin/research/${research.id}`, submitData, {
+        await api.put(`/admin/research/${research.id}`, submitData, {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
       } else {
-        response = await api.post('/admin/research', submitData, {
+        await api.post('/admin/research', submitData, {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
       }
 
       toast.success(isEditing ? 'تم تحديث البحث بنجاح' : 'تم إنشاء البحث بنجاح');
       navigate('/research');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error saving research:', error);
-      const errorMessage = error.response?.data?.error || 'حدث خطأ أثناء حفظ البحث';
+      const candidate = error as ErrorWithResponse;
+      const errorMessage = candidate.response?.data?.error || 'حدث خطأ أثناء حفظ البحث';
       toast.error(errorMessage);
     } finally {
       setLoading(false);

@@ -30,6 +30,7 @@ export const useArticle = (id: string) => {
         queryKey: ['article', id],
         queryFn: () => articlesApi.getById(id),
         enabled: !!id,
+        staleTime: 1000 * 60 * 5, // 5 minutes
     });
 };
 
@@ -38,6 +39,7 @@ export const useRelatedArticles = (id: string, limit = 3) => {
         queryKey: ['related-articles', id, limit],
         queryFn: () => articlesApi.getRelated(id, limit),
         enabled: !!id,
+        staleTime: 1000 * 60 * 5, // 5 minutes
     });
 };
 

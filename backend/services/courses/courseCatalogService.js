@@ -1,5 +1,7 @@
 import { sanitizeSearchInput } from '../../utils/searchUtils.js';
 import { meiliSearch, orderByIdList } from '../search/searchService.js';
+import { AppError } from '../../utils/errors.js';
+import logger from '../../config/logger.js';
 
 export const COURSE_PUBLIC_SELECT = [
   'id',
@@ -71,7 +73,10 @@ export async function listPublicCourses(supabase, params) {
         .select(COURSE_PUBLIC_SELECT)
         .in('id', ids);
 
-      if (fetchError) throw fetchError;
+      if (fetchError) {
+        logger.error('Error fetching courses list from DB', { error: fetchError });
+        throw new AppError('Failed to fetch courses from DB', 500, 'CATALOG_FETCH_FAILED');
+      }
 
       const ordered = orderByIdList(rows, ids);
       return {
@@ -95,7 +100,10 @@ export async function listPublicCourses(supabase, params) {
     .order('publication_date', { ascending: false })
     .range(offset, offset + limitNum - 1);
 
-  if (error) throw error;
+  if (error) {
+    logger.error('Error querying courses catalog', { error });
+    throw new AppError('Failed to traverse course catalog', 500, 'CATALOG_FETCH_FAILED');
+  }
 
   return {
     data,
@@ -117,7 +125,8 @@ export async function getPublicCourseById(supabase, id) {
 
   if (error) {
     if (error.code === 'PGRST116') return null;
-    throw error;
+    logger.error('Error fetching specific public course', { error, id });
+    throw new AppError('Failed to fetch public course', 500, 'CATALOG_FETCH_SINGLE_FAILED');
   }
   return data;
 }

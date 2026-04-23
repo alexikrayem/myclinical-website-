@@ -1,16 +1,38 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Save, X, Upload, Link as LinkIcon } from 'lucide-react';
+import { Save, Upload, Link as LinkIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../context/AuthContext';
 
 interface AuthorFormProps {
-  author?: any;
+  author?: AuthorData | null;
   isEditing?: boolean;
   initialName?: string;
-  onSaved?: (author: any) => void;
+  onSaved?: (author: AuthorData) => void;
   onCancel?: () => void;
   embedded?: boolean;
+}
+
+interface AuthorData {
+  id: string;
+  name: string;
+  bio: string;
+  specialization: string;
+  experience_years: number;
+  education: string;
+  location: string;
+  email?: string;
+  website?: string;
+  is_active: boolean;
+  image?: string;
+}
+
+interface ErrorWithResponse {
+  response?: {
+    data?: {
+      error?: string;
+    };
+  };
 }
 
 const AuthorForm: React.FC<AuthorFormProps> = ({
@@ -133,9 +155,10 @@ const AuthorForm: React.FC<AuthorFormProps> = ({
       } else {
         navigate('/authors');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error saving author:', error);
-      const errorMessage = error.response?.data?.error || 'حدث خطأ أثناء حفظ المؤلف';
+      const candidate = error as ErrorWithResponse;
+      const errorMessage = candidate.response?.data?.error || 'حدث خطأ أثناء حفظ المؤلف';
       toast.error(errorMessage);
     } finally {
       setLoading(false);

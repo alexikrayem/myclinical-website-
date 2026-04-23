@@ -43,6 +43,11 @@ const creditsChain = {
     eq: jest.fn()
 };
 
+const typedCreditsChain = {
+    gt: jest.fn(),
+    eq: jest.fn()
+};
+
 // Supabase Mock Implementation
 const mockSupabase = {
     from: jest.fn((table) => {
@@ -82,6 +87,16 @@ const mockSupabase = {
                 insert: jest.fn(),
                 update: jest.fn()
             };
+        } else if (table === 'user_typed_credits') {
+            // Chain: .select(...).eq(...).gt(...)
+            typedCreditsChain.gt.mockResolvedValue({ data: [], error: null });
+            typedCreditsChain.eq.mockReturnValue({ gt: typedCreditsChain.gt });
+
+            return {
+                select: jest.fn(() => ({ eq: typedCreditsChain.eq })),
+                insert: jest.fn(),
+                update: jest.fn()
+            };
         }
         return { select: jest.fn().mockReturnThis() };
     })
@@ -97,7 +112,8 @@ jest.unstable_mockModule('../middleware/rateLimiter.js', () => ({
     uploadLimiter: (req, res, next) => next(),
     aiLimiter: (req, res, next) => next(),
     searchLimiter: (req, res, next) => next(),
-    redeemLimiter: (req, res, next) => next()
+    redeemLimiter: (req, res, next) => next(),
+    accountRedeemLimiter: (req, res, next) => next()
 }));
 
 // Import app after mocks

@@ -1,5 +1,7 @@
 import axios from 'axios';
 import dotenv from 'dotenv';
+import logger from '../config/logger.js';
+import { AppError } from '../utils/errors.js';
 
 dotenv.config();
 
@@ -15,7 +17,7 @@ const VDO_BASE_URL = 'https://dev.vdocipher.com/api/videos';
 export const getVdoPlaybackInfo = async (videoId, options = {}) => {
     // Mock Mode for Development/Testing
     if (process.env.MOCK_VIDEO_API === 'true') {
-        console.log('Returning Mock Video Info for:', videoId);
+        logger.info('Returning Mock Video Info for:', { videoId });
         return {
             otp: 'mock-otp-' + videoId,
             playbackInfo: 'mock-playback-info',
@@ -25,7 +27,7 @@ export const getVdoPlaybackInfo = async (videoId, options = {}) => {
 
     try {
         if (!VDO_API_SECRET) {
-            throw new Error('VDOCIPHER_API_SECRET is not configured');
+            throw new AppError('VDOCIPHER_API_SECRET is not configured', 500, 'VDOCIPHER_CONFIG_MISSING');
         }
 
         // Basic watermarking configuration if user info is available
@@ -47,6 +49,7 @@ export const getVdoPlaybackInfo = async (videoId, options = {}) => {
                 annotate: annotate ? JSON.stringify(annotate) : undefined
             },
             {
+                timeout: 10000,
                 headers: {
                     'Authorization': `Apisecret ${VDO_API_SECRET}`,
                     'Content-Type': 'application/json'
@@ -59,7 +62,11 @@ export const getVdoPlaybackInfo = async (videoId, options = {}) => {
             playbackInfo: response.data.playbackInfo
         };
     } catch (error) {
-        console.error('VdoCipher API error:', error.response?.data || error.message);
-        throw new Error('Failed to get video playback info');
+        logger.error('VdoCipher API error:', {
+            status: error.response?.status,
+            data: error.response?.data,
+            message: error.message
+        });
+        throw new AppError('Failed to get video playback info', 502, 'VDOCIPHER_API_FAILED');
     }
 };

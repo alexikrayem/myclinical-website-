@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, CheckCircle, Mail, Lock, User, Phone, ArrowRight, BookOpen, GraduationCap, Video } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import axios from 'axios';
 import { Link } from 'react-router-dom';
 
 interface AuthModalProps {
@@ -65,8 +66,11 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 'l
                 await register(phone, password, name);
             }
             onClose();
-        } catch (err: any) {
-            setError(err.message || 'حدث خطأ ما');
+        } catch (err: unknown) {
+            const errorMessage = axios.isAxiosError(err)
+                ? (err.response?.data as { error?: string })?.error || 'حدث خطأ في التسجيل'
+                : err instanceof Error ? err.message : 'حدث خطأ غير متوقع';
+            setError(errorMessage);
         } finally {
             setLoading(false);
         }

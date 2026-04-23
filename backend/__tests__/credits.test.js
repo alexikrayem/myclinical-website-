@@ -1,4 +1,3 @@
-
 import { jest } from '@jest/globals';
 
 // --- Mocks Setup ---
@@ -10,6 +9,8 @@ const createSupabaseMock = () => {
         update: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
         gt: jest.fn().mockReturnThis(),
+        order: jest.fn().mockReturnThis(),
+        range: jest.fn().mockReturnThis(),
         single: jest.fn(),
         rpc: jest.fn(),
         then: function (resolve, reject) {
@@ -67,25 +68,26 @@ describe('Credits Routes Integration Tests', () => {
         jest.clearAllMocks();
         mockSupabase.from.mockReturnThis();
         mockSupabase.select.mockReturnThis();
+        mockSupabase.eq.mockReturnThis();
         mockSupabase.single.mockReset();
         mockSupabase.rpc.mockReset();
     });
 
+    // Helper to mock authentication
+    const mockAuth = () => {
+        mockSupabase.single.mockResolvedValueOnce({
+            data: { id: 'session-1', users: { id: 'user-123', is_active: true } },
+            error: null
+        });
+    };
+
     describe('GET /api/credits/balance', () => {
         it('should return user credits', async () => {
-            // 1. authenticateUser: check session
-            mockSupabase.single.mockResolvedValueOnce({
-                data: { id: 'session-1', users: { id: 'user-123', is_active: true } },
-                error: null
-            });
-
-            // 2. get balance
+            mockAuth();
             mockSupabase.single.mockResolvedValueOnce({
                 data: { balance: 50, video_watch_minutes: 100 },
                 error: null
             });
-
-            // 3. typed credits query (returns via .then, not .single)
             mockSupabase.then = jest.fn((resolve) => resolve({ data: [], error: null }));
 
             const res = await request(app)
@@ -101,13 +103,7 @@ describe('Credits Routes Integration Tests', () => {
 
     describe('POST /api/credits/redeem', () => {
         it('should redeem a valid code', async () => {
-            // 1. authenticateUser
-            mockSupabase.single.mockResolvedValueOnce({
-                data: { id: 'session-1', users: { id: 'user-123', is_active: true } },
-                error: null
-            });
-
-            // 2. rpc call
+            mockAuth();
             mockSupabase.rpc.mockResolvedValueOnce({
                 data: { success: true, message: 'Redeemed', new_balance: 100 },
                 error: null
@@ -124,13 +120,7 @@ describe('Credits Routes Integration Tests', () => {
         });
 
         it('should fail with structurally invalid code format', async () => {
-            // Because Zod immediately blocks 'INVALID', it won't even hit DB
-            // 1. authenticateUser
-            mockSupabase.single.mockResolvedValueOnce({
-                data: { id: 'session-1', users: { id: 'user-123', is_active: true } },
-                error: null
-            });
-
+            mockAuth();
             const res = await request(app)
                 .post('/api/credits/redeem')
                 .set('Authorization', `Bearer ${validToken}`)
@@ -141,13 +131,7 @@ describe('Credits Routes Integration Tests', () => {
         });
 
         it('should fail with valid format but rejected by DB', async () => {
-            // 1. authenticateUser
-            mockSupabase.single.mockResolvedValueOnce({
-                data: { id: 'session-1', users: { id: 'user-123', is_active: true } },
-                error: null
-            });
-
-            // 2. rpc call
+            mockAuth();
             mockSupabase.rpc.mockResolvedValueOnce({
                 data: { success: false, message: 'Invalid code' },
                 error: null
@@ -160,6 +144,61 @@ describe('Credits Routes Integration Tests', () => {
 
             expect(res.status).toBe(400);
             expect(res.body.error).toBe('Invalid code');
+        });
+    });
+
+    describe('POST /api/credits/consume-video', () => {
+        it('should consume video minutes successfully', async () => {
+            mockAuth();
+            mockSupabase.rpc.mockResolvedValueOnce({
+                data: { success: true, remaining_minutes: 50, remaining_balance: 10 },
+                error: null
+            });
+
+            const res = await request(app)
+                .post('/api/credits/consume-video')
+                .set('Authorization', `Bearer ${validToken}`)
+                .send({ minutes: 5, course_id: 'ebb2cdcf-3b9f-43b9-a9a7-96a8e63b65a5' });
+
+            expect(res.status).toBe(200);
+            expect(res.body.success).toBe(true);
+            expect(res.body.remaining_minutes).toBe(50);
+        });
+
+        it('should return 400 if insufficient balance in DB', async () => {
+            mockAuth();
+            mockSupabase.rpc.mockResolvedValueOnce({
+                data: { success: false, message: 'رصيد غير كافي' },
+                error: null
+            });
+
+            const res = await request(app)
+                .post('/api/credits/consume-video')
+                .set('Authorization', `Bearer ${validToken}`)
+                .send({ minutes: 500, course_id: 'ebb2cdcf-3b9f-43b9-a9a7-96a8e63b65a5' });
+
+            expect(res.status).toBe(400);
+            expect(res.body.error).toBe('رصيد غير كافي');
+            expect(res.body.code).toBe('CREDITS_INSUFFICIENT');
+        });
+    });
+
+    describe('GET /api/credits/transactions', () => {
+        it('should list transactions correctly', async () => {
+            mockAuth();
+            mockSupabase.then = jest.fn((resolve) => resolve({
+                data: [{ id: 1, transaction_type: 'usage' }],
+                count: 1,
+                error: null
+            }));
+
+            const res = await request(app)
+                .get('/api/credits/transactions')
+                .set('Authorization', `Bearer ${validToken}`);
+
+            expect(res.status).toBe(200);
+            expect(res.body.data.length).toBe(1);
+            expect(res.body.pagination.total).toBe(1);
         });
     });
 });

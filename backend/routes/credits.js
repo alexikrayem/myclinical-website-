@@ -34,13 +34,9 @@ router.get('/balance', authenticateUser, asyncHandler(async (req, res) => {
  * POST /api/credits/redeem
  * Redeem a license code (supports video, article, universal, or both types)
  */
-router.post('/redeem', authenticateUser, accountRedeemLimiter, redeemLimiter, validateRedeem, asyncHandler(async (req, res) => {
+router.post('/redeem', authenticateUser, redeemLimiter, accountRedeemLimiter, validateRedeem, asyncHandler(async (req, res) => {
     const { code } = req.body;
     const userId = req.user.id;
-
-    if (!code) {
-        return res.status(400).json({ error: 'الكود مطلوب' });
-    }
 
     const metadata = {
         ip: req.ip || req.headers['x-forwarded-for']?.split(',')[0],
@@ -48,7 +44,7 @@ router.post('/redeem', authenticateUser, accountRedeemLimiter, redeemLimiter, va
     };
 
     const result = await redeemLicenseCode(supabase, { code, userId, metadata });
-    res.status(result.status).json(result.body);
+    res.json(result);
 }));
 
 /**
@@ -65,7 +61,7 @@ router.post('/consume-video', authenticateUser, validate(schemas.creditsConsumeV
         courseId: course_id
     });
 
-    res.status(result.status).json(result.body);
+    res.json(result);
 }));
 
 /**
@@ -77,7 +73,7 @@ router.post('/consume-article', authenticateUser, validate(schemas.creditsConsum
     const userId = req.user.id;
 
     const result = await consumeArticleCredit(supabase, { userId, articleId: article_id });
-    res.status(result.status).json(result.body);
+    res.json(result);
 }));
 
 /**
@@ -88,7 +84,7 @@ router.get('/check-article-access/:articleId', optionalAuth, validate(schemas.cr
     const { articleId } = req.params;
     const userId = req.user?.id || null;
     const result = await checkArticleAccess(supabase, { articleId, userId });
-    res.status(result.status).json(result.body);
+    res.json(result);
 }));
 
 /**
@@ -100,7 +96,7 @@ router.post('/consume-research', authenticateUser, validate(schemas.creditsConsu
     const userId = req.user.id;
 
     const result = await consumeResearchCredit(supabase, { userId, researchId: research_id });
-    res.status(result.status).json(result.body);
+    res.json(result);
 }));
 
 /**
@@ -111,7 +107,7 @@ router.get('/check-research-access/:researchId', optionalAuth, validate(schemas.
     const { researchId } = req.params;
     const userId = req.user?.id || null;
     const result = await checkResearchAccess(supabase, { researchId, userId });
-    res.status(result.status).json(result.body);
+    res.json(result);
 }));
 
 /**

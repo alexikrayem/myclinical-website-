@@ -1,5 +1,6 @@
 import axios from 'axios';
 import path from 'path';
+import { BadRequestError } from '../../utils/errors.js';
 
 const DEFAULT_TTL = parseInt(process.env.HLS_SIGNED_URL_TTL || '600', 10);
 
@@ -40,7 +41,7 @@ async function createSignedUrl(supabase, bucket, objectPath, ttlSeconds) {
     .from(bucket)
     .createSignedUrl(objectPath, ttlSeconds, { download: false });
 
-  if (error) throw error;
+  if (error) throw new AppError('Failed to create HLS signed URL', 500, 'HLS_URL_FAILED');
   return data.signedUrl;
 }
 
@@ -80,7 +81,7 @@ async function rewriteAttributeUri(line, resolveUri, rewritePlaylist) {
 export async function buildSignedManifest({ supabase, playbackSource, playlistPath, sessionId, courseId, baseUrl }) {
   const parsed = parseSupabaseSource(playbackSource);
   if (!parsed) {
-    return { error: 'Unsupported playback source for HLS', status: 400 };
+    throw new BadRequestError('Unsupported playback source for HLS');
   }
 
   const safePlaylist = sanitizePlaylistPath(playlistPath);

@@ -13,21 +13,24 @@ async function getApplicableTypedCredits(supabaseAdmin, userId, courseId) {
   }
 
   const applicable = [];
-  if (!typedData) return applicable;
+  if (!typedData || typedData.length === 0) return applicable;
+
+  const creditTypeIds = typedData.map(tc => tc.credit_type_id);
+  
+  const { data: linkedTypes, error: linkError } = await supabaseAdmin
+    .from('credit_type_courses')
+    .select('credit_type_id')
+    .in('credit_type_id', creditTypeIds)
+    .eq('course_id', courseId);
+
+  if (linkError) {
+    throw new AppError('Failed to fetch credit type courses', 500, 'COURSE_TYPED_CREDITS_FAILED');
+  }
+
+  const linkedSet = new Set((linkedTypes || []).map(l => l.credit_type_id));
 
   for (const tc of typedData) {
-    const { data: linked, error: linkError } = await supabaseAdmin
-      .from('credit_type_courses')
-      .select('id')
-      .eq('credit_type_id', tc.credit_type_id)
-      .eq('course_id', courseId)
-      .single();
-
-    if (linkError && linkError.code !== 'PGRST116') {
-      throw new AppError('Failed to fetch credit type courses', 500, 'COURSE_TYPED_CREDITS_FAILED');
-    }
-
-    if (linked) {
+    if (linkedSet.has(tc.credit_type_id)) {
       applicable.push({
         credit_type_id: tc.credit_type_id,
         name: tc.credit_types?.name,
