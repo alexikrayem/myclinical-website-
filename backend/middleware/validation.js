@@ -90,8 +90,10 @@ export const schemas = {
       phone_number: phoneSchema,
       password: z.string()
         .min(8, 'كلمة المرور يجب أن تكون 8 أحرف على الأقل')
-        .regex(/[a-zA-Z]/, 'كلمة المرور يجب أن تحتوي على حرف واحد على الأقل')
-        .regex(/\d/, 'كلمة المرور يجب أن تحتوي على رقم واحد على الأقل'),
+        .regex(/[A-Z]/, 'كلمة المرور يجب أن تحتوي على حرف كبير واحد على الأقل')
+        .regex(/[a-z]/, 'كلمة المرور يجب أن تحتوي على حرف صغير واحد على الأقل')
+        .regex(/\d/, 'كلمة المرور يجب أن تحتوي على رقم واحد على الأقل')
+        .regex(/[!@#$%^&*()_+\-=\[\]{};':\"\\|,.<>\/?]/, 'كلمة المرور يجب أن تحتوي على رمز خاص واحد على الأقل'),
       display_name: displayNameSchema,
     }),
   }),
@@ -103,16 +105,6 @@ export const schemas = {
     }),
   }),
 
-  // Example for credit usage
-  consumeCredits: z.object({
-    body: z.object({
-      minutes: z.number().int().positive().optional(),
-      course_id: z.string().uuid().optional(),
-      article_id: z.string().uuid().optional(),
-    }).refine(data => data.course_id || data.article_id, {
-      message: "Either course_id or article_id is required"
-    }),
-  }),
 
   // Redeem License Code Schema
   redeem: z.object({
@@ -191,12 +183,16 @@ export const schemas = {
     })
   }),
 
-  creditsCheckAccess: z.object({
+  // Fix #12 — separate schemas per route so each validates only its own param
+  creditsCheckArticleAccess: z.object({
     params: z.object({
-      articleId: z.string().uuid().optional(),
-      researchId: z.string().uuid().optional()
-    }).refine((data) => data.articleId || data.researchId, {
-      message: 'Either articleId or researchId is required'
+      articleId: z.string().uuid('articleId must be a valid UUID')
+    })
+  }),
+
+  creditsCheckResearchAccess: z.object({
+    params: z.object({
+      researchId: z.string().uuid('researchId must be a valid UUID')
     })
   }),
 

@@ -1,5 +1,4 @@
 import express from 'express';
-import dotenv from 'dotenv';
 import multer from "multer";
 import fs from "fs";
 import path from "path";
@@ -10,20 +9,24 @@ import { cacheMiddleware } from '../middleware/cache.js';
 import { validateUploadedFile } from '../middleware/fileValidation.js';
 import { body, query, validationResult } from 'express-validator';
 import { meiliSearch, orderByIdList } from '../services/search/searchService.js';
-import { sanitizeSearchInput } from '../utils/searchUtils.js';
+import { sanitizeSearchInput, buildFtsQuery } from '../utils/searchUtils.js';
 import { ARTICLE_LIST_SELECT, ARTICLE_DETAIL_SELECT } from '../utils/queryFields.js';
 import { optionalAuth } from '../middleware/userAuth.js';
 import { supabaseAdmin, supabasePublic } from '../config/supabase.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { AppError, NotFoundError } from '../utils/errors.js';
 
-dotenv.config();
+import { validateFileSignature } from '../utils/fileValidation.js';
+
 import logger from '../config/logger.js';
 
 const router = express.Router();
 
 // === File upload setup ===
-const upload = multer({ dest: "uploads/" });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }
+});
 
 // === Gemini setup ===
 const model = getGenerativeModel();
@@ -45,10 +48,17 @@ router.post("/generate-article",
 
       const { text, language = 'arabic', articleType = 'article' } = req.body;
 
-      // Secure prompt with delimiters to prevent injection
+      // Sanitize user input to prevent prompt injection:
+      // - Strip triple-quote sequences which are the primary injection vector
+      // - Cap length (already validated by express-validator, but defense in depth)
+      const sanitizedText = text
+        .replace(/"""/g, '') // block triple-quote escape attempts
+        .replace(/'''/g, '')  // block single-quote variants
+        .slice(0, 5000);
+
+      // Use XML-style delimiters which are much harder to escape from than triple-quotes
       const prompt = `
-      You are a professional medical writer.
-      Task: Convert the following input text into a structured ${articleType} in ${language}.
+      You are a professional medical writer. Your task is strictly limited to converting the provided input into a structured ${articleType} in ${language}.
       
       Instructions:
       1. Create a catchy Title.
@@ -57,12 +67,11 @@ router.post("/generate-article",
       4. Generate relevant Tags.
       5. Set Author as "AI".
       
-      Input Text:
-      """
-      ${text.replace(/"/g, "'")}
-      """
+      <user_input>
+      ${sanitizedText}
+      </user_input>
       
-      Output JSON format:
+      Output ONLY valid JSON in this exact format, nothing else:
       {
         "title": "...",
         "excerpt": "...",
@@ -85,6 +94,11 @@ router.post("/generate-article",
         // Clean up markdown code blocks if present
         const jsonStr = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
         responseData = JSON.parse(jsonStr);
+
+        // Output validation: ensure the AI returned expected structure
+        if (typeof responseData !== 'object' || !responseData.title || !responseData.content) {
+          throw new Error('AI response missing required fields');
+        }
       } catch (e) {
         // Fallback if AI doesn't return valid JSON
         responseData = {
@@ -106,20 +120,29 @@ router.post("/generate-article",
 // === Generate article from file (PDF or TXT) ===
 router.post("/generate-article-from-file", aiLimiter, uploadLimiter, upload.single("file"), validateUploadedFile(['pdf', 'txt']), asyncHandler(async (req, res) => {
   try {
-    const { language, articleType } = req.body;
-    const filePath = req.file.path;
+    if (!req.file) {
+      throw new AppError('No file uploaded', 400);
+    }
 
+    // Deep Magic Byte Validation
+    const signature = await validateFileSignature(req.file.buffer, [
+      'application/pdf', 'text/plain'
+    ]);
+
+    // Note: TXT files might not have a signature detected by file-type, but we'll try
+    if (!signature.valid && req.file.mimetype === 'application/pdf') {
+      throw new AppError('Invalid PDF file signature', 400, 'INVALID_FILE_SIGNATURE');
+    }
+
+    const { language, articleType } = req.body;
     let text = "";
 
     if (req.file.mimetype === "application/pdf") {
-      const dataBuffer = fs.readFileSync(filePath);
-      const pdfData = await pdfParse(dataBuffer);
+      const pdfData = await pdfParse(req.file.buffer);
       text = pdfData.text;
     } else {
-      text = fs.readFileSync(filePath, "utf-8");
+      text = req.file.buffer.toString("utf-8");
     }
-
-    fs.unlinkSync(filePath); // clean up after upload
 
     const prompt = `حول النص التالي إلى مقال ${articleType} مكتوب بلغة ${language}. 
     اجعل الناتج يتضمن: 
@@ -217,7 +240,7 @@ router.get('/by-tags', cacheMiddleware(300), asyncHandler(async (req, res) => {
         .limit(parsedLimit);
 
       if (error) {
-        console.error(`Error fetching articles for tag "${tag}":`, error);
+        logger.error(`Error fetching articles for tag "${tag}":`, error);
         results[tag] = [];
       } else {
         results[tag] = data || [];
@@ -298,22 +321,17 @@ router.get('/',
     const { tag, search, limit = 12, page = 1 } = req.query;
     const offset = (page - 1) * limit;
 
-    let query = supabasePublic.from('articles').select(`${ARTICLE_LIST_SELECT}`, { count: 'exact' });
+    // Note: `dbQuery` is used instead of `query` to avoid shadowing the destructured `req.query` above.
+    let dbQuery = supabasePublic.from('articles').select(`${ARTICLE_LIST_SELECT}`, { count: 'exact' });
 
     // Tag filtering
     if (tag) {
-      query = query.contains('tags', [tag]);
+      dbQuery = dbQuery.contains('tags', [tag]);
     }
 
-    // Type filtering (default to 'article' if not specified, or allow fetching all?)
-    // For now, let's allow optional filtering. If passed, filter.
-    // If client page needs specific type, it will pass it.
+    // Type filtering
     if (req.query.type) {
-      query = query.eq('article_type', req.query.type);
-    } else {
-      // Default behavior: show everything or just articles?
-      // Existing behavior showed everything. Let's keep it but arguably should filter by 'article' by default?
-      // No, let's keep it flexible.
+      dbQuery = dbQuery.eq('article_type', req.query.type);
     }
 
     // Full-text search using Postgres textSearch
@@ -365,16 +383,16 @@ router.get('/',
         });
       }
 
-      // Fallback: Use Supabase ilike for partial matches
-      const sanitizedSearch = sanitizeSearchInput(search);
-      if (sanitizedSearch) {
-        query = query.or(
-          `title.ilike.%${sanitizedSearch}%,excerpt.ilike.%${sanitizedSearch}%,author.ilike.%${sanitizedSearch}%`
+      // Fallback: Use Supabase FTS for partial matches
+      const ftsString = buildFtsQuery(search);
+      if (ftsString) {
+        dbQuery = dbQuery.or(
+          `title.fts."${ftsString}",excerpt.fts."${ftsString}",author.fts."${ftsString}"`
         );
       }
     }
 
-    const { data, error, count } = await query
+    const { data, error, count } = await dbQuery
       .order('publication_date', { ascending: false })
       .range(offset, offset + parseInt(limit) - 1);
 

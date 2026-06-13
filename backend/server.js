@@ -1,7 +1,6 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
@@ -9,6 +8,7 @@ import cookieParser from 'cookie-parser';
 import compression from 'compression';
 import logger from './config/logger.js';
 import { requestLogger } from './middleware/requestLogger.js';
+import { requestId } from './middleware/requestId.js';
 import promBundle from 'express-prom-bundle';
 
 // Routes
@@ -34,7 +34,7 @@ import { sanitizeData, preventXSS, preventHPP, validateInput } from './middlewar
 import { preventSensitiveFileAccess } from './middleware/fileValidation.js';
 import { validateEnvironment, validateProductionSecurity, requireValidEnvironment } from './middleware/envValidator.js';
 import { getCorsOrigins } from './config/security.js';
-import { initSentry, sentryRequestHandler, sentryTracingHandler, sentryErrorHandler } from './config/sentry.js';
+import { initSentry, sentryRequestHandler, sentryTracingHandler, sentryErrorHandler, setupSentryErrorHandler } from './config/sentry.js';
 
 // Load and validate environment variables
 dotenv.config();
@@ -46,6 +46,9 @@ const __dirname = dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 5001;
+
+// Trace ID for every request
+app.use(requestId);
 
 // Initialize Sentry (must be before other middleware)
 initSentry(app);
@@ -102,62 +105,62 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
 // Input sanitization and validation
-app.use(sanitizeData); // Prevent NoSQL injection
-app.use(preventXSS); // Prevent XSS attacks
-app.use(preventHPP); // Prevent HTTP Parameter Pollution
-app.use(validateInput); // Custom input validation
+app.use(sanitizeData);
+app.use(preventXSS);
+app.use(preventHPP);
+app.use(validateInput);
 
 // Environment validation middleware
 app.use(requireValidEnvironment);
 
-// Health check endpoint (no rate limiting)
-app.get('/health', (req, res) => {
-  res.json({
+import { supabasePublic } from './config/supabase.js';
+import { isRedisAvailable } from './config/redis.js';
+import { isMeiliEnabled, getMeiliClient } from './services/search/meiliClient.js';
+
+// Health check endpoint (verifies downstream dependencies)
+app.get('/health', async (req, res) => {
+  const health = {
     status: 'OK',
+    security: 'enabled',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
-    security: 'enabled'
-  });
-});
+    dependencies: {
+      supabase: 'UNKNOWN',
+      redis: isRedisAvailable() ? 'CONNECTED' : 'DISCONNECTED',
+      meilisearch: isMeiliEnabled() ? 'ENABLED' : 'DISABLED'
+    }
+  };
 
-// Security status endpoint (for monitoring)
-app.get('/security-status', (req, res) => {
-  res.json({
-    headers: 'enabled',
-    rateLimiting: 'enabled',
-    inputSanitization: 'enabled',
-    cors: 'configured',
-    fileValidation: 'enabled',
-    timestamp: new Date().toISOString()
-  });
-});
-
-// File upload configuration
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, path.join(__dirname, '../uploads'));
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+  // 1. Check Supabase Connectivity
+  try {
+    const { error } = await supabasePublic.from('articles').select('id', { count: 'exact', head: true }).limit(1);
+    health.dependencies.supabase = error ? 'ERROR' : 'CONNECTED';
+    if (error) health.status = 'DEGRADED';
+  } catch (e) {
+    health.dependencies.supabase = 'ERROR';
+    health.status = 'DEGRADED';
   }
-});
 
-const upload = multer({
-  storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
-  fileFilter: function (req, file, cb) {
-    const filetypes = /pdf|doc|docx|jpg|jpeg|png/;
-    const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = filetypes.test(file.mimetype);
-
-    if (mimetype && extname) {
-      return cb(null, true);
-    } else {
-      cb(new Error('Only PDF, DOC, DOCX, JPG, JPEG, and PNG files are allowed!'));
+  // 2. Check Meilisearch (if enabled)
+  if (isMeiliEnabled()) {
+    try {
+      const client = getMeiliClient();
+      const isHealthy = await client.isHealthy();
+      health.dependencies.meilisearch = isHealthy ? 'CONNECTED' : 'ERROR';
+      if (!isHealthy) health.status = 'DEGRADED';
+    } catch (e) {
+      health.dependencies.meilisearch = 'ERROR';
+      health.status = 'DEGRADED';
     }
   }
+
+  // Return 200 if OK/DEGRADED, but potentially 503 if CRITICAL dependencies are down
+  // For now, return 200 to allow monitoring tools to see the JSON
+  res.status(health.status === 'OK' ? 200 : 207).json(health);
 });
+
+// (REMOVED security-status endpoint)
+
 
 // Serve uploads directory with security checks
 app.use('/uploads', preventSensitiveFileAccess, express.static(path.join(__dirname, '../uploads'), {
@@ -202,8 +205,8 @@ app.use('/api/*', (req, res) => {
   res.status(404).json({ error: 'API endpoint not found' });
 });
 
-// Sentry error handler (must be before other error handlers)
-app.use(sentryErrorHandler);
+// Sentry error handler — must be BEFORE the app error handler (v10: setupExpressErrorHandler)
+setupSentryErrorHandler(app);
 
 // Error handling middleware
 app.use(errorHandler);

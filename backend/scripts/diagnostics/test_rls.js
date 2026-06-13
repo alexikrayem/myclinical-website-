@@ -20,8 +20,8 @@ async function testServiceRole() {
 
         // Now test as an authenticated user
         const { data: authData } = await supabase.auth.signInWithPassword({
-            email: 'admin@admin.com',
-            password: 'theeasyhard123'
+            email: process.env.ADMIN_EMAIL || 'admin@admin.com',
+            password: process.env.ADMIN_PASSWORD || 'change-me'
         });
 
         if (authData?.session) {

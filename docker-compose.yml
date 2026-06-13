@@ -30,7 +30,7 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning
     restart: unless-stopped
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin # Default password, should be changed
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD must be set in environment}
       - GF_USERS_ALLOW_SIGN_UP=false
 
 volumes:

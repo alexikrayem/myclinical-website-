@@ -4,19 +4,7 @@ import ArticleCard from './ArticleCard';
 import { useArticles } from '../../hooks/useArticles';
 import { Search, Filter, X, Loader, FileText } from 'lucide-react';
 
-export interface Article {
-  id: string;
-  title: string;
-  excerpt: string;
-  cover_image: string;
-  publication_date: string;
-  author: string;
-  tags: string[];
-  is_featured?: boolean;
-  author_image?: string;
-  article_type?: "article" | "clinical_case";
-  score?: number;
-}
+import { Article } from '../../types';
 
 interface ArticleListProps {
   tag?: string;

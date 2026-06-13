@@ -18,6 +18,7 @@ interface ResearchData {
   journal?: string;
   publication_date?: string;
   authors?: string[];
+  is_featured?: boolean;
 }
 
 interface CreatedAuthor {
@@ -42,6 +43,7 @@ const ResearchForm: React.FC<ResearchFormProps> = ({ research, isEditing = false
     journal: '',
     publication_date: '',
     authors: [] as string[],
+    is_featured: false,
   });
   const [researchFile, setResearchFile] = useState<File | null>(null);
   const [authorInput, setAuthorInput] = useState('');
@@ -73,6 +75,7 @@ const ResearchForm: React.FC<ResearchFormProps> = ({ research, isEditing = false
         journal: research.journal || '',
         publication_date: research.publication_date ? research.publication_date.split('T')[0] : '',
         authors: research.authors || [],
+        is_featured: research.is_featured || false,
       });
     }
   }, [research, isEditing]);
@@ -116,7 +119,7 @@ const ResearchForm: React.FC<ResearchFormProps> = ({ research, isEditing = false
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-    
+
     // Clear error when user starts typing
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
@@ -188,7 +191,7 @@ const ResearchForm: React.FC<ResearchFormProps> = ({ research, isEditing = false
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!validateForm()) {
       toast.error('يرجى تصحيح الأخطاء في النموذج');
       return;
@@ -196,13 +199,14 @@ const ResearchForm: React.FC<ResearchFormProps> = ({ research, isEditing = false
 
     try {
       setLoading(true);
-      
+
       const submitData = new FormData();
       submitData.append('title', formData.title);
       submitData.append('abstract', formData.abstract);
       submitData.append('journal', formData.journal);
       submitData.append('publication_date', formData.publication_date);
       submitData.append('authors', JSON.stringify(formData.authors));
+      submitData.append('is_featured', formData.is_featured.toString());
 
       if (researchFile) {
         submitData.append('research_file', researchFile);
@@ -250,7 +254,7 @@ const ResearchForm: React.FC<ResearchFormProps> = ({ research, isEditing = false
               <div>
                 <span className="badge badge-primary mb-4">بحث علمي محكم</span>
                 <h1 className="text-3xl font-bold text-gray-900 mb-4">{formData.title}</h1>
-                
+
                 <div className="flex items-center text-gray-600 mb-4">
                   <BookOpen size={16} className="ml-2" />
                   <span className="font-semibold">{formData.journal}</span>
@@ -278,9 +282,9 @@ const ResearchForm: React.FC<ResearchFormProps> = ({ research, isEditing = false
 
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-3">ملخص البحث</h3>
-                <div 
+                <div
                   className="prose prose-lg max-w-none bg-gray-50 p-6 rounded-xl"
-                  dangerouslySetInnerHTML={{ __html: formData.abstract }} 
+                  dangerouslySetInnerHTML={{ __html: formData.abstract }}
                 />
               </div>
 
@@ -324,7 +328,7 @@ const ResearchForm: React.FC<ResearchFormProps> = ({ research, isEditing = false
             <FileText size={20} className="inline ml-2" />
             المعلومات الأساسية
           </div>
-          
+
           <div className="space-y-6">
             <div>
               <label className="form-label">عنوان البحث *</label>
@@ -365,6 +369,19 @@ const ResearchForm: React.FC<ResearchFormProps> = ({ research, isEditing = false
                 {errors.publication_date && <p className="form-error">{errors.publication_date}</p>}
               </div>
             </div>
+
+            <div className="flex items-center mt-4">
+              <input
+                type="checkbox"
+                id="is_featured"
+                className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 transition-colors cursor-pointer"
+                checked={formData.is_featured}
+                onChange={(e) => setFormData(prev => ({ ...prev, is_featured: e.target.checked }))}
+              />
+              <label htmlFor="is_featured" className="mr-3 font-medium text-gray-700 cursor-pointer">
+                تمييز هذا البحث (إظهاره في قسم الأبحاث المميزة بالصفحة الرئيسية)
+              </label>
+            </div>
           </div>
         </div>
 
@@ -374,7 +391,7 @@ const ResearchForm: React.FC<ResearchFormProps> = ({ research, isEditing = false
             <Users size={20} className="inline ml-2" />
             المؤلفون
           </div>
-          
+
           <div className="space-y-4">
             <div className="flex flex-col lg:flex-row gap-3">
               <select
@@ -449,7 +466,7 @@ const ResearchForm: React.FC<ResearchFormProps> = ({ research, isEditing = false
             <FileText size={20} className="inline ml-2" />
             ملخص البحث
           </div>
-          
+
           <div>
             <label className="form-label">الملخص *</label>
             <div className={`rich-editor ${errors.abstract ? 'border-red-500' : ''}`}>
@@ -470,7 +487,7 @@ const ResearchForm: React.FC<ResearchFormProps> = ({ research, isEditing = false
             <Upload size={20} className="inline ml-2" />
             ملف البحث
           </div>
-          
+
           <div className="space-y-4">
             <div className="file-upload">
               <input

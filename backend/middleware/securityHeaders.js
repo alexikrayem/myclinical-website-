@@ -49,11 +49,24 @@ export const swaggerSecurityHeaders = helmet({
 
 // Additional custom security headers
 export const customSecurityHeaders = (req, res, next) => {
-  // Prevent browser from caching sensitive data
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
-  res.setHeader('Surrogate-Control', 'no-store');
+  // Define sensitive paths that should never be cached
+  const isSensitive = req.path.startsWith('/api/auth') ||
+    req.path.startsWith('/api/admin') ||
+    req.path.startsWith('/api/credits') ||
+    req.path.startsWith('/api/profile') ||
+    req.method !== 'GET';
+
+  if (isSensitive) {
+    // Prevent browser from caching sensitive data
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Surrogate-Control', 'no-store');
+  } else {
+    // Allow moderate caching for public GET requests (articles, authors, etc.)
+    // 5 minutes browser cache, 1 hour CDN cache
+    res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=3600');
+  }
 
   // Additional security headers
   res.setHeader('X-Content-Type-Options', 'nosniff');

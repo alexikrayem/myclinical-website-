@@ -18,7 +18,7 @@ async function diagnose() {
     try {
         // Clean up previous test
         await supabase.from('users').delete().eq('phone_number', testPhone);
-        
+
         // Insert into PUBLIC.users
         const { error: insertError } = await supabase.from('users').insert({
             id: testId,
@@ -26,7 +26,7 @@ async function diagnose() {
             password_hash: 'hash',
             display_name: 'Diagnosis User'
         });
-        
+
         if (insertError) throw insertError;
         console.log('✅ Inserted test user into public.users');
 
@@ -60,7 +60,7 @@ async function diagnose() {
         // Create user in AUTH.users
         const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
             email: 'diagnosis@test.com',
-            password: 'password123',
+            password: process.env.ADMIN_PASSWORD || 'password123',
             email_confirm: true
         });
 

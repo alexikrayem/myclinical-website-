@@ -1,14 +1,13 @@
 import jwt from 'jsonwebtoken';
-import dotenv from 'dotenv';
+import crypto from 'crypto';
 import { supabaseAdmin, supabasePublic } from '../config/supabase.js';
-
-dotenv.config();
-
 import { getRedisClient } from '../config/redis.js';
+import logger from '../config/logger.js';
 
 // Helper to get redis key
 const getLoginKey = (identifier) => `login_attempts:${identifier.toLowerCase()}`;
 const LOCK_DURATION = 15 * 60; // 15 minutes in seconds
+
 
 export const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
@@ -24,13 +23,29 @@ export const authenticateToken = async (req, res, next) => {
   }
 
   try {
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const cacheKey = `auth_token_v1:${tokenHash}`;
+    const client = await getRedisClient();
+
+    // Check cache first
+    if (client) {
+      const cached = await client.get(cacheKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        req.user = parsed.user;
+        req.admin = parsed.admin;
+        req.authTime = Date.now();
+        return next();
+      }
+    }
+
     // Verify the token with Supabase
     const { data, error } = await supabasePublic.auth.getUser(token);
 
     if (error) {
       // Don't log full error in production
       if (process.env.NODE_ENV === 'development') {
-        console.error('Token verification error:', error);
+        logger.error('Token verification error:', error);
       }
       return res.status(403).json({
         error: 'Invalid or expired token',
@@ -54,7 +69,7 @@ export const authenticateToken = async (req, res, next) => {
 
     if (adminError || !adminData) {
       if (process.env.NODE_ENV === 'development') {
-        console.error('Admin verification error:', adminError);
+        logger.error('Admin verification error:', adminError);
       }
       return res.status(403).json({
         error: 'Access denied - insufficient permissions',
@@ -66,13 +81,25 @@ export const authenticateToken = async (req, res, next) => {
     req.user = data.user;
     req.admin = adminData;
 
+    // Optional: Cache auth result in Redis with a 60-second TTL.
+    // A short TTL limits the window where a revoked/demoted admin can still access protected routes.
+    // TODO: For instant revocation, delete `auth_token_v1:<tokenHash>` key when admin role changes in DB.
+    if (client) {
+      const cachePayload = JSON.stringify({ user: req.user, admin: req.admin });
+      try {
+        await client.set(cacheKey, cachePayload, { EX: 60 });
+      } catch (err) {
+        logger.error('Redis cache error:', err);
+      }
+    }
+
     // Add timestamp for session tracking
     req.authTime = Date.now();
 
     next();
   } catch (error) {
     if (process.env.NODE_ENV === 'development') {
-      console.error('Authentication error:', error);
+      logger.error('Authentication error:', error);
     }
     res.status(403).json({
       error: 'Authentication failed',
@@ -89,9 +116,9 @@ setInterval(() => {
   const now = Date.now();
   for (const [key, value] of memoryAttempts.entries()) {
     if (value.lockedUntil && now > value.lockedUntil) {
-        memoryAttempts.delete(key);
+      memoryAttempts.delete(key);
     } else if (!value.lockedUntil && value.timestamp && (now - value.timestamp > LOCK_DURATION * 1000)) {
-        memoryAttempts.delete(key);
+      memoryAttempts.delete(key);
     }
   }
 }, 60 * 60 * 1000).unref();
@@ -108,9 +135,9 @@ export const trackLoginAttempt = async (identifier, success) => {
       memoryAttempts.delete(key);
       return { allowed: true };
     }
-    
+
     let attempts = memoryAttempts.get(key) || { count: 0, lockedUntil: null };
-    
+
     if (attempts.lockedUntil && now < attempts.lockedUntil) {
       const remainingTime = Math.ceil((attempts.lockedUntil - now) / 1000 / 60);
       return {
@@ -119,10 +146,10 @@ export const trackLoginAttempt = async (identifier, success) => {
         lockedUntil: attempts.lockedUntil
       };
     }
-    
+
     attempts.count++;
     attempts.timestamp = now;
-    
+
     if (attempts.count >= 5) {
       attempts.lockedUntil = now + (LOCK_DURATION * 1000);
       memoryAttempts.set(key, attempts);
@@ -132,7 +159,7 @@ export const trackLoginAttempt = async (identifier, success) => {
         lockedUntil: attempts.lockedUntil
       };
     }
-    
+
     memoryAttempts.set(key, attempts);
     return {
       allowed: true,

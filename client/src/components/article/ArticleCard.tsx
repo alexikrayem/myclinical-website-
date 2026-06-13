@@ -4,31 +4,21 @@ import { Clock, Tag, User, ArrowLeft, Sparkles, Stethoscope } from 'lucide-react
 import { formatDistance } from 'date-fns';
 import { ar } from 'date-fns/locale';
 
+import { Article } from '../../types';
+
 interface ArticleCardProps {
-  article: {
-    id: string;
-    title: string;
-    excerpt: string;
-    cover_image: string;
-    publication_date: string;
-    author: string;
-    tags: string[];
-    is_featured?: boolean;
-    author_image?: string;
-    article_type?: 'article' | 'clinical_case';
-    score?: number;
-  };
+  article: Article & { score?: number };
   featured?: boolean;
 }
 
 const ArticleCard: React.FC<ArticleCardProps> = ({ article, featured = false }) => {
   const navigate = useNavigate();
 
-  const formattedDate = formatDistance(
+  const formattedDate = article.publication_date ? formatDistance(
     new Date(article.publication_date),
     new Date(),
     { addSuffix: true, locale: ar }
-  );
+  ) : '';
 
   const handleCardClick = (e: React.MouseEvent) => {
     // Prevent navigation if clicking on a link or button
@@ -159,7 +149,7 @@ const ArticleCard: React.FC<ArticleCardProps> = ({ article, featured = false }) 
 
       <div className="p-6">
         <div className="flex flex-wrap gap-2 mb-4">
-          {article.tags.slice(0, 2).map((tag, index) => (
+          {(article.tags || []).slice(0, 2).map((tag, index) => (
             <Link
               key={index}
               to={`/articles?tag=${encodeURIComponent(tag)}`}
@@ -170,9 +160,9 @@ const ArticleCard: React.FC<ArticleCardProps> = ({ article, featured = false }) 
               {tag}
             </Link>
           ))}
-          {article.tags.length > 2 && (
+          {(article.tags || []).length > 2 && (
             <span className="text-xs text-gray-400 px-2 py-1">
-              +{article.tags.length - 2} أخرى
+              +{(article.tags || []).length - 2} أخرى
             </span>
           )}
         </div>

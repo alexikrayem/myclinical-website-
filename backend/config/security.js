@@ -81,15 +81,27 @@ export const SECURITY_CONFIG = {
 // Get CORS origins based on environment
 export const getCorsOrigins = () => {
   const env = process.env.NODE_ENV || 'development';
-  
+  let origins = [];
+
   // Allow custom origins from environment variable
   if (process.env.ALLOWED_ORIGINS) {
-    return process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim());
+    origins = process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim()).filter(Boolean);
+  } else {
+    origins = env === 'production'
+      ? SECURITY_CONFIG.cors.production
+      : SECURITY_CONFIG.cors.development;
   }
-  
-  return env === 'production' 
-    ? SECURITY_CONFIG.cors.production 
-    : SECURITY_CONFIG.cors.development;
+
+  // Strict Validation: Ensure all origins are valid URLs to prevent typos opening the system
+  return origins.filter(origin => {
+    try {
+      new URL(origin);
+      return true;
+    } catch (e) {
+      console.error(`⚠️ Invalid CORS origin ignored: "${origin}"`);
+      return false;
+    }
+  });
 };
 
 // Validate password strength

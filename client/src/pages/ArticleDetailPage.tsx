@@ -14,6 +14,12 @@ import { useAuth } from '../context/AuthContext';
 import Skeleton from '../components/ui/Skeleton';
 import DOMPurify from 'dompurify';
 
+// Match backend sanitize-html config: strip `style` to prevent CSS-based XSS
+const DOMPURIFY_CONFIG = {
+  FORBID_ATTR: ['style', 'onerror', 'onload'],
+  ALLOWED_URI_REGEXP: /^(?:(?:https?|ftp|mailto|tel):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
+} as Parameters<typeof DOMPurify.sanitize>[1];
+
 interface ArticleDetail {
   id: string;
   slug?: string;
@@ -38,7 +44,7 @@ interface RelatedArticle {
   publication_date: string;
   author: string;
   tags: string[];
-  article_type?: 'article' | 'clinical_case';
+  article_type: string;
   score?: number;
 }
 
@@ -235,221 +241,254 @@ const ArticleDetailPage: React.FC = () => {
         <link rel="canonical" href={currentUrl} />
       </Helmet>
 
-      <div className="container-modern">
-        <div className="max-w-4xl mx-auto">
-          {/* Breadcrumbs */}
-          <nav className="flex items-center space-x-2 space-x-reverse text-sm text-gray-500 mb-8">
-            <Link to="/" className="hover:text-blue-600 transition-colors">الرئيسية</Link>
-            <ChevronLeft size={16} />
-            <Link to="/articles" className="hover:text-blue-600 transition-colors">المقالات</Link>
-            <ChevronLeft size={16} />
-            <span className="text-gray-800 truncate">{article.title}</span>
-          </nav>
+      <div className="container-modern max-w-7xl">
+        {/* Breadcrumbs */}
+        <nav className="flex items-center space-x-2 space-x-reverse text-sm text-gray-500 mb-8 lg:px-4">
+          <Link to="/" className="hover:text-blue-600 transition-colors">الرئيسية</Link>
+          <ChevronLeft size={16} />
+          <Link to="/articles" className="hover:text-blue-600 transition-colors">المقالات</Link>
+          <ChevronLeft size={16} />
+          <span className="text-gray-800 truncate max-w-[200px] sm:max-w-md">{article.title}</span>
+        </nav>
 
-          {/* Article Header */}
-          <div className="mb-8">
-            {article.is_featured && (
-              <div className="inline-flex items-center status-featured mb-4">
-                <Sparkles size={14} className="ml-1" />
-                مقال مميز
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
+          {/* Right Sidebar: Author (lg:col-span-3) */}
+          <div className="hidden lg:block lg:col-span-3 sticky top-24">
+            <AuthorCard authorName={article.author} />
+          </div>
+
+          {/* Main Content (lg:col-span-6) */}
+          <div className="lg:col-span-6">
+            {/* Article Header */}
+            <div className="mb-8">
+              {article.is_featured && (
+                <div className="inline-flex items-center status-featured mb-4">
+                  <Sparkles size={14} className="ml-1" />
+                  مقال مميز
+                </div>
+              )}
+
+              <h1
+                className="heading-modern text-4xl lg:text-5xl text-gray-900 mb-6 leading-tight"
+                data-testid="article-detail-title"
+              >
+                {article.title}
+              </h1>
+
+              <div className="flex flex-wrap items-center gap-6 text-gray-600 mb-6 lg:hidden">
+                <div className="flex items-center">
+                  <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center ml-3">
+                    <User size={18} className="text-white" />
+                  </div>
+                  <div>
+                    <div className="font-semibold text-gray-800">{article.author}</div>
+                    <div className="text-sm text-gray-500">كاتب ومختص</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-6 text-gray-600 mb-6">
+                <div className="flex items-center">
+                  <Calendar size={18} className="ml-2 text-blue-500" />
+                  <span className="font-medium">{formattedDate}</span>
+                </div>
+
+                <div className="flex items-center">
+                  <Clock size={18} className="ml-2 text-green-500" />
+                  <span>{readTime} دقائق للقراءة</span>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2 mb-8">
+                {article.tags.map((tag: string, index: number) => (
+                  <Link
+                    key={index}
+                    to={`/articles?tag=${encodeURIComponent(tag)}`}
+                    className="tag-modern inline-flex items-center"
+                  >
+                    <Tag size={12} className="ml-1" />
+                    {tag}
+                  </Link>
+                ))}
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex items-center gap-4 mb-8">
+                <ShareButtons
+                  url={currentUrl}
+                  title={article.title}
+                  description={article.excerpt}
+                />
+                <button className="btn-secondary inline-flex items-center">
+                  <Bookmark size={18} className="ml-2" />
+                  حفظ للقراءة لاحقاً
+                </button>
+              </div>
+            </div>
+
+            {/* Article Cover Image */}
+            <div className="mb-12">
+              <img
+                src={article.cover_image}
+                alt={article.title}
+                loading="lazy"
+                className="w-full h-auto rounded-3xl shadow-2xl"
+              />
+            </div>
+
+            {/* Mobile Author Card */}
+            <div className="lg:hidden mb-12">
+              <AuthorCard authorName={article.author} />
+            </div>
+
+            {/* Article Content */}
+            <div className="form-modern mb-12 relative">
+              <div className="prose prose-lg max-w-none relative">
+                <div className="text-xl font-semibold text-gray-800 mb-8 p-6 bg-blue-50 rounded-2xl border-r-4 border-blue-500">
+                  {article.excerpt}
+                </div>
+
+                {!hasAccess ? (
+                  <div className="relative mt-12 mb-16">
+                    {/* Truncated Content with Gradient Fade */}
+                    <div className="relative overflow-hidden max-h-[400px] select-none pointer-events-none">
+                      <div className="text-gray-700 leading-relaxed text-lg opacity-40">
+                        <p className="mb-6">هذا المحتوى محمي ويتطلب تسجيل الدخول للوصول إليه. بمجرد تسجيل الدخول، ستتمكن من قراءة المقال بالكامل والوصول إلى كافة الميزات الحصرية للمنصة.</p>
+                        <p className="mb-6">تعتبر المنصة مرجعاً طبياً متخصصاً يهدف لتطوير مهارات ومعرفة أطباء الأسنان في الوطن العربي من خلال محتوى علمي رصين ومحدث.</p>
+                        <p className="mb-6">يتضمن هذا المقال المتميز تحليلات عميقة ودراسات سريرية موثقة تساعدك في ممارستك اليومية بمهارة وثقة أكبر.</p>
+                        <p className="mb-6">هذا المحتوى محمي ويتطلب تسجيل الدخول للوصول إليه. بمجرد تسجيل الدخول، ستتمكن من قراءة المقال بالكامل والوصول إلى كافة الميزات الحصرية للمنصة.</p>
+                      </div>
+                      {/* Professional Gradient Overaly */}
+                      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/40 to-white z-10" />
+                    </div>
+
+                    {/* Enhanced Lock Interaction Card */}
+                    <div className="relative z-20 -mt-24">
+                      <div
+                        className="bg-white/80 backdrop-blur-xl rounded-[2.5rem] p-8 md:p-12 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.14)] border border-white/50 text-center max-w-xl mx-auto transform transition-all hover:translate-y-[-4px]"
+                        data-testid="article-lock-card"
+                      >
+                        <div className="w-20 h-20 md:w-24 md:h-24 bg-gradient-to-tr from-blue-600 to-blue-400 rounded-[2rem] flex items-center justify-center mx-auto mb-8 shadow-2xl shadow-blue-200 rotate-3 animate-float">
+                          <Lock size={32} className="text-white -rotate-3 md:w-10 md:h-10" />
+                        </div>
+
+                        {!user ? (
+                          <>
+                            <h3 className="heading-modern text-2xl md:text-3xl text-gray-900 mb-4">سجل دخولك للمتابعة</h3>
+                            <p className="text-gray-600 mb-10 text-base md:text-lg leading-relaxed">
+                              انضم إلى <span className="text-blue-600 font-bold">+10,000</span> طبيب أسنان يستفيدون من المحتوى العلمي الحصري يومياً.
+                            </p>
+                            <Link
+                              to="/login"
+                              className="w-full btn-primary flex items-center justify-center py-4 bg-blue-600 hover:bg-blue-700 shadow-2xl shadow-blue-200 transition-all active:scale-95"
+                            >
+                              <span className="font-bold text-base md:text-lg">تسجيل الدخول / إنشاء حساب</span>
+                            </Link>
+                            <div className="mt-8 flex items-center justify-center gap-2 text-sm text-gray-400">
+                              <Sparkles size={16} className="text-blue-400" />
+                              <span>الوصول للمقالات العلمية أسهل مما تتخيل</span>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <h3 className="heading-modern text-2xl md:text-3xl text-gray-900 mb-4">فتح محتوى المقال</h3>
+                            <p className="text-gray-600 mb-10 text-base md:text-lg leading-relaxed">
+                              يتطلب هذا المقال المتميز <span className="text-blue-600 font-bold">{requiresCredits} رصيد</span> لفتحه بشكل دائم والوصول إلى كامل المعلومة.
+                            </p>
+                            <button
+                              onClick={handleUnlock}
+                              disabled={isUnlocking}
+                              className="w-full btn-primary flex items-center justify-center py-4 bg-blue-600 hover:bg-blue-700 shadow-2xl shadow-blue-200 transition-all active:scale-95"
+                              data-testid="article-unlock-button"
+                            >
+                              {isUnlocking ? (
+                                <div className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full animate-spin"></div>
+                              ) : (
+                                <>
+                                  <Coins size={22} className="ml-3 group-hover:rotate-12 transition-transform" />
+                                  <span className="font-bold text-base md:text-lg">فتح المقال الآن</span>
+                                </>
+                              )}
+                            </button>
+                            <p className="mt-6 text-sm text-gray-400">سيتم خصم الرصيد مرة واحدة فقط</p>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    className="text-gray-700 leading-relaxed text-lg space-y-6 article-body-content"
+                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(article.content, DOMPURIFY_CONFIG) }}
+                    data-testid="article-full-content"
+                  />
+                )}
+              </div>
+            </div>
+
+            {/* Mobile Related Articles */}
+            {relatedArticles.length > 0 && (
+              <div className="lg:hidden mb-12 mt-16 pt-16 border-t border-gray-100">
+                <div className="flex items-end justify-between mb-8">
+                  <div>
+                    <h2 className="heading-modern text-2xl text-gray-900 mb-2">مقالات ذات صلة</h2>
+                    <p className="text-gray-500 text-sm">اخترنا لك مواضيع مشابهة قد تهمك</p>
+                  </div>
+                  <Link to="/articles" className="text-blue-600 font-bold flex items-center gap-1 hover:gap-2 transition-all">
+                    عرض الكل
+                    <ChevronLeft size={16} />
+                  </Link>
+                </div>
+                <div className="flex flex-col gap-6">
+                  {relatedArticles.map((relatedArticle) => (
+                    <ArticleCard key={relatedArticle.id} article={relatedArticle} />
+                  ))}
+                </div>
               </div>
             )}
 
-            <h1
-              className="heading-modern text-4xl lg:text-5xl text-gray-900 mb-6 leading-tight"
-              data-testid="article-detail-title"
-            >
-              {article.title}
-            </h1>
+            {/* Navigation */}
+            <div className="flex justify-between items-center pt-8 border-t border-gray-200">
+              <Link
+                to="/articles"
+                className="btn-secondary inline-flex items-center text-sm md:text-base"
+              >
+                <ChevronRight size={16} className="ml-1 md:ml-2" />
+                العودة
+              </Link>
 
-            <div className="flex flex-wrap items-center gap-6 text-gray-600 mb-6">
-              <div className="flex items-center">
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center ml-3">
-                  <User size={18} className="text-white" />
-                </div>
-                <div>
-                  <div className="font-semibold text-gray-800">{article.author}</div>
-                  <div className="text-sm text-gray-500">كاتب ومختص</div>
-                </div>
-              </div>
-
-              <div className="flex items-center">
-                <Calendar size={18} className="ml-2 text-blue-500" />
-                <span className="font-medium">{formattedDate}</span>
-              </div>
-
-              <div className="flex items-center">
-                <Clock size={18} className="ml-2 text-green-500" />
-                <span>{readTime} دقائق للقراءة</span>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2 mb-8">
-              {article.tags.map((tag: string, index: number) => (
+              {relatedArticles.length > 0 && (
                 <Link
-                  key={index}
-                  to={`/articles?tag=${encodeURIComponent(tag)}`}
-                  className="tag-modern inline-flex items-center"
+                  to={`/articles/${relatedArticles[0].id}`}
+                  className="btn-primary inline-flex items-center text-sm md:text-base"
                 >
-                  <Tag size={12} className="ml-1" />
-                  {tag}
+                  المقال التالي
+                  <ChevronLeft size={16} className="mr-1 md:mr-2" />
                 </Link>
-              ))}
-            </div>
-
-            {/* Action buttons */}
-            <div className="flex items-center gap-4 mb-8">
-              <ShareButtons
-                url={currentUrl}
-                title={article.title}
-                description={article.excerpt}
-              />
-              <button className="btn-secondary inline-flex items-center">
-                <Bookmark size={18} className="ml-2" />
-                حفظ للقراءة لاحقاً
-              </button>
-            </div>
-          </div>
-
-          {/* Article Cover Image */}
-          <div className="mb-12">
-            <img
-              src={article.cover_image}
-              alt={article.title}
-              loading="lazy"
-              className="w-full h-auto rounded-3xl shadow-2xl"
-            />
-          </div>
-
-          {/* Author Card */}
-          <AuthorCard authorName={article.author} className="mb-12" />
-
-          {/* Article Content */}
-          <div className="form-modern mb-12 relative">
-            <div className="prose prose-lg max-w-none relative">
-              <div className="text-xl font-semibold text-gray-800 mb-8 p-6 bg-blue-50 rounded-2xl border-r-4 border-blue-500">
-                {article.excerpt}
-              </div>
-
-              {!hasAccess ? (
-                <div className="relative mt-12 mb-16">
-                  {/* Truncated Content with Gradient Fade */}
-                  <div className="relative overflow-hidden max-h-[400px] select-none pointer-events-none">
-                    <div className="text-gray-700 leading-relaxed text-lg opacity-40">
-                      <p className="mb-6">هذا المحتوى محمي ويتطلب تسجيل الدخول للوصول إليه. بمجرد تسجيل الدخول، ستتمكن من قراءة المقال بالكامل والوصول إلى كافة الميزات الحصرية للمنصة.</p>
-                      <p className="mb-6">تعتبر المنصة مرجعاً طبياً متخصصاً يهدف لتطوير مهارات ومعرفة أطباء الأسنان في الوطن العربي من خلال محتوى علمي رصين ومحدث.</p>
-                      <p className="mb-6">يتضمن هذا المقال المتميز تحليلات عميقة ودراسات سريرية موثقة تساعدك في ممارستك اليومية بمهارة وثقة أكبر.</p>
-                      <p className="mb-6">هذا المحتوى محمي ويتطلب تسجيل الدخول للوصول إليه. بمجرد تسجيل الدخول، ستتمكن من قراءة المقال بالكامل والوصول إلى كافة الميزات الحصرية للمنصة.</p>
-                    </div>
-                    {/* Professional Gradient Overaly */}
-                    <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/40 to-white z-10" />
-                  </div>
-
-                  {/* Enhanced Lock Interaction Card */}
-                  <div className="relative z-20 -mt-24">
-                    <div
-                      className="bg-white/80 backdrop-blur-xl rounded-[2.5rem] p-12 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.14)] border border-white/50 text-center max-w-xl mx-auto transform transition-all hover:translate-y-[-4px]"
-                      data-testid="article-lock-card"
-                    >
-                      <div className="w-24 h-24 bg-gradient-to-tr from-blue-600 to-blue-400 rounded-[2rem] flex items-center justify-center mx-auto mb-8 shadow-2xl shadow-blue-200 rotate-3 animate-float">
-                        <Lock size={40} className="text-white -rotate-3" />
-                      </div>
-
-                      {!user ? (
-                        <>
-                          <h3 className="heading-modern text-3xl text-gray-900 mb-4">سجل دخولك للمتابعة</h3>
-                          <p className="text-gray-600 mb-10 text-lg leading-relaxed">
-                            انضم إلى <span className="text-blue-600 font-bold">+10,000</span> طبيب أسنان يستفيدون من المحتوى العلمي الحصري يومياً.
-                          </p>
-                          <Link
-                            to="/login"
-                            className="w-full btn-primary flex items-center justify-center py-4 bg-blue-600 hover:bg-blue-700 shadow-2xl shadow-blue-200 transition-all active:scale-95"
-                          >
-                            <span className="font-bold text-lg">تسجيل الدخول / إنشاء حساب</span>
-                          </Link>
-                          <div className="mt-8 flex items-center justify-center gap-2 text-sm text-gray-400">
-                            <Sparkles size={16} className="text-blue-400" />
-                            <span>الوصول للمقالات العلمية أسهل مما تتخيل</span>
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <h3 className="heading-modern text-3xl text-gray-900 mb-4">فتح محتوى المقال</h3>
-                          <p className="text-gray-600 mb-10 text-lg leading-relaxed">
-                            يتطلب هذا المقال المتميز <span className="text-blue-600 font-bold">{requiresCredits} رصيد</span> لفتحه بشكل دائم والوصول إلى كامل المعلومة.
-                          </p>
-                          <button
-                            onClick={handleUnlock}
-                            disabled={isUnlocking}
-                            className="w-full btn-primary flex items-center justify-center py-4 bg-blue-600 hover:bg-blue-700 shadow-2xl shadow-blue-200 transition-all active:scale-95"
-                            data-testid="article-unlock-button"
-                          >
-                            {isUnlocking ? (
-                              <div className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full animate-spin"></div>
-                            ) : (
-                              <>
-                                <Coins size={22} className="ml-3 group-hover:rotate-12 transition-transform" />
-                                <span className="font-bold text-lg">فتح المقال الآن</span>
-                              </>
-                            )}
-                          </button>
-                          <p className="mt-6 text-sm text-gray-400">سيتم خصم الرصيد مرة واحدة فقط</p>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div
-                  className="text-gray-700 leading-relaxed text-lg space-y-6 article-body-content"
-                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(article.content.replace(/\n/g, '<br>')) }}
-                  data-testid="article-full-content"
-                />
               )}
             </div>
           </div>
 
-          {/* Related Articles */}
-          {relatedArticles.length > 0 && (
-            <div className="mb-24 mt-16 pt-16 border-t border-gray-100">
-              <div className="flex items-end justify-between mb-12">
-                <div>
-                  <h2 className="heading-modern text-3xl text-gray-900 mb-2">مقالات ذات صلة</h2>
-                  <p className="text-gray-500">اخترنا لك مواضيع مشابهة قد تهمك</p>
-                </div>
-                <Link to="/articles" className="text-blue-600 font-bold flex items-center gap-1 hover:gap-2 transition-all">
-                  عرض الكل
-                  <ChevronLeft size={20} />
-                </Link>
-              </div>
-              <div className="grid-modern">
-                {relatedArticles.map((relatedArticle) => (
-                  <ArticleCard key={relatedArticle.id} article={relatedArticle} />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Navigation */}
-          <div className="flex justify-between items-center pt-8 border-t border-gray-200">
-            <Link
-              to="/articles"
-              className="btn-secondary inline-flex items-center"
-            >
-              <ChevronRight size={20} className="ml-2" />
-              العودة إلى المقالات
-            </Link>
-
+          {/* Left Sidebar: Related Articles (lg:col-span-3) */}
+          <div className="hidden lg:block lg:col-span-3 sticky top-24">
             {relatedArticles.length > 0 && (
-              <Link
-                to={`/articles/${relatedArticles[0].id}`}
-                className="btn-primary inline-flex items-center"
-              >
-                المقال التالي
-                <ChevronLeft size={20} className="mr-2" />
-              </Link>
+              <div className="bg-gray-50/50 rounded-3xl p-6 border border-gray-100">
+                <div className="flex items-end justify-between mb-6">
+                  <h2 className="heading-modern text-xl text-gray-900">مقالات ذات صلة</h2>
+                  <Link to="/articles" className="text-blue-600 text-sm font-bold flex items-center gap-1 hover:gap-2 transition-all">
+                    الكل
+                    <ChevronLeft size={16} />
+                  </Link>
+                </div>
+                <div className="flex flex-col gap-6">
+                  {relatedArticles.map((relatedArticle) => (
+                    <ArticleCard key={relatedArticle.id} article={relatedArticle} />
+                  ))}
+                </div>
+              </div>
             )}
           </div>
+
         </div>
       </div>
     </div>

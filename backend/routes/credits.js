@@ -1,7 +1,6 @@
 import express from 'express';
-import dotenv from 'dotenv';
 import { authenticateUser, optionalAuth } from '../middleware/userAuth.js';
-import { redeemLimiter, accountRedeemLimiter } from '../middleware/rateLimiter.js';
+import { redeemLimiter, accountRedeemLimiter, consumeLimiter } from '../middleware/rateLimiter.js';
 import { validateRedeem, validate, schemas } from '../middleware/validation.js';
 import { supabaseAdmin as supabase } from '../config/supabase.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
@@ -15,8 +14,6 @@ import {
     checkResearchAccess,
     getTransactions
 } from '../services/credits/creditsService.js';
-
-dotenv.config();
 
 const router = express.Router();
 
@@ -50,8 +47,9 @@ router.post('/redeem', authenticateUser, redeemLimiter, accountRedeemLimiter, va
 /**
  * POST /api/credits/consume-video
  * Consume video watch time credits
+ * Fix #9 — consumeLimiter applied to prevent runaway billing loops
  */
-router.post('/consume-video', authenticateUser, validate(schemas.creditsConsumeVideo), asyncHandler(async (req, res) => {
+router.post('/consume-video', authenticateUser, consumeLimiter, validate(schemas.creditsConsumeVideo), asyncHandler(async (req, res) => {
     const { minutes, course_id } = req.body;
     const userId = req.user.id;
 
@@ -67,8 +65,9 @@ router.post('/consume-video', authenticateUser, validate(schemas.creditsConsumeV
 /**
  * POST /api/credits/consume-article
  * Consume article access credits
+ * Fix #9 — consumeLimiter applied
  */
-router.post('/consume-article', authenticateUser, validate(schemas.creditsConsumeArticle), asyncHandler(async (req, res) => {
+router.post('/consume-article', authenticateUser, consumeLimiter, validate(schemas.creditsConsumeArticle), asyncHandler(async (req, res) => {
     const { article_id } = req.body;
     const userId = req.user.id;
 
@@ -79,19 +78,23 @@ router.post('/consume-article', authenticateUser, validate(schemas.creditsConsum
 /**
  * GET /api/credits/check-article-access/:articleId
  * Check if user has access to a specific article
+ * Fix #11 — isAdmin is derived from req.user set by optionalAuth; no extra DB query in service
+ * Fix #12 — uses the dedicated creditsCheckArticleAccess schema
  */
-router.get('/check-article-access/:articleId', optionalAuth, validate(schemas.creditsCheckAccess), asyncHandler(async (req, res) => {
+router.get('/check-article-access/:articleId', optionalAuth, validate(schemas.creditsCheckArticleAccess), asyncHandler(async (req, res) => {
     const { articleId } = req.params;
     const userId = req.user?.id || null;
-    const result = await checkArticleAccess(supabase, { articleId, userId });
+    const isAdmin = req.user?.is_admin === true;
+    const result = await checkArticleAccess(supabase, { articleId, userId, isAdmin });
     res.json(result);
 }));
 
 /**
  * POST /api/credits/consume-research
  * Consume research access credits
+ * Fix #9 — consumeLimiter applied
  */
-router.post('/consume-research', authenticateUser, validate(schemas.creditsConsumeResearch), asyncHandler(async (req, res) => {
+router.post('/consume-research', authenticateUser, consumeLimiter, validate(schemas.creditsConsumeResearch), asyncHandler(async (req, res) => {
     const { research_id } = req.body;
     const userId = req.user.id;
 
@@ -102,11 +105,14 @@ router.post('/consume-research', authenticateUser, validate(schemas.creditsConsu
 /**
  * GET /api/credits/check-research-access/:researchId
  * Check if user has access to a specific research paper
+ * Fix #11 — isAdmin from middleware, no extra DB query
+ * Fix #12 — uses the dedicated creditsCheckResearchAccess schema
  */
-router.get('/check-research-access/:researchId', optionalAuth, validate(schemas.creditsCheckAccess), asyncHandler(async (req, res) => {
+router.get('/check-research-access/:researchId', optionalAuth, validate(schemas.creditsCheckResearchAccess), asyncHandler(async (req, res) => {
     const { researchId } = req.params;
     const userId = req.user?.id || null;
-    const result = await checkResearchAccess(supabase, { researchId, userId });
+    const isAdmin = req.user?.is_admin === true;
+    const result = await checkResearchAccess(supabase, { researchId, userId, isAdmin });
     res.json(result);
 }));
 

@@ -1,6 +1,10 @@
 import { defineConfig, devices } from '@playwright/test';
 import path from 'path';
 import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const envCandidates = [
   path.resolve(__dirname, '.env.e2e'),
@@ -12,14 +16,20 @@ for (const envPath of envCandidates) {
 }
 
 const backendPort = Number(process.env.PORT || 5001);
-const apiUrl = process.env.VITE_API_URL || process.env.E2E_API_URL || `http://127.0.0.1:${backendPort}`;
+
+// When using mocks, we explicitly force the relative path '/api' so that Vite naturally proxies it.
+// This prevents strict connect-src CSP directives from killing playwright requests before interception.
+const useMocks = process.env.E2E_USE_MOCKS === '1';
+const apiUrl = useMocks
+  ? '/api'
+  : (process.env.VITE_API_URL || process.env.E2E_API_URL || `http://127.0.0.1:${backendPort}`);
+
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
 const baseUrl = process.env.E2E_CLIENT_BASE_URL || 'http://127.0.0.1:5173';
-const useMocks = process.env.E2E_USE_MOCKS === '1';
 const hasBackendEnv = Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY && process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-const webServers = [
+const webServers: Array<{ command: string, port: number, reuseExistingServer: boolean, cwd?: string, env?: Record<string, string> }> = [
   {
     command: 'npm run dev -- --host 127.0.0.1 --port 5173',
     port: 5173,
@@ -69,12 +79,18 @@ export default defineConfig({
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
+    bypassCSP: true,
   },
   webServer: webServers,
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        launchOptions: {
+          args: ['--disable-web-security']
+        }
+      },
     },
   ],
 });

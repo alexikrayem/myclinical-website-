@@ -31,8 +31,14 @@ export async function getCreditBalance(supabase, userId) {
     .eq('user_id', userId)
     .gt('balance', 0);
 
+  // Fix #14 — surface typed credit fetch failures in the response instead of silently swallowing them
   if (typedError) {
     logger.error('Error fetching typed credits', { error: typedError, userId });
+    return {
+      ...genericCredits,
+      typed_credits: [],
+      typed_credits_error: true
+    };
   }
 
   const typed_credits = (typedCredits || []).map(tc => ({
@@ -114,9 +120,12 @@ export async function consumeArticleCredit(supabase, { userId, articleId }) {
     });
 
   if (error) {
-    // Unique constraint violation (23505) indicates they already have access
+    // Fix #3 — the RPC now pre-checks access before insertion, so a 23505 here
+    // indicates an unexpected race condition bug rather than an idempotent re-attempt.
+    // Log a warning instead of silently succeeding, so the anomaly is visible.
     if (error.code === '23505') {
-       return { success: true, message: 'لديك صلاحية الوصول بالفعل' };
+      logger.warn('Unexpected unique constraint violation in consume_article_credit — possible race condition', { userId, articleId });
+      return { success: true, message: 'لديك صلاحية الوصول بالفعل' };
     }
     logger.error('Consume article credit RPC failed', { error, userId, articleId });
     throw new AppError('فشل في خصم الرصيد', 500, 'CREDITS_CONSUME_ARTICLE_FAILED');
@@ -134,63 +143,6 @@ export async function consumeArticleCredit(supabase, { userId, articleId }) {
   };
 }
 
-export async function checkArticleAccess(supabase, { articleId, userId }) {
-  const { data: article, error: articleError } = await supabase
-    .from('articles')
-    .select('credits_required')
-    .eq('id', articleId)
-    .single();
-
-  if (articleError) {
-    if (articleError.code === 'PGRST116') {
-      throw new AppError('المقال غير موجود', 404, 'ARTICLE_NOT_FOUND');
-    }
-    logger.error('Check article access fetch failed', { error: articleError, articleId });
-    throw new AppError('فشل التحقق من الوصول للمقال', 500, 'CREDIT_ACCESS_CHECK_FAILED');
-  }
-
-  const creditsRequired = article.credits_required || 0;
-
-  if (!userId) {
-    return {
-      has_access: false,
-      requires_auth: true,
-      credits_required: creditsRequired
-    };
-  }
-
-  if (creditsRequired === 0) {
-    return { has_access: true, free: true, credits_required: 0 };
-  }
-
-  // Admin Bypass
-  const { data: adminCheck } = await supabase
-    .from('admins')
-    .select('id')
-    .eq('id', userId)
-    .single();
-
-  if (adminCheck) {
-    return { has_access: true, credits_required: creditsRequired, is_admin: true };
-  }
-
-  const { data: access, error: accessError } = await supabase
-    .from('article_access')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('article_id', articleId)
-    .single();
-
-  if (accessError && accessError.code !== 'PGRST116') {
-    logger.error('Article access check failed', { error: accessError, userId, articleId });
-  }
-
-  return {
-    has_access: !!access,
-    credits_required: creditsRequired
-  };
-}
-
 export async function consumeResearchCredit(supabase, { userId, researchId }) {
   const { data, error } = await supabase
     .rpc('consume_research_credit', {
@@ -199,80 +151,133 @@ export async function consumeResearchCredit(supabase, { userId, researchId }) {
     });
 
   if (error) {
+    // Fix #3 — same as consumeArticleCredit: the RPC now pre-checks, so 23505 is anomalous
     if (error.code === '23505') {
-       return { success: true, message: 'لديك صلاحية الوصول بالفعل' };
+      logger.warn('Unexpected unique constraint violation in consume_research_credit — possible race condition', { userId, researchId });
+      return { success: true, message: 'لديك صلاحية الوصول بالفعل' };
     }
     logger.error('Consume research credit RPC failed', { error, userId, researchId });
     throw new AppError('فشل في خصم الرصيد للبحث', 500, 'CREDITS_CONSUME_RESEARCH_FAILED');
   }
 
   if (!data.success) {
-     throw new AppError(data.message || 'رصيد غير كافي', 400, 'CREDITS_INSUFFICIENT');
+    throw new AppError(data.message || 'رصيد غير كافي', 400, 'CREDITS_INSUFFICIENT');
   }
 
-  return { 
-    success: true, 
+  return {
+    success: true,
     message: data.message || 'تم فتح البحث بنجاح',
     remaining_credits: data.remaining_credits,
     remaining_balance: data.remaining_balance
   };
 }
 
-export async function checkResearchAccess(supabase, { researchId, userId }) {
-  const { data: research, error: researchError } = await supabase
-    .from('researches')
+// ─── Fix #10 — Shared content access helper (DRY) ──────────────────────────────
+/**
+ * Generic content access checker — eliminates duplicated logic between
+ * article and research access checks.
+ *
+ * @param {object} supabase          - Supabase client
+ * @param {object} opts
+ * @param {string} opts.contentTable - 'articles' | 'researches'
+ * @param {string} opts.accessTable  - 'article_access' | 'research_access'
+ * @param {string} opts.contentIdCol - column name in accessTable, e.g. 'article_id'
+ * @param {string} opts.contentId    - the content UUID
+ * @param {string|null} opts.userId  - the authenticated user's ID, or null
+ * @param {boolean} opts.isAdmin     - whether the caller is an admin (skip DB query)
+ * @param {string} opts.notFoundCode - AppError code when content not found
+ * @param {string} opts.notFoundMsg  - Arabic message when content not found
+ * @param {string} opts.accessCheckFailCode - AppError code on DB error
+ * @param {string} opts.accessCheckFailMsg  - Arabic message on DB error
+ */
+async function checkContentAccess(supabase, {
+  contentTable,
+  accessTable,
+  contentIdCol,
+  contentId,
+  userId,
+  isAdmin,
+  notFoundCode,
+  notFoundMsg,
+  accessCheckFailCode,
+  accessCheckFailMsg
+}) {
+  // 1. Fetch the content's credits_required
+  const { data: content, error: contentError } = await supabase
+    .from(contentTable)
     .select('credits_required')
-    .eq('id', researchId)
+    .eq('id', contentId)
     .single();
 
-  if (researchError) {
-    if (researchError.code === 'PGRST116') {
-       throw new AppError('البحث غير موجود', 404, 'RESEARCH_NOT_FOUND');
+  if (contentError) {
+    if (contentError.code === 'PGRST116') {
+      throw new AppError(notFoundMsg, 404, notFoundCode);
     }
-    logger.error('Check research access fetch failed', { error: researchError, researchId });
-    throw new AppError('فشل التحقق من الوصول للبحث', 500, 'CREDIT_ACCESS_CHECK_FAILED');
+    logger.error(`Check ${contentTable} access fetch failed`, { error: contentError, contentId });
+    throw new AppError(accessCheckFailMsg, 500, accessCheckFailCode);
   }
 
-  const creditsRequired = research.credits_required || 0;
+  const creditsRequired = content.credits_required || 0;
 
+  // 2. Unauthenticated user
   if (!userId) {
-    return {
-      has_access: false,
-      requires_auth: true,
-      credits_required: creditsRequired
-    };
+    return { has_access: false, requires_auth: true, credits_required: creditsRequired };
   }
 
+  // 3. Free content
   if (creditsRequired === 0) {
     return { has_access: true, free: true, credits_required: 0 };
   }
 
-  // Admin Bypass
-  const { data: adminCheck } = await supabase
-    .from('admins')
-    .select('id')
-    .eq('id', userId)
-    .single();
-
-  if (adminCheck) {
+  // 4. Fix #11 — Admin bypass uses flag passed from middleware, not an extra DB query
+  if (isAdmin) {
     return { has_access: true, credits_required: creditsRequired, is_admin: true };
   }
 
+  // 5. Check user access record
   const { data: access, error: accessError } = await supabase
-    .from('research_access')
+    .from(accessTable)
     .select('id')
-    .eq('user_id', userId)
-    .eq('research_id', researchId)
+    .eq('custom_user_id', userId)
+    .eq(contentIdCol, contentId)
     .single();
 
   if (accessError && accessError.code !== 'PGRST116') {
-     logger.error('Research access check failed', { error: accessError, userId, researchId });
+    logger.error(`${accessTable} access check failed`, { error: accessError, userId, contentId });
   }
 
-  return {
-    has_access: !!access,
-    credits_required: creditsRequired
-  };
+  return { has_access: !!access, credits_required: creditsRequired };
+}
+
+// Fix #10 — Both functions now delegate to the shared helper
+export async function checkArticleAccess(supabase, { articleId, userId, isAdmin = false }) {
+  return checkContentAccess(supabase, {
+    contentTable: 'articles',
+    accessTable: 'article_access',
+    contentIdCol: 'article_id',
+    contentId: articleId,
+    userId,
+    isAdmin,
+    notFoundCode: 'ARTICLE_NOT_FOUND',
+    notFoundMsg: 'المقال غير موجود',
+    accessCheckFailCode: 'CREDIT_ACCESS_CHECK_FAILED',
+    accessCheckFailMsg: 'فشل التحقق من الوصول للمقال'
+  });
+}
+
+export async function checkResearchAccess(supabase, { researchId, userId, isAdmin = false }) {
+  return checkContentAccess(supabase, {
+    contentTable: 'researches',
+    accessTable: 'research_access',
+    contentIdCol: 'research_id',
+    contentId: researchId,
+    userId,
+    isAdmin,
+    notFoundCode: 'RESEARCH_NOT_FOUND',
+    notFoundMsg: 'البحث غير موجود',
+    accessCheckFailCode: 'CREDIT_ACCESS_CHECK_FAILED',
+    accessCheckFailMsg: 'فشل التحقق من الوصول للبحث'
+  });
 }
 
 export async function getTransactions(supabase, { userId, page = 1, limit = 10, type }) {
@@ -294,7 +299,7 @@ export async function getTransactions(supabase, { userId, page = 1, limit = 10, 
   const { data, error, count } = await query;
 
   if (error) {
-    logger.error('Get transactions failed', { error, userId, page });
+    logger.error('Get transactions failed', { error, userId, page: pageNum });
     throw new AppError('فشل في جلب السجل', 500, 'CREDITS_TRANSACTIONS_FAILED');
   }
 
@@ -302,7 +307,8 @@ export async function getTransactions(supabase, { userId, page = 1, limit = 10, 
     data,
     pagination: {
       total: count,
-      page: page,
+      // Fix #2 — return the parsed integer, not the raw query string
+      page: pageNum,
       limit: limitNum,
       pages: Math.ceil((count || 0) / limitNum)
     }

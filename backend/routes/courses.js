@@ -1,5 +1,4 @@
 import express from 'express';
-import dotenv from 'dotenv';
 import { authenticateToken } from '../middleware/auth.js';
 import { authenticateUser, optionalAuth } from '../middleware/userAuth.js';
 import { listPublicCourses, COURSE_PUBLIC_SELECT } from '../services/courses/courseCatalogService.js';
@@ -14,8 +13,6 @@ import { getCourseAccessDetails } from '../services/courses/courseAccessService.
 import { purchaseCourseAccess } from '../services/courses/coursePurchaseService.js';
 import { generateQuizForCourse, getLatestQuizForCourse, submitQuizAnswers } from '../services/courses/courseQuizService.js';
 import { validate, schemas } from '../middleware/validation.js';
-
-dotenv.config();
 
 const router = express.Router();
 

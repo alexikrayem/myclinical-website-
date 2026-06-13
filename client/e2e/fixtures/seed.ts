@@ -5,9 +5,9 @@ const serviceKey = process.env.E2E_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPA
 
 export const isE2EEnvReady = () => Boolean(supabaseUrl && serviceKey);
 
-export const supabase = createClient(supabaseUrl, serviceKey, {
-  auth: { persistSession: false },
-});
+export const supabase = isE2EEnvReady()
+  ? createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
+  : {} as ReturnType<typeof createClient>;
 
 export const createTestArticle = async (overrides: Partial<Record<string, unknown>> = {}) => {
   const now = new Date().toISOString();

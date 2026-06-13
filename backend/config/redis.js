@@ -1,8 +1,5 @@
 import { createClient } from 'redis';
-import dotenv from 'dotenv';
 import logger from './logger.js';
-
-dotenv.config();
 
 let redisClient;
 let redisAvailable = false;
@@ -19,11 +16,15 @@ const initRedis = async () => {
         url: redisUrl,
         socket: {
             reconnectStrategy: (retries) => {
-                if (retries > 5) {
-                    logger.warn('⚠️ Redis max retries reached. Falling back to memory store.');
-                    return new Error('Redis max retries reached');
+                // Exponential backoff: 50ms, 100ms, 200ms, 400ms... up to 3000ms
+                const delay = Math.min(Math.pow(2, retries) * 50, 3000);
+
+                if (retries > 20) {
+                    logger.error(`❌ Redis connection failed after ${retries} retries. Features relying on it will use memory store.`);
+                    return new Error(`Redis connection failed after ${retries} retries`);
                 }
-                return Math.min(retries * 50, 1000);
+
+                return delay;
             }
         }
     });
@@ -51,11 +52,27 @@ const initRedis = async () => {
     return redisClient;
 };
 
-// Initialize immediately but don't block
-const redisPromise = initRedis();
+// Initialize immediately but don't block (except in tests to avoid hanging)
+const redisPromise = process.env.NODE_ENV === 'test' ? Promise.resolve(null) : initRedis();
 
 export const getRedisClient = async () => {
-    return await redisPromise;
+    const client = await redisPromise;
+    if (!client) return null;
+
+    // If the cached client has disconnected since init, attempt one reconnect
+    if (!client.isOpen) {
+        try {
+            logger.warn('Redis client disconnected — attempting reconnect...');
+            await client.connect();
+            redisAvailable = true;
+        } catch (err) {
+            logger.error('Redis reconnect failed:', err);
+            redisAvailable = false;
+            return null;
+        }
+    }
+
+    return redisAvailable ? client : null;
 };
 
 export const isRedisAvailable = () => redisAvailable;

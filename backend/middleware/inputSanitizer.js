@@ -1,19 +1,48 @@
-import mongoSanitize from 'express-mongo-sanitize';
-import xss from 'xss-clean';
 import hpp from 'hpp';
 import sanitizeHtml from 'sanitize-html';
 import path from 'path';
+import logger from '../config/logger.js';
 
-// Sanitize data to prevent NoSQL injection
-export const sanitizeData = mongoSanitize({
-	replaceWith: '_',
-	onSanitize: ({ req, key }) => {
-		console.warn(`Potential NoSQL injection attempt detected in ${key}`);
-	},
-});
+// Deep sanitization for NoSQL/SQL injection prevention (basic pattern)
+export const sanitizeData = (req, res, next) => {
+	const sanitize = (obj) => {
+		if (typeof obj !== 'object' || obj === null) return obj;
+		for (const key in obj) {
+			if (key.startsWith('$')) {
+				const newKey = key.replace(/^\$/, '');
+				obj[newKey] = sanitize(obj[key]);
+				delete obj[key];
+			} else {
+				obj[key] = sanitize(obj[key]);
+			}
+		}
+		return obj;
+	};
 
-// Prevent XSS attacks by cleaning user input
-export const preventXSS = xss();
+	if (req.body) req.body = sanitize(req.body);
+	if (req.query) req.query = sanitize(req.query);
+	if (req.params) req.params = sanitize(req.params);
+	next();
+};
+
+// Modern XSS prevention using sanitize-html
+export const preventXSS = (req, res, next) => {
+	const sanitize = (obj) => {
+		if (typeof obj !== 'object' || obj === null) {
+			if (typeof obj === 'string') return sanitizeContent(obj);
+			return obj;
+		}
+		for (const key in obj) {
+			obj[key] = sanitize(obj[key]);
+		}
+		return obj;
+	};
+
+	if (req.body) req.body = sanitize(req.body);
+	if (req.query) req.query = sanitize(req.query);
+	if (req.params) req.params = sanitize(req.params);
+	next();
+};
 
 // Prevent HTTP Parameter Pollution
 export const preventHPP = hpp({
@@ -84,13 +113,14 @@ export const sanitizeContent = (content) => {
 		allowedAttributes: {
 			'a': ['href', 'name', 'target', 'rel'],
 			'img': ['src', 'alt', 'title', 'width', 'height'],
-			'*': ['class', 'style', 'dir', 'lang']
+			// 'style' intentionally excluded to prevent CSS-based XSS (e.g. background-image:url(javascript:...))
+			'*': ['class', 'dir', 'lang']
 		},
 		selfClosing: ['img', 'br', 'hr', 'area', 'base', 'basefont', 'input', 'link', 'meta'],
 		allowedSchemes: ['http', 'https', 'ftp', 'mailto', 'tel'],
 		allowedSchemesByTag: {},
 		allowedSchemesAppliedToAttributes: ['href', 'src', 'cite'],
-		allowProtocolRelative: true,
+		allowProtocolRelative: false, // Block //evil.com style URLs
 		enforceHtmlBoundary: false
 	});
 };

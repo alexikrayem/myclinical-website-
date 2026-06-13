@@ -1,6 +1,11 @@
 import { jest } from '@jest/globals';
 import bcrypt from 'bcryptjs'; // Import bcrypt to mock it
 
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret-with-at-least-32-chars-long';
+process.env.SUPABASE_URL = process.env.SUPABASE_URL || 'https://example.supabase.co';
+process.env.SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'test-anon-key';
+process.env.SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'test-service-role-key';
+
 // --- Mocks Setup ---
 // Create a recursive thenable mock to handle Supabase chaining (e.g. await query.eq())
 const createSupabaseMock = () => {
@@ -36,14 +41,20 @@ const createSupabaseMock = () => {
 };
 
 const mockSupabase = createSupabaseMock();
+const mockRedis = {
+    get: jest.fn(),
+    set: jest.fn(),
+    del: jest.fn(),
+    quit: jest.fn()
+};
 
 jest.unstable_mockModule('@supabase/supabase-js', () => ({
     createClient: jest.fn(() => mockSupabase)
 }));
 
 jest.unstable_mockModule('../config/redis.js', () => ({
-    getRedisClient: jest.fn().mockResolvedValue(null),
-    isRedisAvailable: jest.fn().mockReturnValue(false)
+    getRedisClient: jest.fn(() => Promise.resolve(mockRedis)),
+    isRedisAvailable: jest.fn(() => true)
 }));
 
 // Mock rate limiters to skip them
@@ -55,7 +66,8 @@ jest.unstable_mockModule('../middleware/rateLimiter.js', () => ({
     uploadLimiter: (req, res, next) => next(),
     limiters: {},
     redeemLimiter: (req, res, next) => next(),
-    accountRedeemLimiter: (req, res, next) => next()
+    accountRedeemLimiter: (req, res, next) => next(),
+    consumeLimiter: (req, res, next) => next()
 }));
 
 // Mock cache middleware

@@ -77,6 +77,16 @@ export async function createPlaybackSession({ supabase, courseId, user, baseUrl 
       if (!course.playback_source) {
         throw new BadRequestError('Missing playback source');
       }
+
+      // Simulation method: Fallback to a dummy MP4 if mock mode is on
+      if (process.env.MOCK_VIDEO_API === 'true') {
+        playback = {
+          type: 'mp4',
+          url: 'https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'
+        };
+        break;
+      }
+
       try {
         const vdoPlayback = await getVdoPlaybackInfo(course.playback_source, { user });
         playback = {

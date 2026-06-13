@@ -1,13 +1,12 @@
 import express from 'express';
 import multer from 'multer';
 import path from 'path';
-import dotenv from 'dotenv';
 import { authenticateToken } from '../middleware/auth.js';
 import { supabaseAdmin as supabase } from '../config/supabase.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { AppError } from '../utils/errors.js';
-
-dotenv.config();
+import logger from '../config/logger.js';
+import { validateFileSignature } from '../utils/fileValidation.js';
 
 const router = express.Router();
 
@@ -15,7 +14,7 @@ const router = express.Router();
 // Configure Storage - Memory storage for direct upload to Supabase
 const storage = multer.memoryStorage();
 
-// File Filter
+// File Filter (Initial basic check)
 const fileFilter = (req, file, cb) => {
     const allowedTypes = /jpeg|jpg|png|gif|webp/;
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
@@ -45,6 +44,18 @@ router.post('/', authenticateToken, upload.single('image'), asyncHandler(async (
             return res.status(400).json({ error: 'No file uploaded' });
         }
 
+        // Deep Magic Byte Validation
+        const signature = await validateFileSignature(req.file.buffer, [
+            'image/jpeg', 'image/png', 'image/gif', 'image/webp'
+        ]);
+
+        if (!signature.valid) {
+            return res.status(400).json({
+                error: 'Invalid file signature. The file content does not match its extension.',
+                code: 'INVALID_FILE_SIGNATURE'
+            });
+        }
+
         let fileBuffer = req.file.buffer;
         let contentType = req.file.mimetype;
         const fileExt = path.extname(req.file.originalname); // .jpg
@@ -65,7 +76,7 @@ router.post('/', authenticateToken, upload.single('image'), asyncHandler(async (
             filename = filename.replace(/\.[^/.]+$/, "") + ".webp";
 
         } catch (sharpError) {
-            console.warn('⚠️ Sharp optimization failed or not installed, uploading original file:', sharpError.message);
+            logger.warn('Sharp optimization failed or not installed, uploading original file:', { message: sharpError.message });
         }
 
         // Upload to Supabase
@@ -91,7 +102,7 @@ router.post('/', authenticateToken, upload.single('image'), asyncHandler(async (
             filename: filename
         });
     } catch (error) {
-        console.error('Upload Error:', error);
+        logger.error('Upload Error:', { message: error.message });
         throw new AppError('Failed to upload image', 500, 'UPLOAD_FAILED');
     }
 }));

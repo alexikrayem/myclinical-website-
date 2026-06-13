@@ -113,12 +113,14 @@ jest.unstable_mockModule('../middleware/rateLimiter.js', () => ({
     aiLimiter: (req, res, next) => next(),
     searchLimiter: (req, res, next) => next(),
     redeemLimiter: (req, res, next) => next(),
-    accountRedeemLimiter: (req, res, next) => next()
+    accountRedeemLimiter: (req, res, next) => next(),
+    consumeLimiter: (req, res, next) => next()
 }));
 
 // Import app after mocks
 const { default: app } = await import('../server.js');
-const { JWT_SECRET } = await import('../middleware/userAuth.js');
+const JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret-with-at-least-32-chars-long';
+process.env.JWT_SECRET = JWT_SECRET;
 import jwt from 'jsonwebtoken';
 
 describe('Session Validation Security', () => {

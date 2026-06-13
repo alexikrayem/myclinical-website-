@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
-import { articlesApi, researchApi } from '../lib/api';
+import { articlesApi, researchApi, coursesApi } from '../lib/api';
+
+import { Article, Course, Research, FeaturedContent } from '../types';
 
 export const useArticles = (params?: { tag?: string; search?: string; limit?: number; page?: number }) => {
     return useQuery({
@@ -14,6 +16,69 @@ export const useFeaturedArticles = () => {
         queryKey: ['featured-articles'],
         queryFn: () => articlesApi.getFeatured(),
         staleTime: 1000 * 60 * 10, // 10 minutes
+    });
+};
+
+export const useAllFeaturedContent = () => {
+    return useQuery({
+        queryKey: ['all-featured-content'],
+        queryFn: async () => {
+            const ENABLE_COURSES = import.meta.env.VITE_ENABLE_COURSES !== 'false';
+
+            // Fetch all three sources concurrently, with catch handlers to prevent one failure from dropping all
+            const [featuredArticles, featuredCourses, latestResearches] = await Promise.all([
+                articlesApi.getFeatured().catch(() => []),
+                ENABLE_COURSES ? coursesApi.getFeatured().catch(() => []) : Promise.resolve([]),
+                researchApi.getFeatured().catch(() => [])
+            ]);
+
+            // Combine and map articles & clinical cases
+            const mappedArticles: FeaturedContent[] = (featuredArticles || []).map((a: Article) => ({
+                id: a.id,
+                title: a.title,
+                excerpt: a.excerpt,
+                cover_image: a.cover_image,
+                author: a.author,
+                author_image: a.author_image,
+                type: a.article_type || 'article', // 'article' or 'clinical_case'
+                path: `/articles/${a.id}`, // using same route engine for both
+                publication_date: a.publication_date || new Date().toISOString(),
+                date: new Date(a.publication_date || Date.now()).getTime(),
+            }));
+
+            // Combine and map courses
+            const mappedCourses: FeaturedContent[] = (featuredCourses || []).map((c: Course) => ({
+                id: c.id,
+                title: c.title,
+                excerpt: c.description || c.excerpt || '',
+                cover_image: c.thumbnail_url || c.cover_image || '',
+                author: c.instructor?.name || c.author || 'خبراء المنصة',
+                author_image: c.instructor?.avatar_url || null,
+                type: 'course',
+                path: `/courses/${c.id}`,
+                publication_date: c.created_at || c.published_at || new Date().toISOString(),
+                date: new Date(c.created_at || c.published_at || Date.now()).getTime(),
+            }));
+
+            // Combine and map researches (using latest as proxy for featured since researches table lacks is_featured)
+            const mappedResearch: FeaturedContent[] = (latestResearches || []).map((r: Research) => ({
+                id: r.id,
+                title: r.title,
+                excerpt: r.abstract || r.excerpt || '',
+                cover_image: null,
+                author: (r.authors && r.authors.length > 0) ? r.authors[0] : 'باحث',
+                author_image: null,
+                type: 'research',
+                path: `/research-topics?id=${r.id}`,
+                publication_date: r.publication_date || new Date().toISOString(),
+                date: new Date(r.publication_date || Date.now()).getTime(),
+            }));
+
+            const combined = [...mappedArticles, ...mappedCourses, ...mappedResearch];
+            // Sort combined effectively by date desc
+            return combined.sort((a, b) => b.date - a.date);
+        },
+        staleTime: 1000 * 60 * 10,
     });
 };
 

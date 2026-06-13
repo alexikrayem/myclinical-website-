@@ -1,5 +1,6 @@
 import { searchIndex, isMeiliEnabled } from './meiliClient.js';
 import { normalizeQuery } from './normalize.js';
+import logger from '../../config/logger.js';
 
 function escapeFilterValue(value) {
   return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
@@ -37,7 +38,7 @@ export async function meiliSearch(indexName, query, { page = 1, limit = 12, filt
       showRankingScore: true
     });
   } catch (error) {
-    console.error(`Meilisearch query failed for ${indexName}:`, error);
+    logger.error(`Meilisearch query failed for ${indexName}:`, error);
     return null;
   }
 }

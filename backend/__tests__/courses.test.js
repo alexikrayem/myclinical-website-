@@ -25,14 +25,20 @@ const createSupabaseMock = () => {
 };
 
 const mockSupabase = createSupabaseMock();
+const mockRedis = {
+    get: jest.fn(),
+    set: jest.fn(),
+    del: jest.fn(),
+    quit: jest.fn()
+};
 
 jest.unstable_mockModule('@supabase/supabase-js', () => ({
     createClient: jest.fn(() => mockSupabase)
 }));
 
 jest.unstable_mockModule('../config/redis.js', () => ({
-    getRedisClient: jest.fn().mockResolvedValue(null),
-    isRedisAvailable: jest.fn().mockReturnValue(false)
+    getRedisClient: jest.fn(() => Promise.resolve(mockRedis)),
+    isRedisAvailable: jest.fn(() => true)
 }));
 
 jest.unstable_mockModule('../middleware/rateLimiter.js', () => ({
@@ -43,7 +49,8 @@ jest.unstable_mockModule('../middleware/rateLimiter.js', () => ({
     searchLimiter: (req, res, next) => next(),
     limiters: {},
     redeemLimiter: (req, res, next) => next(),
-    accountRedeemLimiter: (req, res, next) => next()
+    accountRedeemLimiter: (req, res, next) => next(),
+    consumeLimiter: (req, res, next) => next()
 }));
 
 jest.unstable_mockModule('../middleware/cache.js', () => ({
@@ -153,6 +160,53 @@ describe('Courses Routes Integration Tests', () => {
             expect(res.status).toBe(200);
             expect(res.body).not.toHaveProperty('playback_source');
             expect(res.body.has_access).toBe(true);
+        });
+    });
+
+    describe('POST /api/courses/:id/access', () => {
+        const payload = { idempotency_key: 'idemp-1234' };
+
+        beforeEach(() => {
+            // Mock Auth for optional endpoints
+            mockSupabase.single.mockResolvedValue({
+                data: { id: 'session-1', users: { id: 'user-123', is_active: true } },
+                error: null
+            });
+        });
+
+        it('should handle concurrent purchase requests using idempotency safely', async () => {
+            // Mock RPC success
+            mockSupabase.rpc.mockResolvedValue({
+                data: { success: true, message: 'تم شراء الكورس بنجاح' },
+                error: null
+            });
+
+            const requests = [
+                request(app).post(`/api/courses/${validCourseId}/access`).set('Authorization', `Bearer ${validToken}`).send(payload),
+                request(app).post(`/api/courses/${validCourseId}/access`).set('Authorization', `Bearer ${validToken}`).send(payload)
+            ];
+
+            const results = await Promise.all(requests);
+
+            // Should both return success 200 without charging twice
+            expect(results[0].status).toBe(200);
+            expect(results[1].status).toBe(200);
+            expect(mockSupabase.rpc).toHaveBeenCalledTimes(2);
+        });
+
+        it('should return 400 when insufficient credits during purchase', async () => {
+            mockSupabase.rpc.mockResolvedValueOnce({
+                data: { success: false, message: 'رصيد غير كافي' },
+                error: null
+            });
+
+            const res = await request(app)
+                .post(`/api/courses/${validCourseId}/access`)
+                .set('Authorization', `Bearer ${validToken}`)
+                .send(payload);
+
+            expect(res.status).toBe(400);
+            expect(res.body.error).toBe('رصيد غير كافي');
         });
     });
 });

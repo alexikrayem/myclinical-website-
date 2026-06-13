@@ -36,15 +36,7 @@ api.interceptors.response.use(
   }
 );
 
-export type GlobalSearchType = 'article' | 'research' | 'course';
-
-export interface GlobalSearchResult {
-  id: string;
-  title: string;
-  type: GlobalSearchType;
-  slug?: string;
-  [key: string]: unknown;
-}
+import { GlobalSearchResult } from '../types';
 
 
 
@@ -64,7 +56,7 @@ export const searchApi = {
       }));
     } catch (error) {
       console.error('Error in global search:', error);
-      throw error;
+      return [];
     }
   }
 };
@@ -161,6 +153,17 @@ export const articlesApi = {
 
 // Research API
 export const researchApi = {
+  // Get featured research papers
+  getFeatured: async () => {
+    try {
+      const response = await api.get('/research/featured');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching featured research:', error);
+      throw error;
+    }
+  },
+
   // Get all research papers with optional filters
   getAll: async (params?: { journal?: string; search?: string; limit?: number; page?: number }) => {
     try {
@@ -245,6 +248,18 @@ export const coursesApi = {
       return response.data;
     } catch (error) {
       console.error('Error fetching courses:', error);
+      throw error;
+    }
+  },
+
+  getCategories: async () => {
+    try {
+      const response = await api.get('/courses', { params: { limit: 100 } });
+      const courses = response.data.data || [];
+      const allCategories = courses.flatMap((c: { categories?: string[] }) => c.categories || []);
+      return [...new Set(allCategories)].sort();
+    } catch (error) {
+      console.error('Error fetching course categories:', error);
       throw error;
     }
   },

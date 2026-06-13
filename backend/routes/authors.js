@@ -1,27 +1,24 @@
 import express from 'express';
-import dotenv from 'dotenv';
 import { supabasePublic as supabase } from '../config/supabase.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { AppError } from '../utils/errors.js';
-
-dotenv.config();
 
 const router = express.Router();
 
 // Get author by name
 router.get('/:name', asyncHandler(async (req, res) => {
   const { name } = req.params;
-  
+
   const { data, error } = await supabase
     .from('authors')
     .select('*')
     .eq('name', decodeURIComponent(name))
     .single();
-  
+
   if (error && error.code !== 'PGRST116') {
     throw new AppError('Failed to fetch author', 500, 'AUTHOR_FETCH_FAILED');
   }
-  
+
   // If author not found, return default author info
   if (!data) {
     return res.json({
@@ -34,7 +31,7 @@ router.get('/:name', asyncHandler(async (req, res) => {
       location: 'المملكة العربية السعودية'
     });
   }
-  
+
   res.json(data);
 }));
 
@@ -44,11 +41,11 @@ router.get('/', asyncHandler(async (req, res) => {
     .from('authors')
     .select('*')
     .order('name');
-  
+
   if (error) {
     throw new AppError('Failed to fetch authors', 500, 'AUTHORS_FETCH_FAILED');
   }
-  
+
   res.json(data || []);
 }));
 

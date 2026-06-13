@@ -1,13 +1,11 @@
 import express from 'express';
-import dotenv from 'dotenv';
-import { sanitizeSearchInput } from '../utils/searchUtils.js';
+import { cacheMiddleware } from '../middleware/cache.js';
+import { sanitizeSearchInput, buildFtsQuery } from '../utils/searchUtils.js';
 import { meiliSearch, orderByIdList } from '../services/search/searchService.js';
 import { validate, schemas } from '../middleware/validation.js';
 import { supabasePublic as supabase } from '../config/supabase.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { AppError, NotFoundError } from '../utils/errors.js';
-
-dotenv.config();
 
 const router = express.Router();
 
@@ -16,51 +14,30 @@ router.get('/', validate(schemas.researchList), asyncHandler(async (req, res) =>
   const { journal, search, limit, page } = req.query;
   const offset = (page - 1) * limit;
 
-    let query = supabase.from('researches').select('id, title, journal, abstract, publication_date, authors', { count: 'exact' });
+  let query = supabase.from('researches').select('id, title, journal, abstract, publication_date, authors, is_featured', { count: 'exact' });
 
-    // Journal filtering
-    if (journal) {
-      query = query.eq('journal', journal);
-    }
+  // Journal filtering
+  if (journal) {
+    query = query.eq('journal', journal);
+  }
 
-    // Search with Meilisearch if available, fallback to ilike
-    if (search) {
-      const meiliResult = await meiliSearch('researches', search, {
-        page,
-        limit,
-        filters: {
-          ...(journal ? { journal } : {})
-        }
-      });
+  // Search with Meilisearch if available, fallback to ilike
+  if (search) {
+    const meiliResult = await meiliSearch('researches', search, {
+      page,
+      limit,
+      filters: {
+        ...(journal ? { journal } : {})
+      }
+    });
 
-      if (meiliResult) {
-        const ids = meiliResult.hits.map(hit => hit.id);
-        const total = meiliResult.estimatedTotalHits || 0;
+    if (meiliResult) {
+      const ids = meiliResult.hits.map(hit => hit.id);
+      const total = meiliResult.estimatedTotalHits || 0;
 
-        if (!ids.length) {
-          return res.json({
-            data: [],
-            pagination: {
-              total,
-              page,
-              limit,
-              pages: Math.ceil(total / limit)
-            }
-          });
-        }
-
-        const { data: rows, error: fetchError } = await supabase
-          .from('researches')
-          .select('id, title, journal, abstract, publication_date, authors')
-          .in('id', ids);
-
-        if (fetchError) {
-          throw new AppError('Failed to fetch research papers', 500, 'RESEARCH_FETCH_FAILED');
-        }
-
-        const ordered = orderByIdList(rows, ids);
+      if (!ids.length) {
         return res.json({
-          data: ordered,
+          data: [],
           pagination: {
             total,
             page,
@@ -70,40 +47,77 @@ router.get('/', validate(schemas.researchList), asyncHandler(async (req, res) =>
         });
       }
 
-      const sanitizedSearch = sanitizeSearchInput(search);
-      if (sanitizedSearch) {
-        query = query.or(`title.ilike.%${sanitizedSearch}%,abstract.ilike.%${sanitizedSearch}%,journal.ilike.%${sanitizedSearch}%`);
+      const { data: rows, error: fetchError } = await supabase
+        .from('researches')
+        .select('id, title, journal, abstract, publication_date, authors, is_featured')
+        .in('id', ids);
+
+      if (fetchError) {
+        throw new AppError('Failed to fetch research papers', 500, 'RESEARCH_FETCH_FAILED');
       }
+
+      const ordered = orderByIdList(rows, ids);
+      return res.json({
+        data: ordered,
+        pagination: {
+          total,
+          page,
+          limit,
+          pages: Math.ceil(total / limit)
+        }
+      });
     }
 
-    const { data, error, count } = await query
-      .order('publication_date', { ascending: false })
-      .range(offset, offset + limit - 1);
-
-    if (error) {
-      throw new AppError('Failed to fetch research papers', 500, 'RESEARCH_FETCH_FAILED');
+    const ftsString = buildFtsQuery(search);
+    if (ftsString) {
+      query = query.or(`title.fts."${ftsString}",abstract.fts."${ftsString}",journal.fts."${ftsString}"`);
     }
+  }
 
-    res.json({
-      data,
-      pagination: {
-        total: count,
-        page,
-        limit,
-        pages: Math.ceil(count / limit)
-      }
-    });
+  const { data, error, count } = await query
+    .order('publication_date', { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (error) {
+    throw new AppError('Failed to fetch research papers', 500, 'RESEARCH_FETCH_FAILED');
+  }
+
+  res.json({
+    data,
+    pagination: {
+      total: count,
+      page,
+      limit,
+      pages: Math.ceil(count / limit)
+    }
+  });
+}));
+
+// Get featured research papers
+router.get('/featured', cacheMiddleware(600), asyncHandler(async (req, res) => {
+  const { data, error } = await supabase
+    .from('researches')
+    .select('id, title, journal, abstract, publication_date, authors')
+    .eq('is_featured', true)
+    .order('publication_date', { ascending: false })
+    .limit(4);
+
+  if (error) {
+    throw new AppError('Failed to fetch featured research papers', 500, 'RESEARCH_FEATURED_FAILED');
+  }
+
+  res.json(data);
 }));
 
 // Get single research paper by ID
 router.get('/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-    const { data, error } = await supabase
-      .from('researches')
-      .select('*')
-      .eq('id', id)
-      .single();
+  const { data, error } = await supabase
+    .from('researches')
+    .select('*')
+    .eq('id', id)
+    .single();
 
   if (error) {
     if (error.code === 'PGRST116') {
@@ -136,38 +150,38 @@ router.get('/:id/related', asyncHandler(async (req, res) => {
   const { id } = req.params;
   const limit = parseInt(req.query.limit) || 3;
 
-    // 1. Get current paper details to find related ones
-    const { data: currentPaper, error: fetchError } = await supabase
-      .from('researches')
-      .select('journal, title, search_vector')
-      .eq('id', id)
-      .single();
+  // 1. Get current paper details to find related ones
+  const { data: currentPaper, error: fetchError } = await supabase
+    .from('researches')
+    .select('journal, title, search_vector')
+    .eq('id', id)
+    .single();
 
-    if (fetchError) {
-      throw new AppError('Failed to fetch related research', 500, 'RESEARCH_RELATED_FAILED');
-    }
+  if (fetchError) {
+    throw new AppError('Failed to fetch related research', 500, 'RESEARCH_RELATED_FAILED');
+  }
 
-    // 2. Find related papers
-    // Strategy: Same journal OR similar title/content using full-text search
-    let query = supabase
-      .from('researches')
-      .select('id, title, journal, publication_date, authors')
-      .neq('id', id) // Exclude current paper
-      .limit(limit);
+  // 2. Find related papers
+  // Strategy: Same journal OR similar title/content using full-text search
+  let query = supabase
+    .from('researches')
+    .select('id, title, journal, publication_date, authors')
+    .neq('id', id) // Exclude current paper
+    .limit(limit);
 
-    // If we have a journal, prioritize same journal
-    if (currentPaper.journal) {
-      query = query.eq('journal', currentPaper.journal);
-    }
+  // If we have a journal, prioritize same journal
+  if (currentPaper.journal) {
+    query = query.eq('journal', currentPaper.journal);
+  }
 
-    const { data: related, error: relatedError } = await query;
+  const { data: related, error: relatedError } = await query;
 
-    if (relatedError) {
-      throw new AppError('Failed to fetch related research', 500, 'RESEARCH_RELATED_FAILED');
-    }
+  if (relatedError) {
+    throw new AppError('Failed to fetch related research', 500, 'RESEARCH_RELATED_FAILED');
+  }
 
-    // If we didn't find enough related by journal, try FTS similarity (future improvement)
-    // For now, this is a good start.
+  // If we didn't find enough related by journal, try FTS similarity (future improvement)
+  // For now, this is a good start.
 
   res.json(related);
 }));
@@ -175,15 +189,15 @@ router.get('/:id/related', asyncHandler(async (req, res) => {
 // Get available journals
 router.get('/journals/list', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
-      .from('researches')
-      .select('journal');
+    .from('researches')
+    .select('journal');
 
   if (error) {
     throw new AppError('Failed to fetch journals', 500, 'RESEARCH_JOURNALS_FAILED');
   }
 
-    // Extract unique journal names
-    const journals = [...new Set(data.map(item => item.journal))];
+  // Extract unique journal names
+  const journals = [...new Set(data.map(item => item.journal))];
 
   res.json(journals);
 }));

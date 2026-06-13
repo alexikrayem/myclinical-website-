@@ -1,9 +1,4 @@
 
-
-import dotenv from 'dotenv';
-
-dotenv.config();
-
 // Required environment variables
 const REQUIRED_ENV_VARS = [
   'SUPABASE_URL',
@@ -80,11 +75,13 @@ export const validateEnvironment = () => {
   }
 
   // Check for default/example values that should be changed
-  const exampleValues = ['your_supabase_url', 'your_supabase_anon_key', 'your_jwt_secret'];
-  for (const varName of REQUIRED_ENV_VARS) {
-    if (process.env[varName] && exampleValues.some(ex => process.env[varName].includes(ex))) {
-      console.error(`❌ CRITICAL: ${varName} appears to contain a placeholder value. Please update your .env file with actual credentials.`);
-      process.exit(1);
+  if (process.env.NODE_ENV !== 'test') {
+    const exampleValues = ['your_supabase_url', 'your_supabase_anon_key', 'your_jwt_secret', '_here'];
+    for (const varName of REQUIRED_ENV_VARS) {
+      if (process.env[varName] && exampleValues.some(ex => process.env[varName].includes(ex))) {
+        console.error(`❌ CRITICAL: ${varName} appears to contain a placeholder value. Please update your .env file with actual credentials.`);
+        process.exit(1);
+      }
     }
   }
 

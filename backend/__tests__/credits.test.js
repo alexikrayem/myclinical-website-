@@ -1,45 +1,32 @@
 import { jest } from '@jest/globals';
+import { mockSupabase, resetSupabaseMock } from './mocks/supabaseMock.js';
+import { mockRedis } from './mocks/redisMock.js';
+import { mockRateLimiters, mockCache } from './mocks/middlewareMock.js';
 
 // --- Mocks Setup ---
-const createSupabaseMock = () => {
-    const builder = {
-        from: jest.fn().mockReturnThis(),
-        select: jest.fn().mockReturnThis(),
-        insert: jest.fn().mockReturnThis(),
-        update: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        gt: jest.fn().mockReturnThis(),
-        order: jest.fn().mockReturnThis(),
-        range: jest.fn().mockReturnThis(),
-        single: jest.fn(),
-        rpc: jest.fn(),
-        then: function (resolve, reject) {
-            resolve({ data: {}, error: null });
-        }
-    };
-    return builder;
-};
-
-const mockSupabase = createSupabaseMock();
-
 jest.unstable_mockModule('@supabase/supabase-js', () => ({
     createClient: jest.fn(() => mockSupabase)
 }));
 
 jest.unstable_mockModule('../config/redis.js', () => ({
-    getRedisClient: jest.fn().mockResolvedValue(null),
-    isRedisAvailable: jest.fn().mockReturnValue(false)
+    getRedisClient: jest.fn(() => Promise.resolve(mockRedis)),
+    isRedisAvailable: jest.fn(() => true)
 }));
 
+let redeemCount = 0;
+export const resetRedeemCount = () => { redeemCount = 0; };
+
 jest.unstable_mockModule('../middleware/rateLimiter.js', () => ({
-    apiLimiter: (req, res, next) => next(),
-    authLimiter: (req, res, next) => next(),
-    uploadLimiter: (req, res, next) => next(),
-    aiLimiter: (req, res, next) => next(),
-    searchLimiter: (req, res, next) => next(),
-    redeemLimiter: (req, res, next) => next(),
-    accountRedeemLimiter: (req, res, next) => next(),
-    limiters: {}
+    ...mockRateLimiters,
+    redeemLimiter: (req, res, next) => {
+        redeemCount++;
+        if (redeemCount > 3) {
+            return res.status(429).json({ error: 'Too many requests, please try again later.' });
+        }
+        next();
+    },
+    // consumeLimiter is a pass-through in tests — rate limiting is not under test here
+    consumeLimiter: (req, res, next) => next()
 }));
 
 // Mock jsonwebtoken
@@ -65,12 +52,9 @@ describe('Credits Routes Integration Tests', () => {
     const validToken = 'valid-token';
 
     beforeEach(() => {
+        resetSupabaseMock();
         jest.clearAllMocks();
-        mockSupabase.from.mockReturnThis();
-        mockSupabase.select.mockReturnThis();
-        mockSupabase.eq.mockReturnThis();
-        mockSupabase.single.mockReset();
-        mockSupabase.rpc.mockReset();
+        redeemCount = 0;
     });
 
     // Helper to mock authentication
@@ -88,6 +72,8 @@ describe('Credits Routes Integration Tests', () => {
                 data: { balance: 50, video_watch_minutes: 100 },
                 error: null
             });
+
+            // Use the _setResult helper or just mock implementation for transactions
             mockSupabase.then = jest.fn((resolve) => resolve({ data: [], error: null }));
 
             const res = await request(app)
@@ -145,6 +131,33 @@ describe('Credits Routes Integration Tests', () => {
             expect(res.status).toBe(400);
             expect(res.body.error).toBe('Invalid code');
         });
+
+        it('should trigger rate limit 429 on excessive brute force attempts', async () => {
+            mockAuth();
+            mockAuth();
+            mockAuth();
+            mockAuth();
+            mockSupabase.rpc.mockResolvedValue({
+                data: { success: false, message: 'Invalid code' },
+                error: null
+            });
+
+            // 1st request - ok
+            await request(app).post('/api/credits/redeem').set('Authorization', `Bearer ${validToken}`).send({ code: '111-1111-2222-3333' });
+            // 2nd request - ok
+            await request(app).post('/api/credits/redeem').set('Authorization', `Bearer ${validToken}`).send({ code: '111-1111-2222-3333' });
+            // 3rd request - ok
+            await request(app).post('/api/credits/redeem').set('Authorization', `Bearer ${validToken}`).send({ code: '111-1111-2222-3333' });
+
+            // 4th request - should be 429
+            const res4 = await request(app)
+                .post('/api/credits/redeem')
+                .set('Authorization', `Bearer ${validToken}`)
+                .send({ code: '111-1111-2222-3333' });
+
+            expect(res4.status).toBe(429);
+            expect(res4.body.error).toContain('Too many requests');
+        });
     });
 
     describe('POST /api/credits/consume-video', () => {
@@ -180,6 +193,28 @@ describe('Credits Routes Integration Tests', () => {
             expect(res.status).toBe(400);
             expect(res.body.error).toBe('رصيد غير كافي');
             expect(res.body.code).toBe('CREDITS_INSUFFICIENT');
+        });
+
+        it('should handle concurrent consume requests correctly', async () => {
+            mockAuth(); // for both queries
+            mockAuth();
+
+            // Simulate parallel success
+            mockSupabase.rpc.mockResolvedValue({
+                data: { success: true, remaining_minutes: 50, remaining_balance: 10 },
+                error: null
+            });
+
+            const requests = [
+                request(app).post('/api/credits/consume-video').set('Authorization', `Bearer ${validToken}`).send({ minutes: 5, course_id: 'ebb2cdcf-3b9f-43b9-a9a7-96a8e63b65a5' }),
+                request(app).post('/api/credits/consume-video').set('Authorization', `Bearer ${validToken}`).send({ minutes: 5, course_id: 'ebb2cdcf-3b9f-43b9-a9a7-96a8e63b65a5' })
+            ];
+
+            const results = await Promise.all(requests);
+
+            expect(results[0].status).toBe(200);
+            expect(results[1].status).toBe(200);
+            expect(mockSupabase.rpc).toHaveBeenCalledTimes(2);
         });
     });
 

@@ -7,7 +7,7 @@ interface ShareButtonsProps {
     description?: string;
 }
 
-const ShareButtons: React.FC<ShareButtonsProps> = ({ url, title, description }) => {
+const ShareButtons: React.FC<ShareButtonsProps> = ({ url, title }) => {
     const [showDropdown, setShowDropdown] = useState(false);
     const [copied, setCopied] = useState(false);
 
@@ -31,20 +31,9 @@ const ShareButtons: React.FC<ShareButtonsProps> = ({ url, title, description }) 
         }
     };
 
-    const handleNativeShare = async () => {
-        if (navigator.share) {
-            try {
-                await navigator.share({
-                    title,
-                    text: description,
-                    url,
-                });
-            } catch {
-                // User cancelled or error
-            }
-        } else {
-            setShowDropdown(!showDropdown);
-        }
+    const handleNativeShare = () => {
+        // Force the dropdown to show so the specific social buttons actually appear
+        setShowDropdown(!showDropdown);
     };
 
     return (

@@ -8,6 +8,17 @@ export const cacheMiddleware = (duration = 300) => async (req, res, next) => {
         return next();
     }
 
+    // Bypass cache if user is authenticated (indicated by Authorization header) to prevent caching private data globally
+    if (req.headers.authorization) {
+        return next();
+    }
+
+    // Allow intentional cache bypass, but only for authenticated requests
+    // (Prevents unauthenticated cache-busting / DoS)
+    if (req.query.refresh === 'true' && req.headers.authorization) {
+        return next();
+    }
+
     const client = await getRedisClient();
     // Fallback if Redis is not available
     if (!client || !client.isOpen) {
@@ -61,14 +72,26 @@ export const invalidateCache = async (keys = []) => {
 };
 
 // Helper to clear keys matching a pattern (e.g. 'cache:/api/articles*')
+// Uses SCAN instead of KEYS to avoid blocking Redis on large key sets.
 export const invalidateCachePattern = async (pattern) => {
     try {
         const client = await getRedisClient();
         if (!client || !client.isOpen) return;
 
-        const keys = await client.keys(pattern);
-        if (keys.length > 0) {
-            await client.del(keys);
+        const keysToDelete = [];
+        let cursor = 0;
+
+        do {
+            const result = await client.scan(cursor, { MATCH: pattern, COUNT: 100 });
+            cursor = result.cursor;
+            if (result.keys.length > 0) {
+                keysToDelete.push(...result.keys);
+            }
+        } while (cursor !== 0);
+
+        if (keysToDelete.length > 0) {
+            await client.del(keysToDelete);
+            logger.info(`Cache pattern invalidated: ${pattern} (${keysToDelete.length} keys removed)`);
         }
     } catch (error) {
         logger.error('Cache Pattern Invalidation Error:', error);

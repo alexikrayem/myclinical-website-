@@ -33,7 +33,8 @@ jest.unstable_mockModule('@supabase/supabase-js', () => ({
 }));
 
 jest.unstable_mockModule('../config/redis.js', () => ({
-    getRedisClient: jest.fn(() => Promise.resolve(mockRedis))
+    getRedisClient: jest.fn(() => Promise.resolve(mockRedis)),
+    isRedisAvailable: jest.fn(() => true)
 }));
 
 // Mock authLimiter to bypass specific rate limiting lib logic
@@ -44,7 +45,8 @@ jest.unstable_mockModule('../middleware/rateLimiter.js', () => ({
     searchLimiter: (req, res, next) => next(),
     aiLimiter: (req, res, next) => next(),
     redeemLimiter: (req, res, next) => next(),
-    accountRedeemLimiter: (req, res, next) => next()
+    accountRedeemLimiter: (req, res, next) => next(),
+    consumeLimiter: (req, res, next) => next()
 }));
 
 // Import app

@@ -1,7 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import logger from './logger.js';
-import dotenv from 'dotenv';
-dotenv.config();
 
 const API_KEY = process.env.GEMINI_API_KEY;
 

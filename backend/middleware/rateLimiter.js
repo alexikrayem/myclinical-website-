@@ -167,3 +167,23 @@ export const accountRedeemLimiter = rateLimit({
     });
   }
 });
+
+// Fix #9 — Rate limiter for credit consumption endpoints (video/article/research)
+// Keyed per user to prevent DB lock contention from abusive clients.
+// Allows generous burst (60/min) while still guarding against runaway loops.
+export const consumeLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 60, // 60 consume calls per minute per user
+  keyGenerator: (req) => {
+    return req.user ? `consume_${req.user.id}` : req.ip;
+  },
+  store: createHybridStore('consume'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({
+      error: 'Too many consume requests. Please slow down.',
+      retryAfter: Math.ceil(req.rateLimit.resetTime / 1000)
+    });
+  }
+});

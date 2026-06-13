@@ -307,10 +307,11 @@ const ProfilePage: React.FC = () => {
 
                                 <form onSubmit={handleChangePassword} className="space-y-4 max-w-md">
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        <label htmlFor="currentPassword" className="block text-sm font-medium text-gray-700 mb-1">
                                             كلمة المرور الحالية
                                         </label>
                                         <input
+                                            id="currentPassword"
                                             type="password"
                                             value={currentPassword}
                                             onChange={(e) => setCurrentPassword(e.target.value)}
@@ -319,10 +320,11 @@ const ProfilePage: React.FC = () => {
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        <label htmlFor="newPassword" className="block text-sm font-medium text-gray-700 mb-1">
                                             كلمة المرور الجديدة
                                         </label>
                                         <input
+                                            id="newPassword"
                                             type="password"
                                             value={newPassword}
                                             onChange={(e) => setNewPassword(e.target.value)}
@@ -332,10 +334,11 @@ const ProfilePage: React.FC = () => {
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        <label htmlFor="confirmNewPassword" className="block text-sm font-medium text-gray-700 mb-1">
                                             تأكيد كلمة المرور الجديدة
                                         </label>
                                         <input
+                                            id="confirmNewPassword"
                                             type="password"
                                             value={confirmNewPassword}
                                             onChange={(e) => setConfirmNewPassword(e.target.value)}

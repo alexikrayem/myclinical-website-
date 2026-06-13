@@ -23,13 +23,21 @@ const mockSupabase = {
     }))
 };
 
+const mockRedis = {
+    get: jest.fn(),
+    set: jest.fn(),
+    del: jest.fn(),
+    quit: jest.fn()
+};
+
 // Mock dependencies
 jest.unstable_mockModule('@supabase/supabase-js', () => ({
     createClient: jest.fn(() => mockSupabase)
 }));
 
 jest.unstable_mockModule('../config/redis.js', () => ({
-    getRedisClient: jest.fn(() => Promise.resolve(null))
+    getRedisClient: jest.fn(() => Promise.resolve(mockRedis)),
+    isRedisAvailable: jest.fn(() => true)
 }));
 
 jest.unstable_mockModule('../config/gemini.js', () => ({
@@ -56,7 +64,8 @@ jest.unstable_mockModule('../middleware/rateLimiter.js', () => ({
     authLimiter: (req, res, next) => next(),
     apiLimiter: (req, res, next) => next(),
     redeemLimiter: (req, res, next) => next(),
-    accountRedeemLimiter: (req, res, next) => next()
+    accountRedeemLimiter: (req, res, next) => next(),
+    consumeLimiter: (req, res, next) => next()
 }));
 
 jest.unstable_mockModule('../middleware/cache.js', () => ({

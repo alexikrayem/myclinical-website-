@@ -1,41 +1,11 @@
 import express from 'express';
-import dotenv from 'dotenv';
 import { supabaseAdmin as supabase } from '../config/supabase.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { AppError } from '../utils/errors.js';
-
-dotenv.config();
+import logger from '../config/logger.js';
+import { authenticateUser } from '../middleware/userAuth.js';
 
 const router = express.Router();
-
-/**
- * @swagger
- * /research/{id}/pdf:
- *   get:
- *     summary: Get secure PDF viewing URL (authenticated users only)
- *     tags: [Research]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *         description: Research paper ID
- *     responses:
- *       200:
- *         description: Signed URL for PDF viewing
- *       401:
- *         description: Unauthorized
- *       404:
- *         description: Research not found
- */
-import { authenticateUser } from '../middleware/userAuth.js'; // Added import
-
-// ... imports
-
-// ... existing code ...
 
 router.get('/:id/pdf', authenticateUser, asyncHandler(async (req, res) => {
     try {
@@ -106,7 +76,7 @@ router.get('/:id/pdf', authenticateUser, asyncHandler(async (req, res) => {
                 });
 
             if (signedUrlError) {
-                console.error('Error creating signed URL:', signedUrlError);
+                logger.error('Error creating signed URL:', signedUrlError);
                 throw new AppError('Failed to generate PDF URL', 500, 'PDF_SIGNED_URL_FAILED');
             }
 
@@ -127,7 +97,7 @@ router.get('/:id/pdf', authenticateUser, asyncHandler(async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error fetching PDF:', error);
+        logger.error('Error fetching PDF:', error);
         throw new AppError('Failed to get PDF', 500, 'PDF_FETCH_FAILED');
     }
 }));

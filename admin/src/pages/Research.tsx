@@ -13,6 +13,7 @@ interface ResearchItem {
   authors: string[];
   publication_date: string;
   file_url: string;
+  is_featured: boolean;
 }
 
 const Research: React.FC = () => {
@@ -159,8 +160,15 @@ const Research: React.FC = () => {
                 {researches.map((research) => (
                   <tr key={research.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4">
-                      <div className="text-sm font-medium text-gray-900 line-clamp-2">
-                        {research.title}
+                      <div className="flex items-center gap-2">
+                        <div className="text-sm font-medium text-gray-900 line-clamp-2">
+                          {research.title}
+                        </div>
+                        {research.is_featured && (
+                          <span className="inline-flex flex-shrink-0 px-2 py-0.5 text-[10px] font-bold rounded-full bg-blue-100 text-blue-800 border border-blue-200">
+                            مميز
+                          </span>
+                        )}
                       </div>
                       <div className="text-sm text-gray-500 line-clamp-2 mt-1">
                         {research.abstract.substring(0, 150)}...

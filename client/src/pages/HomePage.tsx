@@ -125,7 +125,7 @@ const HomePage: React.FC = () => {
               </p>
 
               {/* Content Carousel */}
-              <HeroCarousel />
+              <HeroCarousel variant="static" />
             </div>
 
             {/* Visual Content (Left) */}

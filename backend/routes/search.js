@@ -1,8 +1,7 @@
 import express from 'express';
-import dotenv from 'dotenv';
 import { query, validationResult } from 'express-validator';
 import { searchLimiter } from '../middleware/rateLimiter.js';
-import { sanitizeSearchInput } from '../utils/searchUtils.js';
+import { sanitizeSearchInput, buildFtsQuery } from '../utils/searchUtils.js';
 import { ensureMeiliIndexes, getMeiliClient, isMeiliEnabled } from '../services/search/meiliClient.js';
 import { normalizeQuery } from '../services/search/normalize.js';
 import { getHitScore, orderByIdList } from '../services/search/searchService.js';
@@ -10,8 +9,7 @@ import { MERGED_FETCH_CAP, SEARCH_TYPE_WEIGHTS } from '../services/search/search
 import { supabasePublic as supabase } from '../config/supabase.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { AppError } from '../utils/errors.js';
-
-dotenv.config();
+import logger from '../config/logger.js';
 
 const router = express.Router();
 
@@ -191,12 +189,13 @@ router.get('/',
             byType: resultsByType
           });
         } catch (meiliError) {
-          console.error('Meilisearch unified search failed, falling back:', meiliError);
+          logger.error('Meilisearch unified search failed, falling back:', meiliError);
         }
       }
 
-      // Fallback: Supabase ilike search
+      // Fallback: Supabase FTS search
       const sanitized = sanitizeSearchInput(rawQuery);
+      const ftsString = buildFtsQuery(rawQuery);
       const resultsByType = {};
       let combined = [];
       let totalCombined = 0;
@@ -207,7 +206,7 @@ router.get('/',
           supabase
             .from('articles')
             .select('id, title, excerpt, cover_image, author, tags, is_featured, publication_date, article_type, slug', { count: 'exact' })
-            .or(`title.ilike.%${sanitized}%,excerpt.ilike.%${sanitized}%,author.ilike.%${sanitized}%`)
+            .or(`title.fts."${ftsString}",excerpt.fts."${ftsString}",author.fts."${ftsString}"`)
             .order('publication_date', { ascending: false })
             .range(offset, offset + limit - 1)
         );
@@ -220,7 +219,7 @@ router.get('/',
           supabase
             .from('researches')
             .select('id, title, journal, abstract, publication_date, authors', { count: 'exact' })
-            .or(`title.ilike.%${sanitized}%,abstract.ilike.%${sanitized}%,journal.ilike.%${sanitized}%`)
+            .or(`title.fts."${ftsString}",abstract.fts."${ftsString}",journal.fts."${ftsString}"`)
             .order('publication_date', { ascending: false })
             .range(offset, offset + limit - 1)
         );
@@ -233,7 +232,7 @@ router.get('/',
           supabase
             .from('video_courses')
             .select('id, title, description, cover_image, publication_date, author, categories, is_featured, credits_required, rating, total_students, duration, level', { count: 'exact' })
-            .or(`title.ilike.%${sanitized}%,description.ilike.%${sanitized}%,author.ilike.%${sanitized}%`)
+            .or(`title.fts."${ftsString}",description.fts."${ftsString}",author.fts."${ftsString}"`)
             .order('publication_date', { ascending: false })
             .range(offset, offset + limit - 1)
         );
@@ -301,7 +300,7 @@ router.get('/',
         fallback: true
       });
     } catch (error) {
-      console.error('Unified search error:', error);
+      logger.error('Unified search error:', error);
       throw new AppError('Search failed', 500, 'SEARCH_FAILED');
     }
   })

@@ -1,6 +1,5 @@
 import express from 'express';
 import bcrypt from 'bcryptjs';
-import dotenv from 'dotenv';
 import {
     authenticateUser,
     generateToken,
@@ -11,35 +10,42 @@ import {
 import { validate, schemas } from '../middleware/validation.js';
 import { authLimiter } from '../middleware/rateLimiter.js';
 import { trackLoginAttempt, checkLoginAllowed } from '../middleware/auth.js';
-import { normalizePhoneNumber } from '../utils/phone.js';
-import { supabaseAdmin as supabase } from '../config/supabase.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { AppError } from '../utils/errors.js';
-
-dotenv.config();
+import { validatePasswordStrength } from '../config/security.js';
+import logger from '../config/logger.js';
+import { supabasePublic as supabase, supabaseAdmin } from '../config/supabase.js';
 
 const router = express.Router();
 
 const SALT_ROUNDS = 12;
 
-// Validate password strength
-const isValidPassword = (password) => {
-    // Minimum 8 characters, at least one letter and one number
-    return password.length >= 8 && /[a-zA-Z]/.test(password) && /\d/.test(password);
+/**
+ * Normalizes phone numbers for consistency
+ */
+const normalizePhoneNumber = (phone) => {
+    if (!phone) return null;
+    // Remove all non-numeric characters
+    let cleaned = phone.replace(/\D/g, '');
+    // Handle Arabic numbers if any (basic normalization)
+    cleaned = cleaned.replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
+    return cleaned;
 };
+
+// (REMOVED local isValidPassword, using centralized version from config/security.js)
 
 /**
  * POST /api/auth/register
  * Register a new user with phone + password
  */
-router.post('/register', validate(schemas.register), asyncHandler(async (req, res) => {
+router.post('/register', authLimiter, validate(schemas.register), asyncHandler(async (req, res) => {
     try {
         const { phone_number, password, display_name } = req.body;
 
         const normalizedPhone = normalizePhoneNumber(phone_number);
 
-        // Check if phone already exists
-        const { data: existingUser } = await supabase
+        // Check if phone already exists (admin client bypasses RLS)
+        const { data: existingUser } = await supabaseAdmin
             .from('users')
             .select('id')
             .eq('phone_number', normalizedPhone)
@@ -55,8 +61,8 @@ router.post('/register', validate(schemas.register), asyncHandler(async (req, re
         // Hash password
         const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
-        // Create user
-        const { data: newUser, error: createError } = await supabase
+        // Create user (admin client needed — no session exists yet so anon/public RLS would block insert)
+        const { data: newUser, error: createError } = await supabaseAdmin
             .from('users')
             .insert({
                 phone_number: normalizedPhone,
@@ -67,8 +73,8 @@ router.post('/register', validate(schemas.register), asyncHandler(async (req, re
             .single();
 
         if (createError) {
-            console.error('Error creating user:', createError);
-            
+            logger.error('Error creating user:', createError);
+
             // Check if it's a unique violation (phone number already exists)
             if (createError.code === '23505') { // PostgreSQL unique violation code
                 return res.status(409).json({
@@ -76,7 +82,7 @@ router.post('/register', validate(schemas.register), asyncHandler(async (req, re
                     code: 'PHONE_EXISTS'
                 });
             }
-            
+
             return res.status(500).json({
                 error: 'فشل إنشاء الحساب',
                 code: 'CREATE_FAILED'
@@ -84,7 +90,7 @@ router.post('/register', validate(schemas.register), asyncHandler(async (req, re
         }
 
         if (!newUser || !newUser.id) {
-            console.error('User creation returned no data');
+            logger.error('User creation returned no data');
             return res.status(500).json({
                 error: 'فشل إنشاء الحساب',
                 code: 'CREATE_FAILED'
@@ -99,7 +105,7 @@ router.post('/register', validate(schemas.register), asyncHandler(async (req, re
             .single();
 
         if (verifyError || !verifyUser) {
-            console.error('User verification failed after insert:', verifyError);
+            logger.error('User verification failed after insert:', verifyError);
             return res.status(500).json({
                 error: 'فشل إنشاء الحساب',
                 code: 'CREATE_FAILED'
@@ -108,7 +114,7 @@ router.post('/register', validate(schemas.register), asyncHandler(async (req, re
 
         try {
             // Initialize user credits (custom_user_id only, user_id is for auth.users)
-            const { error: creditsError } = await supabase
+            const { error: creditsError } = await supabaseAdmin
                 .from('user_credits')
                 .insert({
                     custom_user_id: newUser.id,
@@ -120,33 +126,33 @@ router.post('/register', validate(schemas.register), asyncHandler(async (req, re
                 });
 
             if (creditsError) {
-                console.error('Error creating user credits (non-fatal):', creditsError);
+                logger.error('Error creating user credits (non-fatal):', creditsError);
                 // Non-fatal: user can still use the app, credits will be created on first use
             }
         } catch (creditsError) {
-            console.error('Exception creating user credits (non-fatal):', creditsError);
+            logger.error('Exception creating user credits (non-fatal):', creditsError);
             // Still allow registration to succeed even if credits creation fails
         }
 
         // Generate token and create session
         const token = generateToken(newUser.id);
         const deviceInfo = req.headers['user-agent'] || null;
-        const ipAddress = req.ip || req.connection.remoteAddress;
+        const ipAddress = req.ip || req.socket?.remoteAddress;
 
         try {
             await createSession(newUser.id, token, deviceInfo, ipAddress);
         } catch (sessionError) {
-            console.error('Error creating session:', sessionError);
-            
+            logger.error('Error creating session:', sessionError);
+
             // Compensating transaction: remove the user we just created to avoid a zombie account
             try {
                 // Delete user_credits first if they were created
-                await supabase.from('user_credits').delete().eq('custom_user_id', newUser.id);
+                await supabaseAdmin.from('user_credits').delete().eq('custom_user_id', newUser.id);
                 // Delete the user record
-                await supabase.from('users').delete().eq('id', newUser.id);
-                console.log(`Compensating transaction successful for user ${newUser.id}`);
+                await supabaseAdmin.from('users').delete().eq('id', newUser.id);
+                logger.info(`Compensating transaction successful for user ${newUser.id}`);
             } catch (cleanupError) {
-                console.error(`Failed to cleanup zombie user ${newUser.id} after session failure:`, cleanupError);
+                logger.error(`Failed to cleanup zombie user ${newUser.id} after session failure:`, cleanupError);
             }
 
             // If session creation fails, we should return an error
@@ -168,8 +174,7 @@ router.post('/register', validate(schemas.register), asyncHandler(async (req, re
         });
 
     } catch (error) {
-        console.error('Registration error:', error);
-        console.error('Error details:', {
+        logger.error('Registration error:', {
             message: error.message,
             stack: error.stack,
             code: error.code
@@ -191,7 +196,7 @@ router.post('/login', authLimiter, checkLoginAllowed, validate(schemas.login), a
         // Find user
         const { data: user, error: findError } = await supabase
             .from('users')
-            .select('*')
+            .select('id, phone_number, password_hash, display_name, is_active')
             .eq('phone_number', normalizedPhone)
             .single();
 
@@ -230,7 +235,7 @@ router.post('/login', authLimiter, checkLoginAllowed, validate(schemas.login), a
         // Generate token and create session
         const token = generateToken(user.id);
         const deviceInfo = req.headers['user-agent'] || null;
-        const ipAddress = req.ip || req.connection.remoteAddress;
+        const ipAddress = req.ip || req.socket?.remoteAddress;
 
         await createSession(user.id, token, deviceInfo, ipAddress);
 
@@ -252,7 +257,7 @@ router.post('/login', authLimiter, checkLoginAllowed, validate(schemas.login), a
         });
 
     } catch (error) {
-        console.error('Login error:', error);
+        logger.error('Login error:', error);
         throw new AppError('حدث خطأ أثناء تسجيل الدخول', 500, 'SERVER_ERROR');
     }
 }));
@@ -270,7 +275,7 @@ router.post('/logout', authenticateUser, asyncHandler(async (req, res) => {
             message: 'تم تسجيل الخروج بنجاح'
         });
     } catch (error) {
-        console.error('Logout error:', error);
+        logger.error('Logout error:', error);
         throw new AppError('حدث خطأ أثناء تسجيل الخروج', 500, 'SERVER_ERROR');
     }
 }));
@@ -288,7 +293,7 @@ router.post('/logout-all', authenticateUser, asyncHandler(async (req, res) => {
             message: 'تم تسجيل الخروج من جميع الأجهزة'
         });
     } catch (error) {
-        console.error('Logout all error:', error);
+        logger.error('Logout all error:', error);
         throw new AppError('حدث خطأ', 500, 'SERVER_ERROR');
     }
 }));
@@ -342,7 +347,7 @@ router.get('/profile', authenticateUser, asyncHandler(async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Profile error:', error);
+        logger.error('Profile error:', error);
         throw new AppError('حدث خطأ', 500, 'SERVER_ERROR');
     }
 }));
@@ -373,7 +378,7 @@ router.put('/profile', authenticateUser, asyncHandler(async (req, res) => {
             user: updatedUser
         });
     } catch (error) {
-        console.error('Update profile error:', error);
+        logger.error('Update profile error:', error);
         throw new AppError('حدث خطأ أثناء التحديث', 500, 'SERVER_ERROR');
     }
 }));
@@ -393,9 +398,10 @@ router.put('/change-password', authenticateUser, asyncHandler(async (req, res) =
             });
         }
 
-        if (!isValidPassword(new_password)) {
+        const pwdValidation = validatePasswordStrength(new_password);
+        if (!pwdValidation.valid) {
             return res.status(400).json({
-                error: 'كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل وتحتوي على حرف ورقم',
+                error: pwdValidation.errors.join(', '),
                 code: 'WEAK_PASSWORD'
             });
         }
@@ -440,7 +446,7 @@ router.put('/change-password', authenticateUser, asyncHandler(async (req, res) =
             token
         });
     } catch (error) {
-        console.error('Change password error:', error);
+        logger.error('Change password error:', error);
         throw new AppError('حدث خطأ أثناء تغيير كلمة المرور', 500, 'SERVER_ERROR');
     }
 }));

@@ -1,9 +1,6 @@
 import axios from 'axios';
-import dotenv from 'dotenv';
 import logger from '../config/logger.js';
 import { AppError } from '../utils/errors.js';
-
-dotenv.config();
 
 const VDO_API_SECRET = process.env.VDOCIPHER_API_SECRET;
 const VDO_BASE_URL = 'https://dev.vdocipher.com/api/videos';

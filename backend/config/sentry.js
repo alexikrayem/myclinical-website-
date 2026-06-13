@@ -2,6 +2,7 @@ import * as Sentry from '@sentry/node';
 
 /**
  * Initialize Sentry for error monitoring
+ * Updated for @sentry/node v10+ (Handlers API removed)
  * @param {Express} app - Express application instance
  */
 export const initSentry = (app) => {
@@ -17,10 +18,7 @@ export const initSentry = (app) => {
         environment: process.env.NODE_ENV || 'development',
         tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
         integrations: [
-            // Enable HTTP calls tracing
             Sentry.httpIntegration({ tracing: true }),
-            // Enable Express tracing
-            Sentry.expressIntegration({ app }),
         ],
     });
 
@@ -28,40 +26,36 @@ export const initSentry = (app) => {
 };
 
 /**
- * Sentry request handler middleware
- * Must be the first middleware
+ * Sentry request handler middleware (v10 compatible no-op shim)
+ * In v10, request context is captured automatically via httpIntegration.
  */
-export const sentryRequestHandler = (req, res, next) => {
-    if (Sentry.Handlers && Sentry.Handlers.requestHandler) {
-        return Sentry.Handlers.requestHandler()(req, res, next);
-    }
-    next();
-};
+export const sentryRequestHandler = (req, res, next) => next();
 
 /**
- * Sentry tracing handler middleware
- * Must be after request handler
+ * Sentry tracing handler middleware (v10 compatible no-op shim)
+ * Tracing is handled automatically by httpIntegration.
  */
-export const sentryTracingHandler = (req, res, next) => {
-    if (Sentry.Handlers && Sentry.Handlers.tracingHandler) {
-        return Sentry.Handlers.tracingHandler()(req, res, next);
-    }
-    next();
-};
+export const sentryTracingHandler = (req, res, next) => next();
 
 /**
- * Sentry error handler middleware
- * Must be before any other error handlers
+ * Sentry error handler middleware (v10 compatible)
+ * Must be placed BEFORE the app's own error handler.
  */
 export const sentryErrorHandler = (err, req, res, next) => {
-    if (Sentry.Handlers && Sentry.Handlers.errorHandler) {
-        return Sentry.Handlers.errorHandler()(err, req, res, next);
-    }
-    // Manual capture for newer SDKs if Handlers is missing but DSN is present
     if (process.env.SENTRY_DSN) {
         Sentry.captureException(err);
     }
     next(err);
+};
+
+/**
+ * Wire up Sentry Express error handler on the app (call after all routes).
+ * This replaces the deprecated Sentry.Handlers.errorHandler() from v7/v8.
+ */
+export const setupSentryErrorHandler = (app) => {
+    if (process.env.SENTRY_DSN) {
+        Sentry.setupExpressErrorHandler(app);
+    }
 };
 
 /**
@@ -81,8 +75,6 @@ export const captureException = (error, context = {}) => {
 export const captureMessage = (message, level = 'info') => {
     if (process.env.SENTRY_DSN) {
         Sentry.captureMessage(message, level);
-    } else {
-        // Optional: console.log(`[(Sentry Disabled) Message]: ${message}`);
     }
 };
 

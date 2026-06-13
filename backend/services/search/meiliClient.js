@@ -53,7 +53,7 @@ async function ensureIndex(client, config) {
 }
 
 export async function ensureMeiliIndexes() {
-  if (!isMeiliEnabled()) return false;
+  if (!isMeiliEnabled() || process.env.NODE_ENV === 'test') return false;
   if (initPromise) return initPromise;
 
   initPromise = (async () => {

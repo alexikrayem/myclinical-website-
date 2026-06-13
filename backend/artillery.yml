@@ -1,0 +1,45 @@
+config:
+  target: "http://localhost:5005"
+  plugins:
+    metrics-by-endpoint: {}
+  processor: "./scripts/maintenance/artillery-functions.cjs"
+  phases:
+    - duration: 10
+      arrivalRate: 5
+      name: "Warm up"
+    - duration: 20
+      arrivalRate: 5
+      rampTo: 30
+      name: "Ramp up load"
+    - duration: 30
+      arrivalRate: 30
+      name: "Cruising phase"
+    - duration: 10
+      arrivalRate: 60
+      name: "Crash test"
+  defaults:
+    headers:
+      Content-Type: "application/json"
+      Accept: "application/json"
+
+scenarios:
+  - name: "Health Check Flow"
+    weight: 2
+    flow:
+      - get:
+          url: "/health"
+          beforeRequest: "injectRandomIP"
+
+  - name: "Search API Workload"
+    weight: 5
+    flow:
+      - get:
+          url: "/api/search?q=teeth"
+          beforeRequest: "injectRandomIP"
+
+  - name: "Articles Fetch Workload"
+    weight: 3
+    flow:
+      - get:
+          url: "/api/articles?page=1&limit=10"
+          beforeRequest: "injectRandomIP"

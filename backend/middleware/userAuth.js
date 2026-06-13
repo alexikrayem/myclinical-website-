@@ -1,10 +1,8 @@
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
-import dotenv from 'dotenv';
 import { getRedisClient } from '../config/redis.js';
 import { supabaseAdmin } from '../config/supabase.js';
-
-dotenv.config();
+import logger from '../config/logger.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -47,7 +45,7 @@ export const authenticateUser = async (req, res, next) => {
                     return next();
                 }
             } catch (err) {
-                console.error('Redis cache error:', err);
+                logger.error('Redis cache error:', err);
             }
         }
 
@@ -92,10 +90,10 @@ export const authenticateUser = async (req, res, next) => {
                     user: req.user,
                     sessionId: req.sessionId
                 };
-                // Cache for 1 hour to reduce DB hits
-                await redisClient.set(cacheKey, JSON.stringify(payload), { EX: 3600 });
+                // Cache for 5 minutes to balance performance and security invalidation
+                await redisClient.set(cacheKey, JSON.stringify(payload), { EX: 300 });
             } catch (err) {
-                console.error('Redis set error:', err);
+                logger.error('Redis set error:', err);
             }
         }
 
@@ -115,7 +113,7 @@ export const authenticateUser = async (req, res, next) => {
             });
         }
 
-        console.error('Authentication error:', error);
+        logger.error('Authentication error:', error);
         res.status(500).json({
             error: 'خطأ في المصادقة',
             code: 'AUTH_ERROR'
@@ -193,7 +191,7 @@ export const createSession = async (userId, token, deviceInfo = null, ipAddress 
         .single();
 
     if (error) {
-        console.error('Error creating session:', error);
+        logger.error('Error creating session:', error);
         throw error;
     }
 
@@ -217,14 +215,14 @@ export const invalidateSession = async (sessionId) => {
         .eq('id', sessionId);
 
     if (error) {
-        console.error('Error invalidating session:', error);
+        logger.error('Error invalidating session:', error);
         throw error;
     }
 
     if (sessionData && sessionData.token_hash) {
         const redisClient = await getRedisClient();
         if (redisClient) {
-            await redisClient.del(`session:${sessionData.token_hash}`).catch(e => console.error('Redis del error:', e));
+            await redisClient.del(`session:${sessionData.token_hash}`).catch(e => logger.error('Redis del error:', e));
         }
     }
 };
@@ -246,7 +244,7 @@ export const invalidateAllUserSessions = async (userId) => {
         .eq('user_id', userId);
 
     if (error) {
-        console.error('Error invalidating sessions:', error);
+        logger.error('Error invalidating sessions:', error);
         throw error;
     }
 
@@ -255,10 +253,11 @@ export const invalidateAllUserSessions = async (userId) => {
         if (redisClient) {
             const keys = sessions.map(s => `session:${s.token_hash}`);
             if (keys.length > 0) {
-                await redisClient.del(keys).catch(e => console.error('Redis del error:', e));
+                await redisClient.del(keys).catch(e => logger.error('Redis del error:', e));
             }
         }
     }
 };
 
-export { JWT_SECRET };
+// End of file. JWT_SECRET is kept private to this module.
+

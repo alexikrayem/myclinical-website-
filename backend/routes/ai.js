@@ -6,15 +6,13 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { authenticateToken } from '../middleware/auth.js';
-import dotenv from 'dotenv';
-
+import pdf from 'pdf-parse';
+import mammoth from 'mammoth';
 import { supabaseAdmin as supabase } from '../config/supabase.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { AppError } from '../utils/errors.js';
 import { getGenerativeModel } from '../config/gemini.js';
 import logger from '../config/logger.js';
-
-dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -69,17 +67,17 @@ async function extractTextFromFile(filePath, mimetype) {
     if (mimetype === 'text/plain') {
       return fs.readFileSync(filePath, 'utf8');
     } else if (mimetype === 'application/pdf') {
-      // For PDF files, we'll need a PDF parser
-      // For now, return a placeholder - you can integrate pdf-parse or similar
-      return 'PDF content extraction would be implemented here with pdf-parse library';
-    } else if (mimetype.includes('word')) {
-      // For Word documents, you can use mammoth.js or similar
-      return 'Word document content extraction would be implemented here with mammoth.js';
+      const dataBuffer = fs.readFileSync(filePath);
+      const data = await pdf(dataBuffer);
+      return data.text;
+    } else if (mimetype.includes('word') || mimetype.includes('officedocument.wordprocessingml.document')) {
+      const result = await mammoth.extractRawText({ path: filePath });
+      return result.value;
     }
     return '';
   } catch (error) {
-    logger.error('Error extracting text from file:', { error });
-    throw new Error('Failed to extract text from file');
+    logger.error('Error extracting text from file:', { error, mimetype });
+    throw new Error(`Failed to extract text from ${mimetype} file`);
   }
 }
 
@@ -231,12 +229,12 @@ Example Response:
         throw new Error('AI response is not an array');
       }
 
-    res.json({
-      success: true,
-      tags: suggestedTags,
-      message: 'Tags suggested successfully'
-    });
-  } catch (parseError) {
+      res.json({
+        success: true,
+        tags: suggestedTags,
+        message: 'Tags suggested successfully'
+      });
+    } catch (parseError) {
       logger.error('Error parsing AI response:', { text });
       throw new AppError('Failed to parse suggested tags from AI', 500, 'AI_TAGS_PARSE_FAILED');
     }

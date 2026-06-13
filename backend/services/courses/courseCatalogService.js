@@ -1,4 +1,4 @@
-import { sanitizeSearchInput } from '../../utils/searchUtils.js';
+import { sanitizeSearchInput, buildFtsQuery } from '../../utils/searchUtils.js';
 import { meiliSearch, orderByIdList } from '../search/searchService.js';
 import { AppError } from '../../utils/errors.js';
 import logger from '../../config/logger.js';
@@ -90,9 +90,9 @@ export async function listPublicCourses(supabase, params) {
       };
     }
 
-    const sanitizedSearch = sanitizeSearchInput(search);
-    if (sanitizedSearch) {
-      query = query.or(`title.ilike.%${sanitizedSearch}%,description.ilike.%${sanitizedSearch}%,author.ilike.%${sanitizedSearch}%`);
+    const ftsString = buildFtsQuery(search);
+    if (ftsString) {
+      query = query.or(`title.fts."${ftsString}",description.fts."${ftsString}",author.fts."${ftsString}"`);
     }
   }
 

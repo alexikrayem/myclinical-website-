@@ -1,73 +1,31 @@
-
 import { jest } from '@jest/globals';
+import { mockSupabase, resetSupabaseMock } from './mocks/supabaseMock.js';
+import { mockRedis } from './mocks/redisMock.js';
+import { mockRateLimiters, mockCache } from './mocks/middlewareMock.js';
 
 // --- Mocks Setup ---
-const createSupabaseMock = () => {
-    const builder = {
-        from: jest.fn().mockReturnThis(),
-        select: jest.fn().mockReturnThis(),
-        insert: jest.fn().mockReturnThis(),
-        update: jest.fn().mockReturnThis(),
-        delete: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        gt: jest.fn().mockReturnThis(),
-        gte: jest.fn().mockReturnThis(),
-        lt: jest.fn().mockReturnThis(),
-        lte: jest.fn().mockReturnThis(),
-        single: jest.fn(),
-        order: jest.fn().mockReturnThis(),
-        limit: jest.fn().mockReturnThis(),
-        range: jest.fn().mockReturnThis(),
-        contains: jest.fn().mockReturnThis(),
-        or: jest.fn().mockReturnThis(),
-        upload: jest.fn(),
-        getPublicUrl: jest.fn(),
-        auth: {
-            signUp: jest.fn(),
-            signInWithPassword: jest.fn(),
-            getUser: jest.fn()
-        },
-        storage: {
-            from: jest.fn().mockReturnThis(),
-            upload: jest.fn(),
-            getPublicUrl: jest.fn()
-        },
-        // Make the builder itself waitable
-        then: function (resolve, reject) {
-            resolve({ data: {}, error: null });
-        }
-    };
-    return builder;
-};
-
-const mockSupabase = createSupabaseMock();
-
-jest.unstable_mockModule('@supabase/supabase-js', () => ({
-    createClient: jest.fn(() => mockSupabase)
+jest.unstable_mockModule('../config/supabase.js', () => ({
+    supabaseAdmin: mockSupabase,
+    supabasePublic: mockSupabase
 }));
 
 jest.unstable_mockModule('../config/redis.js', () => ({
-    getRedisClient: jest.fn().mockResolvedValue(null),
-    isRedisAvailable: jest.fn().mockReturnValue(false)
+    getRedisClient: jest.fn(() => Promise.resolve(mockRedis)),
+    isRedisAvailable: jest.fn(() => true)
 }));
 
-// Mock rate limiters
-jest.unstable_mockModule('../middleware/rateLimiter.js', () => ({
-    apiLimiter: (req, res, next) => next(),
-    authLimiter: (req, res, next) => next(),
-    uploadLimiter: (req, res, next) => next(),
-    aiLimiter: (req, res, next) => next(),
-    searchLimiter: (req, res, next) => next(),
-    redeemLimiter: (req, res, next) => next(),
-    accountRedeemLimiter: (req, res, next) => next(),
-    limiters: {}
-}));
+jest.unstable_mockModule('../middleware/rateLimiter.js', () => mockRateLimiters);
+jest.unstable_mockModule('../middleware/cache.js', () => mockCache);
 
-// Mock cache
-jest.unstable_mockModule('../middleware/cache.js', () => ({
-    cacheMiddleware: () => (req, res, next) => next(),
-    invalidateCache: jest.fn(),
-    invalidateCachePattern: jest.fn()
+export const mockLogger = {
+    info: jest.fn(),
+    error: jest.fn((...args) => console.log('LOGGER ERROR:', ...args)),
+    warn: jest.fn(),
+    debug: jest.fn(),
+    log: jest.fn()
+};
+jest.unstable_mockModule('../config/logger.js', () => ({
+    default: mockLogger
 }));
 
 // Mock jsonwebtoken
@@ -99,22 +57,13 @@ describe('Admin Routes Integration Tests', () => {
     const validToken = 'valid-admin-token';
 
     beforeEach(() => {
+        resetSupabaseMock();
         jest.clearAllMocks();
-        mockSupabase.from.mockReturnThis();
-        mockSupabase.select.mockReturnThis();
-        mockSupabase.insert.mockReturnThis();
-        mockSupabase.update.mockReturnThis();
-        mockSupabase.delete.mockReturnThis();
-        mockSupabase.eq.mockReturnThis();
-        mockSupabase.order.mockReturnThis();
-        mockSupabase.limit.mockReturnThis();
-        mockSupabase.single.mockReset();
     });
 
     describe('POST /api/admin/login', () => {
         it('should login successfully with correct credentials', async () => {
-            // Mock signInWithPassword
-            mockSupabase.auth.signInWithPassword.mockResolvedValue({
+            mockSupabase.auth.signInWithPassword.mockResolvedValueOnce({
                 data: {
                     user: { id: adminUser.id, email: adminUser.email },
                     session: { access_token: validToken, expires_at: 1234567890 }
@@ -122,8 +71,7 @@ describe('Admin Routes Integration Tests', () => {
                 error: null
             });
 
-            // Mock admin check
-            mockSupabase.single.mockResolvedValue({
+            mockSupabase.single.mockResolvedValueOnce({
                 data: adminUser,
                 error: null
             });
@@ -138,8 +86,7 @@ describe('Admin Routes Integration Tests', () => {
         });
 
         it('should fail if not an admin', async () => {
-            // Mock signInWithPassword success
-            mockSupabase.auth.signInWithPassword.mockResolvedValue({
+            mockSupabase.auth.signInWithPassword.mockResolvedValueOnce({
                 data: {
                     user: { id: 'user-123', email: 'user@example.com' },
                     session: { access_token: 'user-token' }
@@ -147,8 +94,7 @@ describe('Admin Routes Integration Tests', () => {
                 error: null
             });
 
-            // Mock admin check to return null (not found in admins table)
-            mockSupabase.single.mockResolvedValue({
+            mockSupabase.single.mockResolvedValueOnce({
                 data: null,
                 error: { code: 'PGRST116', message: 'Not found' }
             });
@@ -164,32 +110,27 @@ describe('Admin Routes Integration Tests', () => {
 
     describe('POST /api/admin/articles', () => {
         it('should create a new article', async () => {
-            // Mock auth: getUser (called by authenticateToken)
-            mockSupabase.auth.getUser.mockResolvedValueOnce({
-                data: { user: adminUser },
-                error: null
+            mockSupabase.auth.getUser.mockImplementation((token) => {
+                if (token === validToken) return Promise.resolve({ data: { user: adminUser }, error: null });
+                return Promise.resolve({ data: { user: null }, error: new Error('Invalid token') });
             });
 
-            // Mock admin check: single (called by authenticateToken)
-            mockSupabase.single.mockResolvedValueOnce({
-                data: adminUser,
-                error: null
+            mockSupabase.single.mockImplementation(() => {
+                // Return admin info for auth check
+                return Promise.resolve({ data: adminUser, error: null });
             });
 
-            // Mock article insert: then (called by route handler for insert().select())
-            mockSupabase.insert.mockReturnThis();
-            mockSupabase.select.mockReturnThis();
-            mockSupabase.then = jest.fn((resolve) => resolve({ data: [{ id: 'article-1', title: 'New Article' }], error: null }));
-
-            // NOTE: Since the route handles file upload to Supabase, we should mock that if we send a file.
-            // But for simplicity, we can test validation or send a JSON body with `cover_image_url` to bypass file upload.
+            // For the insert call, we don't use single() in the route handler, we use a chain ending in select().
+            // Our mock handles then() by returning {} by default. 
+            // We can override the results.
+            mockSupabase._results = { data: [{ id: 'article-1', title: 'New Article Title' }], error: null };
 
             const articleData = {
                 title: 'New Article Title',
                 excerpt: 'This is a short excerpt for the article.',
                 content: '<p>Content</p>',
                 author: 'Admin',
-                tags: '["health", "news"]', // Sent as string/multipart usually, but JSON body works if no file
+                tags: '["health", "news"]',
                 is_featured: 'true',
                 cover_image_url: 'http://example.com/image.jpg'
             };
@@ -199,6 +140,7 @@ describe('Admin Routes Integration Tests', () => {
                 .set('Authorization', `Bearer ${validToken}`)
                 .send(articleData);
 
+            console.log('RESPONSE STATUS:', res.status, 'BODY:', res.body);
             expect(res.status).toBe(201);
             expect(res.body).toHaveProperty('id', 'article-1');
         });

@@ -1,19 +1,9 @@
-import fs from 'fs'
 import fsPromises from 'fs/promises';
-import path from 'path';
+import { fileTypeFromBuffer, fileTypeFromFile } from 'file-type';
 import { sanitizeFileName } from './inputSanitizer.js';
-
-// File type magic numbers for validation
-const FILE_SIGNATURES = {
-  pdf: [0x25, 0x50, 0x44, 0x46], // %PDF
-  jpg: [0xFF, 0xD8, 0xFF],
-  jpeg: [0xFF, 0xD8, 0xFF], // Alias for jpg
-  png: [0x89, 0x50, 0x4E, 0x47],
-  gif: [0x47, 0x49, 0x46, 0x38], // GIF8 (GIF87a or GIF89a)
-  webp: [0x52, 0x49, 0x46, 0x46], // RIFF container (requires additional WEBP check)
-  doc: [0xD0, 0xCF, 0x11, 0xE0],
-  docx: [0x50, 0x4B, 0x03, 0x04], // ZIP-based
-};
+import logger from '../config/logger.js';
+import path from 'path';
+import fs from 'fs';
 
 // File types that don't have magic numbers - validate by content analysis
 const TEXT_BASED_TYPES = ['txt'];
@@ -28,61 +18,48 @@ const isValidTextFile = (buffer) => {
   return true;
 };
 
-// Validate file type using magic numbers (async version)
-export const validateFileTypeAsync = async (filePath, allowedTypes = ['pdf', 'jpg', 'png', 'doc', 'docx']) => {
+
+/**
+ * Validates a file type asynchronously using magic bytes
+ * @param {Buffer|string} input - The file buffer or path
+ * @param {string[]} allowedTypes - Array of allowed file types/extensions
+ * @returns {Promise<{valid: boolean, type: string|null}>}
+ */
+export const validateFileTypeAsync = async (input, allowedTypes = ['pdf', 'jpg', 'png', 'doc', 'docx']) => {
   try {
-    const buffer = await fsPromises.readFile(filePath);
-    const fileHeader = Array.from(buffer.slice(0, 8));
-
-    // Check magic-number based types first
-    for (const type of allowedTypes) {
-      const signature = FILE_SIGNATURES[type];
-      if (signature && signature.every((byte, index) => fileHeader[index] === byte)) {
-        return { valid: true, type };
-      }
+    let type;
+    if (Buffer.isBuffer(input)) {
+      type = await fileTypeFromBuffer(input);
+    } else if (typeof input === 'string') {
+      type = await fileTypeFromFile(input);
     }
 
-    // Check text-based types (no magic number - validate content)
-    for (const type of allowedTypes) {
-      if (TEXT_BASED_TYPES.includes(type) && isValidTextFile(buffer)) {
-        return { valid: true, type };
+    if (!type) {
+      // Fallback for text-based files
+      const isTextAllowed = allowedTypes.includes('txt');
+      if (isTextAllowed) {
+        const buffer = Buffer.isBuffer(input) ? input : await fsPromises.readFile(input);
+        if (isValidTextFile(buffer)) {
+          return { valid: true, type: 'txt' };
+        }
       }
+      return { valid: false, type: null };
     }
 
-    return { valid: false, type: null };
+    // Standardize comparison (e.g. jpeg -> jpg)
+    let detectedExt = type.ext;
+    if (detectedExt === 'jpeg') {
+      detectedExt = 'jpg';
+    }
+
+    const isValid = allowedTypes.includes(detectedExt);
+    return { valid: isValid, type: detectedExt };
   } catch (error) {
-    console.error('File validation error:', error);
+    logger.error('File type validation error:', error);
     return { valid: false, type: null };
   }
 };
 
-// Legacy sync version for backwards compatibility (deprecated)
-export const validateFileType = (filePath, allowedTypes = ['pdf', 'jpg', 'png', 'doc', 'docx']) => {
-  try {
-    const buffer = fs.readFileSync(filePath);
-    const fileHeader = Array.from(buffer.slice(0, 8));
-
-    // Check magic-number based types first
-    for (const type of allowedTypes) {
-      const signature = FILE_SIGNATURES[type];
-      if (signature && signature.every((byte, index) => fileHeader[index] === byte)) {
-        return { valid: true, type };
-      }
-    }
-
-    // Check text-based types (no magic number - validate content)
-    for (const type of allowedTypes) {
-      if (TEXT_BASED_TYPES.includes(type) && isValidTextFile(buffer)) {
-        return { valid: true, type };
-      }
-    }
-
-    return { valid: false, type: null };
-  } catch (error) {
-    console.error('File validation error:', error);
-    return { valid: false, type: null };
-  }
-};
 
 // Middleware to validate uploaded files (async)
 export const validateUploadedFile = (allowedTypes = ['pdf', 'jpg', 'png', 'doc', 'docx']) => {
@@ -94,92 +71,61 @@ export const validateUploadedFile = (allowedTypes = ['pdf', 'jpg', 'png', 'doc',
     // Validate file size
     const maxSize = process.env.MAX_FILE_SIZE || 5242880; // 5MB default
     if (req.file.size > maxSize) {
-      // For disk storage, delete the file
+      // Cleanup for disk storage
       if (req.file.path) {
         try {
           await fsPromises.unlink(req.file.path);
         } catch (unlinkError) {
-          console.error('Error deleting oversized file:', unlinkError);
+          logger.error('Error deleting oversized file:', unlinkError);
         }
       }
       return res.status(400).json({
-        error: `File too large. Maximum size is ${Math.floor(maxSize / 1024 / 1024)}MB`
+        error: `File too large. Maximum size is ${Math.floor(maxSize / 1024 / 1024)}MB`,
+        code: 'FILE_TOO_LARGE'
       });
     }
 
-    // For memory storage (req.file.buffer exists, no req.file.path)
-    if (req.file.buffer && !req.file.path) {
-      // Validate using buffer
-      const fileHeader = Array.from(req.file.buffer.slice(0, 8));
-      let isValid = false;
+    const input = req.file.buffer || req.file.path;
+    const validation = await validateFileTypeAsync(input, allowedTypes);
 
-      // Check magic-number based types first
-      for (const type of allowedTypes) {
-        const signature = FILE_SIGNATURES[type];
-        if (signature && signature.every((byte, index) => fileHeader[index] === byte)) {
-          isValid = true;
-          break;
-        }
-      }
+    if (!validation.valid) {
+      logger.warn(`File validation failed. Type: ${validation.type}, Allowed: ${allowedTypes.join(', ')}`);
 
-      // Check text-based types if not validated yet
-      if (!isValid) {
-        for (const type of allowedTypes) {
-          if (TEXT_BASED_TYPES.includes(type) && isValidTextFile(req.file.buffer)) {
-            isValid = true;
-            break;
-          }
-        }
-      }
-
-      if (!isValid) {
-        return res.status(400).json({
-          error: 'Invalid file type. Only PDF, DOC, DOCX, JPG, and PNG files are allowed.'
-        });
-      }
-
-      // Sanitize filename for memory storage
-      req.file.originalname = sanitizeFileName(req.file.originalname);
-      return next();
-    }
-
-    // For disk storage (original implementation)
-    if (req.file.path) {
-      // Validate file type using magic numbers
-      const validation = await validateFileTypeAsync(req.file.path, allowedTypes);
-      if (!validation.valid) {
+      // Cleanup for disk storage
+      if (req.file.path) {
         try {
           await fsPromises.unlink(req.file.path);
         } catch (unlinkError) {
-          console.error('Error deleting invalid file:', unlinkError);
+          logger.error('Error deleting invalid file:', unlinkError);
         }
-        return res.status(400).json({
-          error: 'Invalid file type. Only PDF, DOC, DOCX, JPG, and PNG files are allowed.'
-        });
       }
+      return res.status(400).json({
+        error: `Invalid file type. Allowed: ${allowedTypes.join(', ')}`,
+        code: 'INVALID_FILE_TYPE'
+      });
+    }
 
-      // Sanitize filename
-      const sanitizedName = sanitizeFileName(req.file.originalname);
-      const newPath = path.join(path.dirname(req.file.path), sanitizedName);
+    // Sanitize filename
+    req.file.originalname = sanitizeFileName(req.file.originalname);
 
+    // Handle renaming for disk storage (if applicable)
+    if (req.file.path) {
+      const sanitizedName = req.file.originalname;
+      const newPath = path.join(path.dirname(req.file.path), `${Date.now()}-${sanitizedName}`);
       try {
         await fsPromises.rename(req.file.path, newPath);
         req.file.path = newPath;
-        req.file.filename = sanitizedName;
+        req.file.filename = path.basename(newPath);
       } catch (error) {
-        console.error('Error renaming file:', error);
-        try {
-          await fsPromises.unlink(req.file.path);
-        } catch (unlinkError) {
-          console.error('Error deleting file after rename failure:', unlinkError);
-        }
-        return res.status(500).json({ error: 'Error processing uploaded file' });
+        logger.error('Error processing file on disk:', error);
+        return res.status(500).json({ error: 'Error processing file' });
       }
     }
 
     next();
   };
 };
+
 
 // Secure file access validation (async)
 export const validateFileAccessAsync = async (filePath) => {
@@ -222,16 +168,18 @@ export const validateFileAccess = (filePath) => {
 export const preventSensitiveFileAccess = (req, res, next) => {
   const filePath = req.path;
 
-  // List of patterns that should not be accessible
+  // Block access to sensitive system files/directories.
+  // NOTE: These patterns are anchored to prevent false-positives on legitimate
+  // medical content file names (e.g. 'keyboard-anatomy.pdf', 'turkey-dental.jpg').
   const blockedPatterns = [
-    /\.env/i,
-    /\.git/i,
-    /\.ssh/i,
-    /config/i,
-    /password/i,
-    /secret/i,
-    /key/i,
-    /node_modules/i,
+    /(\/|^)\.env(\.|$)/i,          // .env, .env.local, etc.
+    /(\/|^)\.git(\/|$)/i,          // .git directory
+    /(\/|^)\.ssh(\/|$)/i,          // .ssh directory
+    /(\/|^)node_modules(\/|$)/i,   // node_modules directory
+    /(\/|^)\.htaccess$/i,           // .htaccess files
+    /\.pem$/i,                      // PEM certificate/key files
+    /\.key$/i,                      // Explicit .key extension only
+    /\.pfx$/i,                      // PFX certificate files
   ];
 
   for (const pattern of blockedPatterns) {

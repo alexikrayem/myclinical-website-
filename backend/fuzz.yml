@@ -1,0 +1,35 @@
+config:
+  target: "http://localhost:5005"
+  payload:
+    path: "payloads.csv"
+    fields:
+      - "malicious"
+    order: "sequence"
+    cast: false
+  processor: "./artillery-functions.cjs"
+  phases:
+    - duration: 15
+      arrivalRate: 20
+      name: "Rapid Security Fuzzing"
+  defaults:
+    headers:
+      Content-Type: "application/json"
+      Accept: "application/json"
+
+scenarios:
+  - name: "XSS & SQLi Fuzzing - Search Endpoint"
+    weight: 5
+    flow:
+      - get:
+          url: "/api/search?q={{ malicious }}"
+          beforeRequest: "injectRandomIP"
+
+  - name: "Parameter Pollution & SQLi - Auth Login"
+    weight: 3
+    flow:
+      - post:
+          url: "/api/auth/login"
+          beforeRequest: "injectRandomIP"
+          json:
+            phone_number: "+962790000000"
+            password: "{{ malicious }}"
