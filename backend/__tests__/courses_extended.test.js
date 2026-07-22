@@ -50,6 +50,7 @@ const mockSupabaseClient = {
     order: jest.fn().mockReturnThis(),
     limit: jest.fn().mockReturnThis(),
     single: jest.fn(),
+    maybeSingle: jest.fn(),
     insert: jest.fn().mockReturnThis(),
     rpc: jest.fn()
 };
@@ -80,6 +81,7 @@ describe('Courses Extended API Tests', () => {
         mockSupabaseClient.order.mockReturnThis();
         mockSupabaseClient.limit.mockReturnThis();
         mockSupabaseClient.single.mockReset();
+        mockSupabaseClient.maybeSingle.mockReset();
         mockSupabaseClient.insert.mockReturnThis();
         mockSupabaseClient.rpc.mockReset();
     });
@@ -95,8 +97,8 @@ describe('Courses Extended API Tests', () => {
                 error: null
             });
 
-            // Mock challenge query
-            mockSupabaseClient.single.mockResolvedValueOnce({
+            // Mock challenge query (service uses .maybeSingle() here)
+            mockSupabaseClient.maybeSingle.mockResolvedValueOnce({
                 data: {
                     id: 'challenge-1',
                     challenge_type: 'math',

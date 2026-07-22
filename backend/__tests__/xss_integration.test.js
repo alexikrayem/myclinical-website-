@@ -65,7 +65,8 @@ jest.unstable_mockModule('../middleware/rateLimiter.js', () => ({
     apiLimiter: (req, res, next) => next(),
     redeemLimiter: (req, res, next) => next(),
     accountRedeemLimiter: (req, res, next) => next(),
-    consumeLimiter: (req, res, next) => next()
+    consumeLimiter: (req, res, next) => next(),
+    playbackLimiter: (req, res, next) => next()
 }));
 
 // Mock authentication middleware to bypass check
