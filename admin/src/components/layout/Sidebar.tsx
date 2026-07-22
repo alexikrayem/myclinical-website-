@@ -11,7 +11,8 @@ import {
   Video,
   CreditCard,
   LogOut,
-  Tag
+  Tag,
+  UserCheck
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -67,6 +68,12 @@ const Sidebar: React.FC = () => {
       label: 'إضافة بحث',
       path: '/research/create',
       color: 'text-purple-400',
+    },
+    {
+      icon: UserCheck,
+      label: 'طلبات التحقق',
+      path: '/verifications',
+      color: 'text-indigo-500',
     },
     {
       icon: Users,

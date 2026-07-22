@@ -11,12 +11,16 @@ if (!JWT_SECRET) {
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 
 /**
- * Middleware to authenticate regular users (not admins)
- * Uses JWT tokens stored in Authorization header
+ * Middleware to authenticate regular users (not admins).
+ * Token resolution order:
+ *   1. httpOnly cookie `user_session` (web clients)
+ *   2. Authorization: Bearer header (mobile / API clients)
  */
 export const authenticateUser = async (req, res, next) => {
+    const cookieToken = req.cookies?.user_session;
     const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
+    const headerToken = authHeader && authHeader.split(' ')[1];
+    const token = cookieToken || headerToken;
 
     if (!token) {
         return res.status(401).json({
@@ -80,7 +84,9 @@ export const authenticateUser = async (req, res, next) => {
             phoneNumber: session.users.phone_number,
             displayName: session.users.display_name,
             isActive: session.users.is_active,
-            createdAt: session.users.created_at
+            createdAt: session.users.created_at,
+            role: session.users.role || 'user',
+            verificationStatus: session.users.verification_status || 'none'
         };
         req.sessionId = session.id;
 
@@ -122,11 +128,16 @@ export const authenticateUser = async (req, res, next) => {
 };
 
 /**
- * Optional authentication - doesn't require token but adds user if present
+ * Optional authentication - doesn't require token but adds user if present.
+ * Performs the same DB session validation as authenticateUser, so revoked
+ * sessions do NOT get a populated req.user here either.
+ * Token resolution: httpOnly cookie first, then Authorization header (mobile).
  */
 export const optionalAuth = async (req, res, next) => {
+    const cookieToken = req.cookies?.user_session;
     const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
+    const headerToken = authHeader && authHeader.split(' ')[1];
+    const token = cookieToken || headerToken;
 
     if (!token) {
         req.user = null;
@@ -136,23 +147,67 @@ export const optionalAuth = async (req, res, next) => {
     try {
         const decoded = jwt.verify(token, JWT_SECRET);
 
-        const { data: user } = await supabaseAdmin
-            .from('users')
-            .select('*')
-            .eq('id', decoded.userId)
+        // Check Redis cache first (same path as authenticateUser)
+        const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+        const redisClient = await getRedisClient();
+        const cacheKey = `session:${tokenHash}`;
+
+        if (redisClient) {
+            try {
+                const cachedSession = await redisClient.get(cacheKey);
+                if (cachedSession) {
+                    const sessionData = JSON.parse(cachedSession);
+                    req.user = sessionData.user;
+                    req.sessionId = sessionData.sessionId;
+                    return next();
+                }
+            } catch (err) {
+                logger.error('optionalAuth Redis error:', err);
+            }
+        }
+
+        // Validate session in DB — revoked sessions are rejected silently
+        const { data: session } = await supabaseAdmin
+            .from('user_sessions')
+            .select('*, users(*)')
+            .eq('user_id', decoded.userId)
+            .eq('token_hash', tokenHash)
             .eq('is_active', true)
+            .gt('expires_at', new Date().toISOString())
             .single();
 
-        req.user = user ? {
-            id: user.id,
-            phoneNumber: user.phone_number,
-            displayName: user.display_name,
-            isActive: user.is_active
-        } : null;
+        if (!session || !session.users?.is_active) {
+            req.user = null;
+            return next();
+        }
+
+        req.user = {
+            id: session.users.id,
+            phoneNumber: session.users.phone_number,
+            displayName: session.users.display_name,
+            isActive: session.users.is_active,
+            createdAt: session.users.created_at,
+            role: session.users.role || 'user',
+            verificationStatus: session.users.verification_status || 'none'
+        };
+        req.sessionId = session.id;
+
+        // Populate cache for subsequent requests
+        if (redisClient) {
+            try {
+                await redisClient.set(
+                    cacheKey,
+                    JSON.stringify({ user: req.user, sessionId: req.sessionId }),
+                    { EX: 300 }
+                );
+            } catch (err) {
+                logger.error('optionalAuth Redis set error:', err);
+            }
+        }
 
         next();
-    } catch (error) {
-        // Token invalid, but that's okay for optional auth
+    } catch {
+        // Any auth error (invalid/expired JWT, DB error) — silently proceed without user
         req.user = null;
         next();
     }

@@ -13,22 +13,23 @@ const router = express.Router();
 // ─── Zod Schemas ───────────────────────────────────────────────────────────────
 
 const ALLOWED_CREDIT_TYPES = ['video', 'article', 'universal', 'both', 'research', 'all', 'typed'];
+const optionalNumber = (value) => (value === undefined ? undefined : Number(value));
 
 const generateCodesSchema = z.object({
     body: z.object({
-        amount: z.preprocess(Number, z.number().int().min(1).max(100)),
-        credit_value: z.preprocess(Number, z.number().int().min(0).max(1_000_000)).default(0),
+        amount: z.preprocess(optionalNumber, z.number().int().min(1).max(100)),
+        credit_value: z.preprocess(optionalNumber, z.number().int().min(0).max(1_000_000).default(0)),
         prefix: z.string()
             .trim()
             .toUpperCase()
             .regex(/^[A-Z0-9]{2,12}$/, 'Prefix must be 2–12 uppercase alphanumeric characters')
             .default('GIFT'),
         credit_type: z.enum(ALLOWED_CREDIT_TYPES).default('universal'),
-        video_minutes: z.preprocess(Number, z.number().int().min(0).max(1_000_000)).default(0),
-        article_count: z.preprocess(Number, z.number().int().min(0).max(100_000)).default(0),
-        research_count: z.preprocess(Number, z.number().int().min(0).max(100_000)).default(0),
+        video_minutes: z.preprocess(optionalNumber, z.number().int().min(0).max(1_000_000).default(0)),
+        article_count: z.preprocess(optionalNumber, z.number().int().min(0).max(100_000).default(0)),
+        research_count: z.preprocess(optionalNumber, z.number().int().min(0).max(100_000).default(0)),
         credit_type_id: z.string().uuid().optional(),
-        expires_in_days: z.preprocess(Number, z.number().int().min(1).max(3650)).default(365),
+        expires_in_days: z.preprocess(optionalNumber, z.number().int().min(1).max(3650).default(365)),
     }).superRefine((data, ctx) => {
         if (data.credit_type === 'typed' && !data.credit_type_id) {
             ctx.addIssue({
@@ -104,6 +105,8 @@ router.post('/generate', authenticateToken, validate(generateCodesSchema), async
  * License code redemption reports.
  */
 router.get('/reports', authenticateToken, validate(reportsQuerySchema), asyncHandler(async (req, res) => {
+    // `validate` replaces req.query with Zod's parsed values, so arithmetic below
+    // always uses bounded integers rather than raw query-string input.
     const { search, page, limit } = req.query;
     const offset = (page - 1) * limit;
 

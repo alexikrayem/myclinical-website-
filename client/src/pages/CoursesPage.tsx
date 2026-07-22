@@ -23,9 +23,17 @@ export interface Course {
 const CoursesPage = () => {
     const [courses, setCourses] = useState<Course[]>([]);
     const [featuredCourses, setFeaturedCourses] = useState<Course[]>([]);
+    const [categories, setCategories] = useState<string[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [activeCategory, setActiveCategory] = useState('');
+
+    // Fetch categories once on mount from the backend
+    useEffect(() => {
+        coursesApi.getCategories()
+            .then(setCategories)
+            .catch(() => setCategories([]));
+    }, []);
 
     useEffect(() => {
         const fetchCourses = async () => {
@@ -51,15 +59,6 @@ const CoursesPage = () => {
 
         return () => clearTimeout(debounce);
     }, [searchQuery, activeCategory]);
-
-    const categories = [
-        "طب أسنان الأطفال",
-        "تقويم الأسنان",
-        "جراحة الوجه والفكين",
-        "زراعة الأسنان",
-        "علاج الجذور",
-        "طب الأسنان التجميلي"
-    ];
 
     return (
         <div className="container mx-auto px-4 py-8 space-y-12">

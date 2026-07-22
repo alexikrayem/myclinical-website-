@@ -40,18 +40,36 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
-// Create axios instance for API calls
+// Create axios instance for API calls.
+// withCredentials=true ensures the httpOnly `session` cookie is sent automatically.
 const api = axios.create({
   baseURL: `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api`,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
+// Auth-error codes that signal the admin session is definitively dead
+const ADMIN_SESSION_EXPIRED_CODES = new Set([
+  'NO_TOKEN', 'INVALID_TOKEN', 'TOKEN_EXPIRED', 'SESSION_EXPIRED',
+  'ACCOUNT_DISABLED', 'NOT_ADMIN', 'AUTH_FAILED',
+]);
+
 // Intercept responses to map standardized AppError payloads to axios error messages
+// and to auto-logout on definitively expired/invalidated sessions
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    const status = error.response?.status;
+    const code: string | undefined = error.response?.data?.code;
+
+    if ((status === 401 || status === 403) && code && ADMIN_SESSION_EXPIRED_CODES.has(code)) {
+      // Notify the AuthContext that the session is dead.
+      // The cookie is cleared server-side by the logout endpoint.
+      window.dispatchEvent(new CustomEvent('admin:session-expired'));
+    }
+
     if (error.response?.data?.error) {
       error.message = error.response.data.error;
     } else if (error.response?.data?.message) {
@@ -69,26 +87,27 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     // Check for existing session
     const checkSession = async () => {
       try {
-        const token = localStorage.getItem('admin_token');
-        if (token) {
-          // Set authorization header
-          api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-
-          // Verify token by fetching admin profile
-          const response = await api.get('/admin/profile');
-          setUser(response.data);
-        }
+        // If a valid httpOnly cookie exists, this will succeed
+        const response = await api.get('/admin/profile');
+        setUser(response.data);
       } catch (error) {
         console.error('Session check failed:', error);
-        // Clear invalid token
-        localStorage.removeItem('admin_token');
-        delete api.defaults.headers.common['Authorization'];
+        setUser(null);
       } finally {
         setLoading(false);
       }
     };
 
     checkSession();
+  }, []);
+
+  // React to expired-session events dispatched by the axios interceptor
+  useEffect(() => {
+    const handleExpiry = () => {
+      setUser(null);
+    };
+    window.addEventListener('admin:session-expired', handleExpiry);
+    return () => window.removeEventListener('admin:session-expired', handleExpiry);
   }, []);
 
   const login = async (email: string, password: string) => {
@@ -100,19 +119,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         password,
       });
 
-      const { user: userData, session } = response.data;
+      // Backend now sets the httpOnly session cookie.
+      // We no longer receive (or need) an access_token in the response body.
+      const { user: userData } = response.data;
 
-      if (session && session.access_token) {
-        // Store token
-        localStorage.setItem('admin_token', session.access_token);
-
-        // Set authorization header for future requests
-        api.defaults.headers.common['Authorization'] = `Bearer ${session.access_token}`;
-
-        // Set user data
+      if (userData) {
         setUser(userData);
       } else {
-        throw new Error('No session data received');
+        throw new Error('No user data received');
       }
     } catch (error: unknown) {
       console.error('Login error:', error);
@@ -126,16 +140,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const logout = async () => {
     try {
-      // Clear local storage
-      localStorage.removeItem('admin_token');
-
-      // Clear authorization header
-      delete api.defaults.headers.common['Authorization'];
-
-      // Clear user state
-      setUser(null);
+      // Call backend to clear the httpOnly cookie and revoke the token
+      await api.post('/admin/logout', {});
     } catch (error) {
       console.error('Logout error:', error);
+    } finally {
+      // Always clear local state
+      setUser(null);
     }
   };
 

@@ -34,13 +34,17 @@ jest.unstable_mockModule('jsonwebtoken', () => ({
     default: {
         verify: jest.fn((token) => {
             if (token === 'valid-token') return { userId: 'user-123', type: 'user' };
-            throw new Error('Invalid token');
+            const error = new Error('Invalid token');
+            error.name = token === 'expired-token' ? 'TokenExpiredError' : 'JsonWebTokenError';
+            throw error;
         }),
         sign: jest.fn(() => 'valid-token')
     },
     verify: jest.fn((token) => {
         if (token === 'valid-token') return { userId: 'user-123', type: 'user' };
-        throw new Error('Invalid token');
+        const error = new Error('Invalid token');
+        error.name = token === 'expired-token' ? 'TokenExpiredError' : 'JsonWebTokenError';
+        throw error;
     }),
     sign: jest.fn(() => 'valid-token')
 }));
@@ -66,6 +70,12 @@ describe('Credits Routes Integration Tests', () => {
     };
 
     describe('GET /api/credits/balance', () => {
+        it('rejects a missing, malformed, or expired token', async () => {
+            await expect(request(app).get('/api/credits/balance')).resolves.toMatchObject({ status: 401 });
+            await expect(request(app).get('/api/credits/balance').set('Authorization', 'Bearer malformed-token')).resolves.toMatchObject({ status: 403, body: { code: 'INVALID_TOKEN' } });
+            await expect(request(app).get('/api/credits/balance').set('Authorization', 'Bearer expired-token')).resolves.toMatchObject({ status: 403, body: { code: 'TOKEN_EXPIRED' } });
+        });
+
         it('should return user credits', async () => {
             mockAuth();
             mockSupabase.single.mockResolvedValueOnce({
@@ -114,6 +124,18 @@ describe('Credits Routes Integration Tests', () => {
 
             expect(res.status).toBe(400);
             expect(res.body.error).toBe('Validation Error');
+        });
+
+        it.each([
+            ['', 'empty code'],
+            ['<script>alert(1)</script>', 'XSS payload'],
+            [`${'A'.repeat(51)}-1111-2222-3333`, 'overlong code'],
+        ])('rejects %s (%s) before the RPC', async (code) => {
+            mockAuth();
+            const res = await request(app).post('/api/credits/redeem')
+                .set('Authorization', `Bearer ${validToken}`).send({ code });
+            expect(res.status).toBe(400);
+            expect(mockSupabase.rpc).not.toHaveBeenCalled();
         });
 
         it('should fail with valid format but rejected by DB', async () => {
@@ -216,6 +238,59 @@ describe('Credits Routes Integration Tests', () => {
             expect(results[1].status).toBe(200);
             expect(mockSupabase.rpc).toHaveBeenCalledTimes(2);
         });
+
+        it.each([
+            [{ minutes: 0, course_id: 'ebb2cdcf-3b9f-43b9-a9a7-96a8e63b65a5' }],
+            [{ minutes: -1, course_id: 'ebb2cdcf-3b9f-43b9-a9a7-96a8e63b65a5' }],
+            [{ minutes: 1, course_id: 'not-a-uuid' }],
+        ])('rejects invalid video consumption input', async (body) => {
+            mockAuth();
+            const res = await request(app).post('/api/credits/consume-video')
+                .set('Authorization', `Bearer ${validToken}`).send(body);
+            expect(res.status).toBe(400);
+            expect(mockSupabase.rpc).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('article and research credits', () => {
+        const articleId = '11111111-1111-4111-8111-111111111111';
+        const researchId = '22222222-2222-4222-8222-222222222222';
+
+        it('consumes article access and treats a duplicate as already accessible', async () => {
+            mockAuth();
+            mockSupabase.rpc.mockResolvedValueOnce({ data: { success: true, remaining_credits: 2 }, error: null });
+            let res = await request(app).post('/api/credits/consume-article').set('Authorization', `Bearer ${validToken}`).send({ article_id: articleId });
+            expect(res.status).toBe(200);
+            mockAuth();
+            mockSupabase.rpc.mockResolvedValueOnce({ data: null, error: { code: '23505' } });
+            res = await request(app).post('/api/credits/consume-article').set('Authorization', `Bearer ${validToken}`).send({ article_id: articleId });
+            expect(res.body).toMatchObject({ success: true, message: 'لديك صلاحية الوصول بالفعل' });
+        });
+
+        it('rejects malformed article ids and insufficient research credits', async () => {
+            mockAuth();
+            let res = await request(app).post('/api/credits/consume-article').set('Authorization', `Bearer ${validToken}`).send({ article_id: 'not-a-uuid' });
+            expect(res.status).toBe(400);
+            mockAuth();
+            mockSupabase.rpc.mockResolvedValueOnce({ data: { success: false, message: 'رصيد غير كافي' }, error: null });
+            res = await request(app).post('/api/credits/consume-research').set('Authorization', `Bearer ${validToken}`).send({ research_id: researchId });
+            expect(res.body).toMatchObject({ code: 'CREDITS_INSUFFICIENT' });
+        });
+    });
+
+    describe('public access checks', () => {
+        const articleId = '11111111-1111-4111-8111-111111111111';
+        const researchId = '22222222-2222-4222-8222-222222222222';
+
+        it('shows that paid content requires authentication and validates ids', async () => {
+            mockSupabase.single.mockResolvedValueOnce({ data: { credits_required: 3 }, error: null });
+            let res = await request(app).get(`/api/credits/check-article-access/${articleId}`);
+            expect(res.body).toMatchObject({ has_access: false, requires_auth: true });
+            res = await request(app).get('/api/credits/check-research-access/not-a-uuid');
+            expect(res.status).toBe(400);
+            expect(res.body.error).toBe('Validation Error');
+            expect(mockSupabase.single).toHaveBeenCalledTimes(1);
+        });
     });
 
     describe('GET /api/credits/transactions', () => {
@@ -234,6 +309,15 @@ describe('Credits Routes Integration Tests', () => {
             expect(res.status).toBe(200);
             expect(res.body.data.length).toBe(1);
             expect(res.body.pagination.total).toBe(1);
+        });
+
+        it('rejects invalid pagination and transaction types', async () => {
+            mockAuth();
+            let res = await request(app).get('/api/credits/transactions?page=0').set('Authorization', `Bearer ${validToken}`);
+            expect(res.status).toBe(400);
+            mockAuth();
+            res = await request(app).get('/api/credits/transactions?limit=101&type=drop').set('Authorization', `Bearer ${validToken}`);
+            expect(res.status).toBe(400);
         });
     });
 });

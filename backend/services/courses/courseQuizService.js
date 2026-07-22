@@ -26,9 +26,10 @@ export async function generateQuizForCourse(supabase, courseId) {
   }
 
   const sanitizedTranscript = course.transcript.replace(/[^\w\s\.,;:\?!'\/\(\)-]/g, " ").substring(0, 10000);
+  const sanitizedTitle = course.title.replace(/[^\w\s\.,;:\?!'\/\(\)-]/g, " ").substring(0, 200).trim();
 
   const prompt = `
-    You are an expert educator. Create a quiz based on the following transcript for the course "${course.title}".
+    You are an expert educator. Create a quiz based on the following transcript for the course "${sanitizedTitle}".
     
     Transcript:
     """

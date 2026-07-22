@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
     User, Phone, Edit2, Check, X, CreditCard, History,
-    Coins, Video, FileText, Lock, LogOut, BookOpen, Tag
+    Coins, Video, FileText, Lock, LogOut, BookOpen, Tag,
+    AlertCircle, CheckCircle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { creditsApi, authApi } from '../lib/api';
@@ -144,8 +145,16 @@ const ProfilePage: React.FC = () => {
                             <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center">
                                 <User size={32} />
                             </div>
-                            <div>
-                                <h1 className="text-2xl font-bold">{user?.display_name || 'مستخدم'}</h1>
+                             <div>
+                                <div className="flex items-center gap-2">
+                                    <h1 className="text-2xl font-bold">{user?.display_name || 'مستخدم'}</h1>
+                                    {user?.role === 'doctor' && user.verification_status === 'approved' && (
+                                        <span className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-lg flex items-center gap-1 font-semibold border border-white/25">
+                                            <CheckCircle size={12} className="text-green-300" />
+                                            <span>طبيب معتمد</span>
+                                        </span>
+                                    )}
+                                </div>
                                 <p className="text-white/80" dir="ltr">{user?.phone_number}</p>
                             </div>
                         </div>
@@ -208,6 +217,62 @@ const ProfilePage: React.FC = () => {
 
             {/* Tabs */}
             <div className="container mx-auto px-4 -mt-4">
+                {/* Doctor Verification Status Banners */}
+                {user?.role === 'doctor' && (
+                    <div className="mb-6">
+                        {user.verification_status === 'pending' && (
+                            <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl p-5 flex items-start gap-4 shadow-sm">
+                                <div className="p-2 bg-amber-100 rounded-xl text-amber-600 mt-0.5">
+                                    <AlertCircle size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-lg mb-1">طلب التحقق قيد المراجعة</h3>
+                                    <p className="text-sm text-amber-700/95 leading-relaxed">
+                                        طلبك لتوثيق الحساب كطبيب قيد المراجعة حالياً من قبل الإدارة. بعد الموافقة، سيتم إنشاء ملف كاتب/مؤلف لك لتتمكن من نشر أعمالك ومقالاتك الطبية في المنصة.
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+                        
+                        {user.verification_status === 'rejected' && (
+                            <div className="bg-red-50 border border-red-200 text-red-800 rounded-2xl p-5 flex items-start gap-4 shadow-sm animate-fadeIn">
+                                <div className="p-2 bg-red-100 rounded-xl text-red-600 mt-0.5">
+                                    <AlertCircle size={20} />
+                                </div>
+                                <div className="flex-1">
+                                    <h3 className="font-bold text-lg mb-1">تم رفض طلب توثيق الحساب</h3>
+                                    <p className="text-sm text-red-700/95 leading-relaxed mb-3">
+                                        عذراً، لقد تم رفض طلب توثيق حسابك كطبيب بسبب عدم وضوح أو مطابقة البيانات المرفقة.
+                                    </p>
+                                    {user.rejection_reason && (
+                                        <div className="bg-white/60 rounded-xl p-3 border border-red-100 text-sm font-medium text-red-800/90 mb-3" dir="rtl">
+                                            <span className="font-bold">سبب الرفض: </span>
+                                            {user.rejection_reason}
+                                        </div>
+                                    )}
+                                    <p className="text-xs text-red-600 font-medium font-semibold">
+                                        يرجى التواصل مع الإدارة أو الدعم الفني لإعادة المراجعة.
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+
+                        {user.verification_status === 'approved' && (
+                            <div className="bg-green-50 border border-green-200 text-green-800 rounded-2xl p-5 flex items-start gap-4 shadow-sm animate-fadeIn">
+                                <div className="p-2 bg-green-100 rounded-xl text-green-600 mt-0.5">
+                                    <CheckCircle size={20} className="text-green-600" />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-lg mb-1">حساب طبيب موثق</h3>
+                                    <p className="text-sm text-green-700/95 leading-relaxed">
+                                        تهانينا! حسابك موثق كطبيب معتمد في المنصة. تم ربط حسابك بملف مؤلف خاص بك، ويمكنك الآن نشر المقالات والأبحاث الطبية.
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
                     <div className="flex border-b border-gray-100">
                         {[

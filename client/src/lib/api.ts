@@ -3,30 +3,39 @@ import axios from 'axios';
 // Get API URL from environment variables
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
-// Create axios instance with base configuration
+// Create axios instance.
+// withCredentials=true ensures the httpOnly `user_session` cookie is sent
+// on every request — no manual Authorization header injection needed.
 const api = axios.create({
   baseURL: `${API_BASE_URL}/api`,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Intercept requests to attach tokens automatically
-api.interceptors.request.use((config) => {
-  // If authorization header is already present (e.g. admin token), skip
-  if (!config.headers.Authorization) {
-    const token = localStorage.getItem('user_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-  }
-  return config;
-});
+// Auth-error codes returned by the backend that mean the session is no longer valid
+const SESSION_EXPIRED_CODES = new Set([
+  'NO_TOKEN', 'INVALID_TOKEN', 'TOKEN_EXPIRED', 'SESSION_EXPIRED',
+  'ACCOUNT_DISABLED', 'NO_USER',
+]);
 
-// Intercept responses to map standardized AppError payloads to axios error messages
+// Intercept responses to (a) map error payloads and (b) auto-logout on expired sessions
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    const status = error.response?.status;
+    const code: string | undefined = error.response?.data?.code;
+
+    // Auto-logout when the backend explicitly signals the session is dead
+    if ((status === 401 || status === 403) && code && SESSION_EXPIRED_CODES.has(code)) {
+      // Notify the AuthContext (or any listener) without a hard redirect
+      // so the app can show the login modal rather than a blank page.
+      // The cookie is cleared server-side by the logout endpoint.
+      window.dispatchEvent(new CustomEvent('auth:session-expired'));
+    }
+
+    // Map standardised AppError payloads to axios error messages
     if (error.response?.data?.error) {
       error.message = error.response.data.error;
     } else if (error.response?.data?.message) {
@@ -35,6 +44,7 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
 
 import { GlobalSearchResult } from '../types';
 
@@ -252,12 +262,10 @@ export const coursesApi = {
     }
   },
 
-  getCategories: async () => {
+  getCategories: async (): Promise<string[]> => {
     try {
-      const response = await api.get('/courses', { params: { limit: 100 } });
-      const courses = response.data.data || [];
-      const allCategories = courses.flatMap((c: { categories?: string[] }) => c.categories || []);
-      return [...new Set(allCategories)].sort();
+      const response = await api.get('/courses/categories');
+      return response.data;
     } catch (error) {
       console.error('Error fetching course categories:', error);
       throw error;
@@ -286,10 +294,7 @@ export const coursesApi = {
 
   getPlayback: async (id: string) => {
     try {
-      const token = getUserToken();
-      const response = await api.post(`/courses/${id}/playback`, {}, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
+      const response = await api.post(`/courses/${id}/playback`, {});
       return response.data;
     } catch (error) {
       console.error('Error starting playback:', error);
@@ -299,10 +304,7 @@ export const coursesApi = {
 
   sendHeartbeat: async (id: string, payload: { session_id: string; seconds_delta: number; idempotency_key?: string }) => {
     try {
-      const token = getUserToken();
-      const response = await api.post(`/courses/${id}/heartbeat`, payload, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
+      const response = await api.post(`/courses/${id}/heartbeat`, payload);
       return response.data;
     } catch (error) {
       console.error('Error sending heartbeat:', error);
@@ -312,13 +314,10 @@ export const coursesApi = {
 
   purchaseAccess: async (id: string) => {
     try {
-      const token = getUserToken();
       const idempotencyKey = typeof crypto?.randomUUID === 'function'
         ? crypto.randomUUID()
         : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const response = await api.post(`/courses/${id}/access`, { idempotency_key: idempotencyKey }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await api.post(`/courses/${id}/access`, { idempotency_key: idempotencyKey });
       return response.data;
     } catch (error) {
       console.error('Error purchasing access:', error);
@@ -328,10 +327,7 @@ export const coursesApi = {
 
   getQuiz: async (id: string) => {
     try {
-      const token = getUserToken();
-      const response = await api.get(`/courses/${id}/quiz`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await api.get(`/courses/${id}/quiz`);
       return response.data;
     } catch (error) {
       console.error('Error fetching quiz:', error);
@@ -341,10 +337,7 @@ export const coursesApi = {
 
   submitQuiz: async (courseId: string, quizId: string, answers: number[]) => {
     try {
-      const token = getUserToken();
-      const response = await api.post(`/courses/${courseId}/quiz/submit`, { quizId, answers }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await api.post(`/courses/${courseId}/quiz/submit`, { quizId, answers });
       return response.data;
     } catch (error) {
       console.error('Error submitting quiz:', error);
@@ -354,10 +347,8 @@ export const coursesApi = {
 
   getAttentionCheck: async (courseId: string, sessionId: string, currentSeconds: number) => {
     try {
-      const token = getUserToken();
       const response = await api.get(`/courses/${courseId}/attention-check`, {
         params: { session_id: sessionId, current_seconds: currentSeconds },
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
       return response.data;
     } catch (error) {
@@ -373,10 +364,7 @@ export const coursesApi = {
     expired?: boolean;
   }) => {
     try {
-      const token = getUserToken();
-      const response = await api.post(`/courses/${courseId}/attention-check/verify`, payload, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
+      const response = await api.post(`/courses/${courseId}/attention-check/verify`, payload);
       return response.data;
     } catch (error) {
       console.error('Error verifying attention check:', error);
@@ -384,9 +372,6 @@ export const coursesApi = {
     }
   }
 };
-
-// Helper to get user token
-const getUserToken = () => localStorage.getItem('user_token');
 
 // Auth API for regular users (phone + password)
 export const authApi = {
@@ -400,6 +385,20 @@ export const authApi = {
       return response.data;
     } catch (error) {
       console.error('Error registering:', error);
+      throw error;
+    }
+  },
+
+  registerDoctor: async (formData: FormData) => {
+    try {
+      const response = await api.post('/auth/register-doctor', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error registering doctor:', error);
       throw error;
     }
   },
@@ -419,12 +418,7 @@ export const authApi = {
 
   logout: async () => {
     try {
-      const token = getUserToken();
-      if (token) {
-        await api.post('/auth/logout', {}, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-      }
+      await api.post('/auth/logout', {});
     } catch (error) {
       console.error('Error logging out:', error);
     }
@@ -432,10 +426,7 @@ export const authApi = {
 
   getProfile: async () => {
     try {
-      const token = getUserToken();
-      const response = await api.get('/auth/profile', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await api.get('/auth/profile');
       return response.data;
     } catch (error) {
       console.error('Error fetching profile:', error);
@@ -445,10 +436,8 @@ export const authApi = {
 
   updateProfile: async (displayName: string) => {
     try {
-      const token = getUserToken();
       const response = await api.put('/auth/profile',
-        { display_name: displayName },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { display_name: displayName }
       );
       return response.data;
     } catch (error) {
@@ -459,10 +448,8 @@ export const authApi = {
 
   changePassword: async (currentPassword: string, newPassword: string) => {
     try {
-      const token = getUserToken();
       const response = await api.put('/auth/change-password',
-        { current_password: currentPassword, new_password: newPassword },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { current_password: currentPassword, new_password: newPassword }
       );
       return response.data;
     } catch (error) {
@@ -472,14 +459,11 @@ export const authApi = {
   }
 };
 
-// Credits API (uses user_token for regular users)
+// Credits API
 export const creditsApi = {
   getBalance: async () => {
     try {
-      const token = getUserToken();
-      const response = await api.get('/credits/balance', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await api.get('/credits/balance');
       return response.data;
     } catch (error) {
       console.error('Error fetching credit balance:', error);
@@ -489,10 +473,7 @@ export const creditsApi = {
 
   redeemCode: async (code: string) => {
     try {
-      const token = getUserToken();
-      const response = await api.post('/credits/redeem', { code }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await api.post('/credits/redeem', { code });
       return response.data;
     } catch (error) {
       console.error('Error redeeming code:', error);
@@ -502,10 +483,8 @@ export const creditsApi = {
 
   consumeVideo: async (minutes: number, courseId: string) => {
     try {
-      const token = getUserToken();
       const response = await api.post('/credits/consume-video',
-        { minutes, course_id: courseId },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { minutes, course_id: courseId }
       );
       return response.data;
     } catch (error) {
@@ -516,10 +495,8 @@ export const creditsApi = {
 
   consumeArticle: async (articleId: string) => {
     try {
-      const token = getUserToken();
       const response = await api.post('/credits/consume-article',
-        { article_id: articleId },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { article_id: articleId }
       );
       return response.data;
     } catch (error) {
@@ -530,10 +507,7 @@ export const creditsApi = {
 
   checkArticleAccess: async (articleId: string) => {
     try {
-      const token = getUserToken();
-      const response = await api.get(`/credits/check-article-access/${articleId}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
+      const response = await api.get(`/credits/check-article-access/${articleId}`);
       return response.data;
     } catch (error) {
       console.error('Error checking article access:', error);
@@ -543,10 +517,8 @@ export const creditsApi = {
 
   consumeResearch: async (researchId: string) => {
     try {
-      const token = getUserToken();
       const response = await api.post('/credits/consume-research',
-        { research_id: researchId },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { research_id: researchId }
       );
       return response.data;
     } catch (error) {
@@ -557,10 +529,7 @@ export const creditsApi = {
 
   checkResearchAccess: async (researchId: string) => {
     try {
-      const token = getUserToken();
-      const response = await api.get(`/credits/check-research-access/${researchId}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
+      const response = await api.get(`/credits/check-research-access/${researchId}`);
       return response.data;
     } catch (error) {
       console.error('Error checking research access:', error);
@@ -570,10 +539,8 @@ export const creditsApi = {
 
   getTransactions: async (page = 1, limit = 10, type?: string) => {
     try {
-      const token = getUserToken();
       const response = await api.get('/credits/transactions', {
         params: { page, limit, type },
-        headers: { Authorization: `Bearer ${token}` }
       });
       return response.data;
     } catch (error) {
@@ -583,15 +550,11 @@ export const creditsApi = {
   }
 };
 
-// Admin API
+// Admin API — uses the httpOnly `session` cookie set by admin login
 export const adminApi = {
   getLicenseReport: async (params?: { search?: string; page?: number; limit?: number }) => {
     try {
-      const token = localStorage.getItem('admin_token');
-      const response = await api.get('/admin/reports/licenses', {
-        params,
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await api.get('/admin/reports/licenses', { params });
       return response.data;
     } catch (error) {
       console.error('Error fetching license report:', error);

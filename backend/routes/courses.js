@@ -1,7 +1,7 @@
 import express from 'express';
 import { authenticateToken } from '../middleware/auth.js';
 import { authenticateUser, optionalAuth } from '../middleware/userAuth.js';
-import { listPublicCourses, COURSE_PUBLIC_SELECT } from '../services/courses/courseCatalogService.js';
+import { listPublicCourses, getPublicCourseCategories, COURSE_PUBLIC_SELECT } from '../services/courses/courseCatalogService.js';
 import { createPlaybackSession } from '../services/courses/coursePlaybackService.js';
 import { consumePlaybackHeartbeat } from '../services/courses/courseBillingService.js';
 import { buildSignedManifest } from '../services/courses/hlsService.js';
@@ -34,6 +34,12 @@ router.get('/featured', asyncHandler(async (req, res) => {
         throw new AppError('Failed to fetch featured courses', 500, 'COURSES_FEATURED_FAILED');
     }
     res.json(data);
+}));
+
+// Get all unique course categories (public)
+router.get('/categories', asyncHandler(async (req, res) => {
+    const categories = await getPublicCourseCategories(supabasePublic);
+    res.json(categories);
 }));
 
 // Get single course details (public metadata + access flags)

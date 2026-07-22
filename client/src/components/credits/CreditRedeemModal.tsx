@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, CreditCard, CheckCircle, AlertCircle, Gift, Coins, Video, FileText } from 'lucide-react';
+import { X, CreditCard, CheckCircle, AlertCircle, Gift, Coins, Video, FileText, BookOpen } from 'lucide-react';
 import { creditsApi } from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
@@ -9,20 +9,24 @@ interface CreditRedeemModalProps {
     onClose: () => void;
 }
 
+// M2 fix: result type now includes research_credits so it is displayed after redemption
+interface RedeemResult {
+    success: boolean;
+    message: string;
+    credits?: {
+        balance: number;
+        video_minutes: number;
+        article_credits: number;
+        research_credits: number;
+    };
+    credit_type?: string;
+}
+
 const CreditRedeemModal: React.FC<CreditRedeemModalProps> = ({ isOpen, onClose }) => {
     const { refreshCredits } = useAuth();
     const [code, setCode] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    const [result, setResult] = useState<{
-        success: boolean;
-        message: string;
-        credits?: {
-            balance: number;
-            video_minutes: number;
-            article_credits: number;
-        };
-        credit_type?: string;
-    } | null>(null);
+    const [result, setResult] = useState<RedeemResult | null>(null);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -56,7 +60,7 @@ const CreditRedeemModal: React.FC<CreditRedeemModalProps> = ({ isOpen, onClose }
     };
 
     const formatCode = (value: string) => {
-        // Convert to uppercase and remove spaces for consistency
+        // Convert to uppercase and remove invalid characters for consistency
         return value.toUpperCase().replace(/[^A-Z0-9-]/g, '');
     };
 
@@ -64,8 +68,6 @@ const CreditRedeemModal: React.FC<CreditRedeemModalProps> = ({ isOpen, onClose }
         setCode(formatCode(e.target.value));
         setResult(null);
     };
-
-
 
     if (!isOpen) return null;
 
@@ -115,10 +117,10 @@ const CreditRedeemModal: React.FC<CreditRedeemModalProps> = ({ isOpen, onClose }
                                     type="text"
                                     value={code}
                                     onChange={handleCodeChange}
-                                    placeholder="XXXX-XXXX-XXXX"
+                                    placeholder="XXXX-XXXX-XXXX-XXXX"
                                     className="w-full px-4 py-3 pr-12 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-center text-lg font-mono tracking-wider"
                                     dir="ltr"
-                                    maxLength={20}
+                                    maxLength={40}
                                     autoFocus
                                     data-testid="credits-code-input"
                                 />
@@ -143,7 +145,7 @@ const CreditRedeemModal: React.FC<CreditRedeemModalProps> = ({ isOpen, onClose }
                                 <div className="flex-1">
                                     <p className="font-medium">{result.message}</p>
                                     {result.success && result.credits && (
-                                        <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                                        <div className="mt-3 grid grid-cols-4 gap-2 text-center">
                                             <div className="p-2 bg-white/50 rounded-lg">
                                                 <Coins size={16} className="mx-auto text-yellow-600 mb-1" />
                                                 <div className="text-sm font-bold">{result.credits.balance}</div>
@@ -158,6 +160,12 @@ const CreditRedeemModal: React.FC<CreditRedeemModalProps> = ({ isOpen, onClose }
                                                 <FileText size={16} className="mx-auto text-green-600 mb-1" />
                                                 <div className="text-sm font-bold">{result.credits.article_credits}</div>
                                                 <div className="text-xs opacity-70">مقال</div>
+                                            </div>
+                                            {/* M2 fix: show research_credits in the post-redemption summary */}
+                                            <div className="p-2 bg-white/50 rounded-lg">
+                                                <BookOpen size={16} className="mx-auto text-purple-600 mb-1" />
+                                                <div className="text-sm font-bold">{result.credits.research_credits}</div>
+                                                <div className="text-xs opacity-70">بحث</div>
                                             </div>
                                         </div>
                                     )}

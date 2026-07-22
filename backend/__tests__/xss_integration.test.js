@@ -75,7 +75,9 @@ jest.unstable_mockModule('../middleware/auth.js', () => ({
         next();
     },
     trackLoginAttempt: jest.fn(),
-    checkLoginAllowed: (req, res, next) => next()
+    checkLoginAllowed: (req, res, next) => next(),
+    revokeTokenCache: jest.fn().mockResolvedValue(undefined),
+    requireRole: (..._roles) => (req, res, next) => next(),
 }));
 
 const { default: app } = await import('../server.js');

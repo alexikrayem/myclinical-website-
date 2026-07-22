@@ -1,11 +1,12 @@
-import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { supabaseAdmin, supabasePublic } from '../config/supabase.js';
 import { getRedisClient } from '../config/redis.js';
 import logger from '../config/logger.js';
 
-// Helper to get redis key
-const getLoginKey = (identifier) => `login_attempts:${identifier.toLowerCase()}`;
+// Helper to get Redis key — composite identifier:ip prevents targeted account-lockout DOS.
+// An attacker from a different IP cannot lock out a legitimate user's account.
+const getLoginKey = (identifier, ip = 'unknown') =>
+  `login_attempts:${identifier.toLowerCase()}:${ip.replace(/[^\w.:]/g, '_')}`;
 const LOCK_DURATION = 15 * 60; // 15 minutes in seconds
 
 
@@ -108,62 +109,25 @@ export const authenticateToken = async (req, res, next) => {
   }
 };
 
-// In-memory fallback for rate limiting
-const memoryAttempts = new Map();
-
-// Periodic cleanup of memory fallback to prevent leaks
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, value] of memoryAttempts.entries()) {
-    if (value.lockedUntil && now > value.lockedUntil) {
-      memoryAttempts.delete(key);
-    } else if (!value.lockedUntil && value.timestamp && (now - value.timestamp > LOCK_DURATION * 1000)) {
-      memoryAttempts.delete(key);
-    }
-  }
-}, 60 * 60 * 1000).unref();
-
 // Track and limit failed login attempts
-export const trackLoginAttempt = async (identifier, success) => {
+// @param identifier  - phone number or email (normalised)
+// @param success     - true on successful auth, false on failure
+// @param ip          - request IP; combined with identifier to prevent targeted DOS
+export const trackLoginAttempt = async (identifier, success, ip = 'unknown') => {
   const client = await getRedisClient();
-  const key = getLoginKey(identifier);
+  const key = getLoginKey(identifier, ip);
   const now = Date.now();
 
-  // Fallback to memory if no redis
+  // Fail-closed (M5 full fix): if Redis is unavailable we cannot enforce a
+  // globally consistent rate limit across all instances, so we reject the
+  // attempt and surface a 503 to the caller.  Using an insecure per-process
+  // fallback would allow N × maxAttempts bypass in multi-instance deployments.
   if (!client) {
-    if (success) {
-      memoryAttempts.delete(key);
-      return { allowed: true };
-    }
-
-    let attempts = memoryAttempts.get(key) || { count: 0, lockedUntil: null };
-
-    if (attempts.lockedUntil && now < attempts.lockedUntil) {
-      const remainingTime = Math.ceil((attempts.lockedUntil - now) / 1000 / 60);
-      return {
-        allowed: false,
-        reason: `Account temporarily locked. Try again in ${remainingTime} minutes.`,
-        lockedUntil: attempts.lockedUntil
-      };
-    }
-
-    attempts.count++;
-    attempts.timestamp = now;
-
-    if (attempts.count >= 5) {
-      attempts.lockedUntil = now + (LOCK_DURATION * 1000);
-      memoryAttempts.set(key, attempts);
-      return {
-        allowed: false,
-        reason: 'Too many failed login attempts. Account locked for 15 minutes.',
-        lockedUntil: attempts.lockedUntil
-      };
-    }
-
-    memoryAttempts.set(key, attempts);
+    logger.error('[M5] Redis unavailable — rejecting login attempt to enforce fail-closed rate limiting.');
     return {
-      allowed: true,
-      remainingAttempts: 5 - attempts.count
+      allowed: false,
+      serviceUnavailable: true,
+      reason: 'Authentication service temporarily unavailable. Please try again shortly.'
     };
   }
 
@@ -217,21 +181,19 @@ export const checkLoginAllowed = async (req, res, next) => {
   const identifier = req.body.email || req.body.phone_number || req.ip;
   if (!identifier) return next();
 
+  const ip = req.ip || 'unknown';
   const client = await getRedisClient();
-  const key = getLoginKey(identifier);
+  const key = getLoginKey(identifier, ip);
   const now = Date.now();
 
+  // Fail-closed: if Redis is down, block the login attempt.
+  // The caller (login route) will surface a 503 to the client.
   if (!client) {
-    const attempts = memoryAttempts.get(key);
-    if (attempts && attempts.lockedUntil && now < attempts.lockedUntil) {
-      const remainingTime = Math.ceil((attempts.lockedUntil - now) / 1000 / 60);
-      return res.status(429).json({
-        error: `Account temporarily locked due to multiple failed login attempts. Try again in ${remainingTime} minutes.`,
-        code: 'ACCOUNT_LOCKED',
-        retryAfter: remainingTime * 60
-      });
-    }
-    return next();
+    logger.error('[M5] Redis unavailable — blocking login attempt (fail-closed).');
+    return res.status(503).json({
+      error: 'Authentication service temporarily unavailable. Please try again shortly.',
+      code: 'SERVICE_UNAVAILABLE'
+    });
   }
 
   const data = await client.get(key);
@@ -249,6 +211,25 @@ export const checkLoginAllowed = async (req, res, next) => {
   }
 
   next();
+};
+
+/**
+ * Immediately invalidates the Redis cached auth entry for a given raw Supabase
+ * access token.  Call this on every admin logout / role change so in-flight
+ * requests can't continue to use the cached identity for up to the 60-second TTL.
+ */
+export const revokeTokenCache = async (rawToken) => {
+  if (!rawToken) return;
+  try {
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const cacheKey = `auth_token_v1:${tokenHash}`;
+    const client = await getRedisClient();
+    if (client) {
+      await client.del(cacheKey);
+    }
+  } catch (err) {
+    logger.error('revokeTokenCache error:', err);
+  }
 };
 
 // Optional: Role-based access control

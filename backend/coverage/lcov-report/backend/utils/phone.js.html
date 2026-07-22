@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">22.22% </span>
+                <span class="strong">83.33% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>4/18</span>
+                <span class='fraction'>15/18</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">45.45% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/11</span>
+                <span class='fraction'>5/11</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>0/3</span>
+                <span class='fraction'>3/3</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">22.22% </span>
+                <span class="strong">83.33% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>4/18</span>
+                <span class='fraction'>15/18</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line low'></div>
+    <div class='status-line high'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -97,39 +97,39 @@
 <a name='L32'></a><a href='#L32'>32</a>
 <a name='L33'></a><a href='#L33'>33</a>
 <a name='L34'></a><a href='#L34'>34</a>
-<a name='L35'></a><a href='#L35'>35</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">2x</span>
+<a name='L35'></a><a href='#L35'>35</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">13x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">13x</span>
+<span class="cline-any cline-yes">9x</span>
+<span class="cline-any cline-yes">9x</span>
+<span class="cline-any cline-yes">9x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">13x</span>
+<span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">13x</span>
+<span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">export const PHONE_CONFIG = {
   countryCode: '963',
@@ -138,32 +138,32 @@
   example: '0912345678'
 };
 &nbsp;
-export const cleanPhoneNumber = <span class="fstat-no" title="function not covered" >(p</span>hone = <span class="branch-0 cbranch-no" title="branch not covered" >'')</span> =&gt; {
-  const str = <span class="cstat-no" title="statement not covered" >String(phone);</span>
-  const digitsOnly = <span class="cstat-no" title="statement not covered" >str.replace(/[^\d]/g, '');</span>
-<span class="cstat-no" title="statement not covered" >  return str.startsWith('+') ? '+' + digitsOnly : digitsOnly;</span>
+export const cleanPhoneNumber = (phone = <span class="branch-0 cbranch-no" title="branch not covered" >'')</span> =&gt; {
+  const str = String(phone);
+  const digitsOnly = str.replace(/[^\d]/g, '');
+  return str.startsWith('+') ? <span class="branch-0 cbranch-no" title="branch not covered" >'+' + digitsOnly </span>: digitsOnly;
 };
 &nbsp;
-export const isValidPhoneNumber = <span class="fstat-no" title="function not covered" >(p</span>hone) =&gt; {
-  const cleaned = <span class="cstat-no" title="statement not covered" >cleanPhoneNumber(phone);</span>
+export const isValidPhoneNumber = (phone) =&gt; {
+  const cleaned = cleanPhoneNumber(phone);
   // Accept Syrian format: 09xxxxxxxx or +963xxxxxxxxx or 963xxxxxxxxx
-  const syrianRegex = <span class="cstat-no" title="statement not covered" >/^(\+?963|0)?9\d{8}$/;</span>
-<span class="cstat-no" title="statement not covered" >  return syrianRegex.test(cleaned);</span>
+  const syrianRegex = /^(\+?963|0)?9\d{8}$/;
+  return syrianRegex.test(cleaned);
 };
 &nbsp;
-export const normalizePhoneNumber = <span class="fstat-no" title="function not covered" >(p</span>hone) =&gt; {
-  const cleaned = <span class="cstat-no" title="statement not covered" >cleanPhoneNumber(phone);</span>
+export const normalizePhoneNumber = (phone) =&gt; {
+  const cleaned = cleanPhoneNumber(phone);
   // Convert all to 09xxxxxxxx format
-<span class="cstat-no" title="statement not covered" >  if (cleaned.startsWith('+963')) {</span>
+  <span class="missing-if-branch" title="if path not taken" >I</span>if (cleaned.startsWith('+963')) {
 <span class="cstat-no" title="statement not covered" >    return '0' + cleaned.substring(4);</span>
   }
-<span class="cstat-no" title="statement not covered" >  if (cleaned.startsWith('963')) {</span>
+  <span class="missing-if-branch" title="if path not taken" >I</span>if (cleaned.startsWith('963')) {
 <span class="cstat-no" title="statement not covered" >    return '0' + cleaned.substring(3);</span>
   }
-<span class="cstat-no" title="statement not covered" >  if (cleaned.startsWith('9') &amp;&amp; cleaned.length === 9) {</span>
+  <span class="missing-if-branch" title="if path not taken" >I</span>if (cleaned.startsWith('9') &amp;&amp; <span class="branch-1 cbranch-no" title="branch not covered" >cleaned.length === 9)</span> {
 <span class="cstat-no" title="statement not covered" >    return '0' + cleaned;</span>
   }
-<span class="cstat-no" title="statement not covered" >  return cleaned;</span>
+  return cleaned;
 };
 &nbsp;</pre></td></tr></table></pre>
 
@@ -172,7 +172,7 @@ export const normalizePhoneNumber = <span class="fstat-no" title="function not c
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-05-16T15:35:26.250Z
+                at 2026-06-13T16:41:29.451Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

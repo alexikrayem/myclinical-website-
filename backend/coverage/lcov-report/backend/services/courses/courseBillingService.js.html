@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/6</span>
+                <span class='fraction'>6/6</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">62.5% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/8</span>
+                <span class='fraction'>5/8</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>0/1</span>
+                <span class='fraction'>1/1</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/6</span>
+                <span class='fraction'>6/6</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line low'></div>
+    <div class='status-line high'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -87,41 +87,41 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import { AppError } from '../../utils/errors.js';
 import logger from '../../config/logger.js';
 &nbsp;
-export async function <span class="fstat-no" title="function not covered" >consumePlaybackHeartbeat(</span>{ supabase, sessionId, secondsDelta, idempotencyKey, customUserId }) {
-  const payload = <span class="cstat-no" title="statement not covered" >{</span>
+export async function consumePlaybackHeartbeat({ supabase, sessionId, secondsDelta, idempotencyKey, customUserId }) {
+  const payload = {
     p_session_id: sessionId,
-    p_seconds: Math.max(0, Math.floor(secondsDelta || 0)),
-    p_idempotency_key: idempotencyKey || null,
-    p_custom_user_id: customUserId || null
+    p_seconds: Math.max(0, Math.floor(secondsDelta || <span class="branch-1 cbranch-no" title="branch not covered" >0)</span>),
+    p_idempotency_key: idempotencyKey || <span class="branch-1 cbranch-no" title="branch not covered" >null,</span>
+    p_custom_user_id: customUserId || <span class="branch-1 cbranch-no" title="branch not covered" >null</span>
   };
 &nbsp;
-  const { data, error } = <span class="cstat-no" title="statement not covered" >await supabase.rpc('consume_video_minutes_v2', payload);</span>
+  const { data, error } = await supabase.rpc('consume_video_minutes_v2', payload);
 &nbsp;
-<span class="cstat-no" title="statement not covered" >  if (error) {</span>
-<span class="cstat-no" title="statement not covered" >    logger.error('Failed to consume playback minutes', { error, payload });</span>
-<span class="cstat-no" title="statement not covered" >    throw new AppError('Failed to consume playback minutes', 500, 'BILLING_HEARTBEAT_FAILED');</span>
+  if (error) {
+    logger.error('Failed to consume playback minutes', { error, payload });
+    throw new AppError('Failed to consume playback minutes', 500, 'BILLING_HEARTBEAT_FAILED');
   }
 &nbsp;
-<span class="cstat-no" title="statement not covered" >  return data;</span>
+  return data;
 }
 &nbsp;</pre></td></tr></table></pre>
 
@@ -130,7 +130,7 @@ export async function <span class="fstat-no" title="function not covered" >consu
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-05-16T15:35:26.250Z
+                at 2026-06-13T16:41:29.451Z
             </div>
         <script src="../../../prettify.js"></script>
         <script>

@@ -1,6 +1,6 @@
 import axios from 'axios';
 import path from 'path';
-import { BadRequestError } from '../../utils/errors.js';
+import { AppError, BadRequestError } from '../../utils/errors.js';
 
 const DEFAULT_TTL = parseInt(process.env.HLS_SIGNED_URL_TTL || '600', 10);
 

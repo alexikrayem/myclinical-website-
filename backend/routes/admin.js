@@ -6,6 +6,7 @@ import courseRoutes from './admin/courses.js';
 import authorRoutes from './admin/authors.js';
 import categoryRoutes from './admin/categories.js';
 import creditRoutes from './admin/credits.js';
+import verificationRoutes from './admin/verifications.js';
 
 const router = express.Router();
 
@@ -17,6 +18,7 @@ router.use('/courses', courseRoutes);
 router.use('/authors', authorRoutes);
 router.use('/categories', categoryRoutes);
 router.use('/credits', creditRoutes);
+router.use('/verifications', verificationRoutes);
 
 // Fix backwards compatibility for some routes that were previously at different levels
 router.use('/codes', creditRoutes); // Backward compatibility for legacy /admin/codes path

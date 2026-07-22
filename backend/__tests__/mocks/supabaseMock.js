@@ -13,6 +13,8 @@ const createBuilder = () => {
         update: jest.fn().mockReturnThis(),
         delete: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
+        ilike: jest.fn().mockReturnThis(),
+        or: jest.fn().mockReturnThis(),
         gt: jest.fn().mockReturnThis(),
         lt: jest.fn().mockReturnThis(),
         order: jest.fn().mockReturnThis(),
@@ -36,7 +38,8 @@ const createBuilder = () => {
             from: jest.fn(() => ({
                 upload: jest.fn().mockResolvedValue({ data: { path: 'mock/path' }, error: null }),
                 getPublicUrl: jest.fn(() => ({ data: { publicUrl: 'http://example.com/mock.jpg' } })),
-                remove: jest.fn().mockResolvedValue({ data: [], error: null })
+                remove: jest.fn().mockResolvedValue({ data: [], error: null }),
+                createSignedUrl: jest.fn().mockResolvedValue({ data: { signedUrl: 'http://example.com/signed.jpg' }, error: null })
             }))
         },
 
@@ -55,7 +58,7 @@ export const resetSupabaseMock = () => {
 
     // Restore chaining for all methods
     const methods = [
-        'from', 'select', 'insert', 'update', 'delete', 'eq', 'gt', 'lt',
+        'from', 'select', 'insert', 'update', 'delete', 'eq', 'ilike', 'or', 'gt', 'lt',
         'order', 'limit', 'range', 'single', 'maybeSingle', 'csv', 'rpc'
     ];
     methods.forEach(method => {

@@ -6,7 +6,7 @@ export interface Course {
     description: string;
     cover_image: string;
     playback_source: string;
-    playback_provider: 'vdocipher' | 'hls' | 'youtube' | 'mp4';
+    playback_provider: 'vdocipher' | 'hls' | 'mux' | 'youtube' | 'mp4';
     billing_model: 'free' | 'per_course' | 'per_minute';
     minute_cost: number;
     preview_source?: string | null;

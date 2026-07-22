@@ -11,6 +11,15 @@ const DEFAULT_CREDITS = {
   total_spent: 0
 };
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function requireRpcData(data, context) {
+  if (data) return data;
+
+  logger.error('Credits RPC returned no data', context);
+  throw new AppError('خطأ غير متوقع', 500, 'CREDITS_UNEXPECTED_NULL');
+}
+
 export async function getCreditBalance(supabase, userId) {
   const { data, error } = await supabase
     .from('user_credits')
@@ -29,7 +38,8 @@ export async function getCreditBalance(supabase, userId) {
     .from('user_typed_credits')
     .select('credit_type_id, balance, credit_types(name, prefix)')
     .eq('user_id', userId)
-    .gt('balance', 0);
+    .gt('balance', 0)
+    .limit(50);
 
   // Fix #14 — surface typed credit fetch failures in the response instead of silently swallowing them
   if (typedError) {
@@ -69,30 +79,37 @@ export async function redeemLicenseCode(supabase, { code, userId, metadata }) {
     throw new AppError('فشل في استخدام الكود', 500, 'CREDITS_REDEEM_FAILED');
   }
 
-  if (!data.success) {
-    throw new AppError(data.message || 'فشل استخدام الكود', 400, 'CREDITS_REDEEM_REJECTED');
+  const rpcData = requireRpcData(data, { userId, operation: 'redeemLicenseCode' });
+
+  if (!rpcData.success) {
+    throw new AppError(rpcData.message || 'فشل استخدام الكود', 400, 'CREDITS_REDEEM_REJECTED');
   }
 
   return {
     success: true,
-    message: data.message,
+    message: rpcData.message,
     credits: {
-      balance: data.new_balance,
-      video_minutes: data.video_minutes,
-      article_credits: data.article_credits,
-      research_credits: data.research_credits,
+      balance: rpcData.new_balance,
+      video_minutes: rpcData.video_minutes,
+      article_credits: rpcData.article_credits,
+      research_credits: rpcData.research_credits,
     },
-    credit_type: data.credit_type,
-    typed_balance: data.typed_balance,
-    credit_type_name: data.credit_type_name
+    credit_type: rpcData.credit_type,
+    typed_balance: rpcData.typed_balance,
+    credit_type_name: rpcData.credit_type_name
   };
 }
 
 export async function consumeVideoMinutes(supabase, { userId, minutes, courseId }) {
+  const roundedMinutes = Math.ceil(Number(minutes));
+  if (!Number.isFinite(roundedMinutes) || roundedMinutes < 1) {
+    throw new AppError('عدد الدقائق يجب أن يكون موجباً', 400, 'INVALID_VIDEO_MINUTES');
+  }
+
   const { data, error } = await supabase
     .rpc('consume_video_minutes', {
       p_user_id: userId,
-      p_minutes: Math.ceil(minutes),
+      p_minutes: roundedMinutes,
       p_course_id: courseId
     });
 
@@ -101,14 +118,16 @@ export async function consumeVideoMinutes(supabase, { userId, minutes, courseId 
     throw new AppError('فشل في خصم الرصيد', 500, 'CREDITS_CONSUME_VIDEO_FAILED');
   }
 
-  if (!data.success) {
-    throw new AppError(data.message || 'رصيد غير كافي', 400, 'CREDITS_INSUFFICIENT');
+  const rpcData = requireRpcData(data, { userId, courseId, operation: 'consumeVideoMinutes' });
+
+  if (!rpcData.success) {
+    throw new AppError(rpcData.message || 'رصيد غير كافي', 400, 'CREDITS_INSUFFICIENT');
   }
 
   return {
     success: true,
-    remaining_minutes: data.remaining_minutes,
-    remaining_balance: data.remaining_balance
+    remaining_minutes: rpcData.remaining_minutes,
+    remaining_balance: rpcData.remaining_balance
   };
 }
 
@@ -131,15 +150,17 @@ export async function consumeArticleCredit(supabase, { userId, articleId }) {
     throw new AppError('فشل في خصم الرصيد', 500, 'CREDITS_CONSUME_ARTICLE_FAILED');
   }
 
-  if (!data.success) {
-    throw new AppError(data.message || 'رصيد غير كافي', 400, 'CREDITS_INSUFFICIENT');
+  const rpcData = requireRpcData(data, { userId, articleId, operation: 'consumeArticleCredit' });
+
+  if (!rpcData.success) {
+    throw new AppError(rpcData.message || 'رصيد غير كافي', 400, 'CREDITS_INSUFFICIENT');
   }
 
   return {
     success: true,
-    message: data.message || 'تم فتح المقال بنجاح',
-    remaining_credits: data.remaining_credits,
-    remaining_balance: data.remaining_balance
+    message: rpcData.message || 'تم فتح المقال بنجاح',
+    remaining_credits: rpcData.remaining_credits,
+    remaining_balance: rpcData.remaining_balance
   };
 }
 
@@ -160,15 +181,17 @@ export async function consumeResearchCredit(supabase, { userId, researchId }) {
     throw new AppError('فشل في خصم الرصيد للبحث', 500, 'CREDITS_CONSUME_RESEARCH_FAILED');
   }
 
-  if (!data.success) {
-    throw new AppError(data.message || 'رصيد غير كافي', 400, 'CREDITS_INSUFFICIENT');
+  const rpcData = requireRpcData(data, { userId, researchId, operation: 'consumeResearchCredit' });
+
+  if (!rpcData.success) {
+    throw new AppError(rpcData.message || 'رصيد غير كافي', 400, 'CREDITS_INSUFFICIENT');
   }
 
   return {
     success: true,
-    message: data.message || 'تم فتح البحث بنجاح',
-    remaining_credits: data.remaining_credits,
-    remaining_balance: data.remaining_balance
+    message: rpcData.message || 'تم فتح البحث بنجاح',
+    remaining_credits: rpcData.remaining_credits,
+    remaining_balance: rpcData.remaining_balance
   };
 }
 
@@ -202,6 +225,10 @@ async function checkContentAccess(supabase, {
   accessCheckFailCode,
   accessCheckFailMsg
 }) {
+  if (typeof contentId !== 'string' || !UUID_RE.test(contentId)) {
+    throw new AppError(notFoundMsg, 400, 'INVALID_CONTENT_ID');
+  }
+
   // 1. Fetch the content's credits_required
   const { data: content, error: contentError } = await supabase
     .from(contentTable)
@@ -288,15 +315,15 @@ export async function getTransactions(supabase, { userId, page = 1, limit = 10, 
   let query = supabase
     .from('credit_transactions')
     .select(`${TRANSACTION_SELECT}`, { count: 'exact' })
-    .eq('custom_user_id', userId)
-    .order('transaction_date', { ascending: false })
-    .range(offset, offset + limitNum - 1);
+    .eq('custom_user_id', userId);
 
   if (type) {
     query = query.eq('transaction_type', type);
   }
 
-  const { data, error, count } = await query;
+  const { data, error, count } = await query
+    .order('transaction_date', { ascending: false })
+    .range(offset, offset + limitNum - 1);
 
   if (error) {
     logger.error('Get transactions failed', { error, userId, page: pageNum });

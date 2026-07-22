@@ -1,15 +1,27 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Hls from 'hls.js';
+import MuxPlayer from '@mux/mux-player-react';
 import Plyr from 'plyr';
 import { Lock, AlertCircle, Play, Loader2 } from 'lucide-react';
 
+const HLS_MAX_RETRIES = 3;
+
+interface MuxTokens {
+    playback: string;
+    thumbnail: string;
+    storyboard: string;
+}
+
 interface PlaybackDescriptor {
-    type: 'vdocipher' | 'hls' | 'youtube' | 'mp4';
+    type: 'vdocipher' | 'hls' | 'mux' | 'youtube' | 'mp4';
     otp?: string;
     playbackInfo?: string;
+    playbackId?: string;
     manifestUrl?: string;
     url?: string;
     expiresAt?: string;
+    /** Present for signed Mux assets; null for public assets. */
+    tokens?: MuxTokens | null;
 }
 
 interface SecureVideoPlayerProps {
@@ -28,6 +40,72 @@ interface SecureVideoPlayerProps {
     videoControlRef?: React.MutableRefObject<{ pause: () => void; resume: () => void } | null>;
 }
 
+// ---------------------------------------------------------------------------
+// MuxVideoPlayer — dedicated sub-component for Mux-hosted assets.
+// Uses the official @mux/mux-player-react component which provides:
+//  - Adaptive poster / thumbnails (via thumbnail token)
+//  - Storyboard timeline hover previews (via storyboard token)
+//  - AirPlay / Chromecast, quality selectors
+//  - Built-in Mux Data analytics
+// ---------------------------------------------------------------------------
+interface MuxVideoPlayerProps {
+    playbackId: string;
+    tokens: MuxTokens | null;
+    title: string;
+    userId?: string;
+    onPlaybackStateChange?: (isPlaying: boolean) => void;
+    onTimeUpdate?: (currentTime: number) => void;
+    videoControlRef?: React.MutableRefObject<{ pause: () => void; resume: () => void } | null>;
+}
+
+const MuxVideoPlayer: React.FC<MuxVideoPlayerProps> = ({
+    playbackId,
+    tokens,
+    title,
+    userId,
+    onPlaybackStateChange,
+    onTimeUpdate,
+    videoControlRef,
+}) => {
+    const muxRef = useRef<HTMLElement | null>(null);
+
+    useEffect(() => {
+        if (!videoControlRef) return;
+        const el = muxRef.current as HTMLVideoElement | null;
+        videoControlRef.current = {
+            pause: () => el?.pause?.(),
+            resume: () => { el?.play?.().catch(() => undefined); },
+        };
+    }, [videoControlRef]);
+
+    return (
+        <MuxPlayer
+            ref={muxRef as React.Ref<HTMLElement>}
+            playbackId={playbackId}
+            tokens={tokens ?? undefined}
+            metadata={{
+                video_id: playbackId,
+                video_title: title,
+                viewer_user_id: userId,
+            }}
+            streamType="on-demand"
+            style={{ width: '100%', height: '100%' }}
+            onPlay={() => onPlaybackStateChange?.(true)}
+            onPause={() => onPlaybackStateChange?.(false)}
+            onEnded={() => onPlaybackStateChange?.(false)}
+            onTimeUpdate={(e) => {
+                const video = e.target as HTMLVideoElement;
+                if (video?.currentTime !== undefined) {
+                    onTimeUpdate?.(video.currentTime);
+                }
+            }}
+        />
+    );
+};
+
+// ---------------------------------------------------------------------------
+// SecureVideoPlayer — main component
+// ---------------------------------------------------------------------------
 const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
     title,
     playback,
@@ -47,6 +125,7 @@ const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
     const previewRef = useRef<HTMLVideoElement | null>(null);
     const youtubeRef = useRef<HTMLDivElement | null>(null);
     const plyrInstanceRef = useRef<Plyr | null>(null);
+    const [hlsError, setHlsError] = useState(false);
 
     const extractYouTubeId = (url: string) => {
         try {
@@ -66,16 +145,8 @@ const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
         return match ? match[1] : null;
     };
 
-    const destroyPlyr = () => {
-        if (plyrInstanceRef.current) {
-            plyrInstanceRef.current.destroy();
-            plyrInstanceRef.current = null;
-        }
-    };
-
-    useEffect(() => {
-        return () => destroyPlyr();
-    }, []);
+    // HLS.js is only used for the 'hls' provider (not 'mux' — that uses MuxPlayer)
+    const isHlsPlayback = playback?.type === 'hls';
 
     useEffect(() => {
         if (!previewRef.current || !previewSeconds || previewSeconds <= 0) return;
@@ -91,7 +162,7 @@ const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
     }, [previewSeconds, previewSource]);
 
     useEffect(() => {
-        if (playback?.type !== 'hls') return;
+        if (!isHlsPlayback) return;
         const video = videoRef.current;
         if (!video) return;
 
@@ -111,11 +182,9 @@ const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
             video.removeEventListener('ended', handleEnded);
             video.removeEventListener('timeupdate', handleTimeUpdate);
         };
-    }, [playback?.type, onPlaybackStateChange, onTimeUpdate]);
+    }, [isHlsPlayback, onPlaybackStateChange, onTimeUpdate]);
 
     useEffect(() => {
-        destroyPlyr();
-
         if (!playback) return;
 
         if (playback.type === 'mp4' && videoRef.current) {
@@ -129,7 +198,12 @@ const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
                 if (player.currentTime !== undefined) onTimeUpdate?.(player.currentTime);
             });
             plyrInstanceRef.current = player;
-            return;
+            return () => {
+                player.destroy();
+                if (plyrInstanceRef.current === player) {
+                    plyrInstanceRef.current = null;
+                }
+            };
         }
 
         if (playback.type === 'youtube' && playback.url && youtubeRef.current) {
@@ -148,12 +222,20 @@ const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
                 if (player.currentTime !== undefined) onTimeUpdate?.(player.currentTime);
             });
             plyrInstanceRef.current = player;
+            return () => {
+                player.destroy();
+                if (plyrInstanceRef.current === player) {
+                    plyrInstanceRef.current = null;
+                }
+            };
         }
     }, [playback, onPlaybackStateChange, onTimeUpdate]);
 
     // Expose pause/resume controls via ref
     useEffect(() => {
         if (!videoControlRef) return;
+        // For mux type, MuxVideoPlayer wires the ref itself.
+        if (playback?.type === 'mux') return;
         videoControlRef.current = {
             pause: () => {
                 if (plyrInstanceRef.current) {
@@ -173,12 +255,49 @@ const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
     }, [playback, videoControlRef]);
 
     useEffect(() => {
-        if (!playback || playback.type !== 'hls' || !videoRef.current) return;
+        if (!playback || !isHlsPlayback || !videoRef.current) return;
         const video = videoRef.current;
         let hls: Hls | null = null;
+        // M5: Retry counter — caps recovery attempts to avoid infinite loops from
+        // persistent errors (e.g. expired signed URLs).
+        let networkRetries = 0;
+        let mediaRetried = false;
+
+        setHlsError(false);
+
+        const fatalError = () => {
+            hls?.detachMedia();
+            hls?.destroy();
+            hls = null;
+            setHlsError(true);
+        };
 
         if (Hls.isSupported() && playback.manifestUrl) {
-            hls = new Hls();
+            hls = new Hls({
+                maxMaxBufferLength: 30,
+                startLevel: -1
+            });
+            hls.on(Hls.Events.ERROR, (_event, data) => {
+                if (!data.fatal || !hls) return;
+
+                if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+                    if (networkRetries < HLS_MAX_RETRIES) {
+                        networkRetries++;
+                        hls.startLoad();
+                    } else {
+                        fatalError();
+                    }
+                } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+                    if (!mediaRetried) {
+                        mediaRetried = true;
+                        hls.recoverMediaError();
+                    } else {
+                        fatalError();
+                    }
+                } else {
+                    fatalError();
+                }
+            });
             hls.loadSource(playback.manifestUrl);
             hls.attachMedia(video);
         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
@@ -187,10 +306,13 @@ const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
 
         return () => {
             if (hls) {
+                hls.detachMedia();
                 hls.destroy();
             }
+            video.removeAttribute('src');
+            video.load();
         };
-    }, [playback]);
+    }, [playback, isHlsPlayback]);
 
     useEffect(() => {
         if (!playback) return;
@@ -276,6 +398,20 @@ const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
         );
     }
 
+    // Mux: use the official MuxPlayer component (not HLS.js)
+    if (playback.type === 'mux' && playback.playbackId) {
+        return (
+            <MuxVideoPlayer
+                playbackId={playback.playbackId}
+                tokens={playback.tokens ?? null}
+                title={title}
+                onPlaybackStateChange={onPlaybackStateChange}
+                onTimeUpdate={onTimeUpdate}
+                videoControlRef={videoControlRef}
+            />
+        );
+    }
+
     if (playback.type === 'youtube' && playback.url) {
         const videoId = extractYouTubeId(playback.url);
         if (!videoId) {
@@ -294,6 +430,17 @@ const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
     }
 
     if ((playback.type === 'mp4' && playback.url) || playback.type === 'hls') {
+        if (hlsError) {
+            return (
+                <div
+                    className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900"
+                    data-testid="course-video-error"
+                >
+                    <AlertCircle size={48} className="text-red-500 mb-4" />
+                    <p className="text-gray-300">حدث خطأ في تحميل الفيديو. الرجاء المحاولة لاحقاً.</p>
+                </div>
+            );
+        }
         return (
             <video
                 ref={videoRef}

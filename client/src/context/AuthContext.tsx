@@ -1,11 +1,14 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { authApi } from '../lib/api';
+import { authApi, creditsApi } from '../lib/api';
 
 // Types
 interface User {
     id: string;
     phone_number: string;
     display_name: string | null;
+    role?: string;
+    verification_status?: string;
+    rejection_reason?: string | null;
 }
 
 interface TypedCredit {
@@ -32,6 +35,7 @@ interface AuthContextType {
     isLoading: boolean;
     login: (phoneNumber: string, password: string) => Promise<void>;
     register: (phoneNumber: string, password: string, displayName?: string) => Promise<void>;
+    registerDoctor: (formData: FormData) => Promise<void>;
     logout: () => Promise<void>;
     refreshCredits: () => Promise<void>;
     updateProfile: (displayName: string) => Promise<void>;
@@ -70,24 +74,34 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     // Check for existing session on mount
     useEffect(() => {
         const checkSession = async () => {
-            const token = localStorage.getItem('user_token');
-            if (token) {
-                try {
-                    const response = await authApi.getProfile();
-                    setUser(response.user);
-                    setCredits(response.credits || defaultCredits);
-                } catch {
-                    // Token invalid, clear it
-                    localStorage.removeItem('user_token');
-                    setUser(null);
-                    setCredits(null);
-                }
+            try {
+                // If the user has a valid httpOnly cookie, getProfile will succeed
+                const response = await authApi.getProfile();
+                setUser(response.user);
+                setCredits(response.credits || defaultCredits);
+            } catch {
+                // No session or invalid session
+                setUser(null);
+                setCredits(null);
+            } finally {
+                setIsLoading(false);
             }
-            setIsLoading(false);
         };
 
         checkSession();
     }, []);
+
+    // Listen for the axios interceptor signalling that the session expired
+    // mid-flight (e.g. token revoked on the server while the user was active).
+    useEffect(() => {
+        const handleExpiry = () => {
+            setUser(null);
+            setCredits(null);
+        };
+        window.addEventListener('auth:session-expired', handleExpiry);
+        return () => window.removeEventListener('auth:session-expired', handleExpiry);
+    }, []);
+
 
     const getApiErrorMessage = (error: unknown, fallback: string) => {
         const err = error as {
@@ -107,13 +121,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         try {
             const response = await authApi.login(phoneNumber, password);
 
-            if (response.token) {
-                localStorage.setItem('user_token', response.token);
-                setUser(response.user);
+            // Backend sets httpOnly cookie automatically. 
+            // The response still includes 'token' for mobile, but web ignores it.
+            setUser(response.user);
 
-                // Fetch credits after login
-                await refreshCredits();
-            }
+            // Fetch credits after login
+            await refreshCredits();
         } catch (error: unknown) {
             throw new Error(getApiErrorMessage(error, 'فشل تسجيل الدخول'));
         }
@@ -123,13 +136,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         try {
             const response = await authApi.register(phoneNumber, password, displayName);
 
-            if (response.token) {
-                localStorage.setItem('user_token', response.token);
-                setUser(response.user);
-                setCredits(defaultCredits);
-            }
+            // Backend sets httpOnly cookie automatically
+            setUser(response.user);
+            setCredits(defaultCredits);
         } catch (error: unknown) {
             throw new Error(getApiErrorMessage(error, 'فشل إنشاء الحساب'));
+        }
+    };
+
+    const registerDoctor = async (formData: FormData) => {
+        try {
+            const response = await authApi.registerDoctor(formData);
+
+            // Backend sets httpOnly cookie automatically
+            setUser(response.user);
+            setCredits(defaultCredits);
+        } catch (error: unknown) {
+            throw new Error(getApiErrorMessage(error, 'فشل إنشاء الحساب المهني للطبيب'));
         }
     };
 
@@ -139,7 +162,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         } catch {
             // Ignore logout errors
         } finally {
-            localStorage.removeItem('user_token');
             setUser(null);
             setCredits(null);
         }
@@ -147,8 +169,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     const refreshCredits = async () => {
         try {
-            const response = await authApi.getProfile();
-            setCredits(response.credits || defaultCredits);
+            // M1 fix: use the lightweight credits endpoint instead of the full profile fetch
+            const balance = await creditsApi.getBalance();
+            setCredits(balance || defaultCredits);
         } catch (error) {
             console.error('Error refreshing credits:', error);
         }
@@ -170,6 +193,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         isLoading,
         login,
         register,
+        registerDoctor,
         logout,
         refreshCredits,
         updateProfile

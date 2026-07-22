@@ -71,15 +71,24 @@ describe('coursePlaybackService Unit Tests', () => {
             await expect(coursePlaybackService.createPlaybackSession(p)).rejects.toThrow(ForbiddenError);
         });
 
-        it('should throw BadRequestError if per_minute and insufficient funds', async () => {
+        // The racy pre-check (BadRequestError on zero balance before session insert) was removed
+        // in fix #9. Balance enforcement is now handled transactionally by the
+        // consume_video_minutes_v2 RPC at heartbeat time. This test verifies that a
+        // zero-balance per-minute user is allowed to START a session successfully.
+        it('should allow session creation for per_minute course regardless of current balance (RPC enforces at heartbeat)', async () => {
             const courseData = { ...mockDefaultCourse, billing_model: 'per_minute', minute_cost: 10 };
             const singleMock = jest.fn()
                 .mockResolvedValueOnce({ data: courseData, error: null })
-                // Return 0 minutes & 0 balance
-                .mockResolvedValueOnce({ data: { video_watch_minutes: 0, balance: 0 }, error: null });
+                // 0 minutes & 0 balance — should no longer block session creation
+                .mockResolvedValueOnce({ data: { video_watch_minutes: 0, balance: 0 }, error: null })
+                .mockResolvedValueOnce({ data: { id: 'sess_pm' }, error: null });
 
             const p = { ...payload, supabase: { ...mockSupabase, single: singleMock } };
-            await expect(coursePlaybackService.createPlaybackSession(p)).rejects.toThrow(BadRequestError);
+            const result = await coursePlaybackService.createPlaybackSession(p);
+            expect(result.session_id).toBe('sess_pm');
+            expect(result.billing_model).toBe('per_minute');
+            expect(result.credits.remaining_minutes).toBe(0);
+            expect(result.credits.remaining_balance).toBe(0);
         });
 
         it('should successfully create session for vdocipher provider', async () => {
@@ -124,6 +133,26 @@ describe('coursePlaybackService Unit Tests', () => {
             expect(result.session_id).toBe('sess_hls');
             expect(result.playback.type).toBe('hls');
             expect(result.playback.manifestUrl).toBeDefined();
+        });
+
+        it('should successfully create session for mux provider', async () => {
+            const courseData = {
+                ...mockDefaultCourse,
+                playback_provider: 'mux',
+                playback_source: 'mux://public/muxPlayback123',
+                duration: 3600
+            };
+            const singleMock = jest.fn()
+                .mockResolvedValueOnce({ data: courseData, error: null })
+                .mockResolvedValueOnce({ data: { id: 'sess_mux' }, error: null });
+
+            const p = { ...payload, supabase: { ...mockSupabase, single: singleMock } };
+            const result = await coursePlaybackService.createPlaybackSession(p);
+
+            expect(result.session_id).toBe('sess_mux');
+            expect(result.playback.type).toBe('mux');
+            expect(result.playback.manifestUrl).toBe('https://stream.mux.com/muxPlayback123.m3u8');
+            expect(new Date(result.expires_at).getTime()).toBeGreaterThan(Date.now() + 59 * 60 * 1000);
         });
 
         it('should successfully create session for youtube provider', async () => {

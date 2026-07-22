@@ -2,7 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import { body, validationResult } from 'express-validator';
 import { asyncHandler } from '../../utils/asyncHandler.js';
-import { AppError } from '../../utils/errors.js';
+import { AppError, BadRequestError } from '../../utils/errors.js';
 import { supabaseAdmin as supabase } from '../../config/supabase.js';
 import { authenticateToken } from '../../middleware/auth.js';
 import { uploadLimiter } from '../../middleware/rateLimiter.js';
@@ -12,9 +12,50 @@ import { buildFtsQuery } from '../../utils/searchUtils.js';
 import { indexCourse, removeCourse } from '../../services/search/indexer.js';
 import { uploadToSupabase } from './utils.js';
 import logger from '../../config/logger.js';
+import { parseMuxPlaybackSource } from '../../services/courses/muxService.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
+const ALLOWED_PLAYBACK_PROVIDERS = new Set(['vdocipher', 'hls', 'mux', 'youtube', 'mp4']);
+const ALLOWED_BILLING_MODELS = new Set(['free', 'per_course', 'per_minute']);
+
+function parseJsonArray(value, fieldName) {
+    if (!value) return [];
+    try {
+        const parsed = JSON.parse(value);
+        if (!Array.isArray(parsed)) {
+            throw new Error(`${fieldName} must be an array`);
+        }
+        return parsed.map(item => String(item).trim()).filter(Boolean);
+    } catch {
+        throw new BadRequestError(`${fieldName} must be a valid JSON array`);
+    }
+}
+
+function parseNumber(value, fallback = 0) {
+    const parsed = parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function parseBoolean(value) {
+    return value === true || value === 'true';
+}
+
+function normalizePlaybackProvider(value) {
+    const provider = value || 'vdocipher';
+    if (!ALLOWED_PLAYBACK_PROVIDERS.has(provider)) {
+        throw new BadRequestError('Unsupported playback provider');
+    }
+    return provider;
+}
+
+function normalizeBillingModel(value) {
+    const billingModel = value || 'per_minute';
+    if (!ALLOWED_BILLING_MODELS.has(billingModel)) {
+        throw new BadRequestError('Unsupported billing model');
+    }
+    return billingModel;
+}
 
 // Create course
 router.post('/',
@@ -35,10 +76,19 @@ router.post('/',
 
         const {
             title, author, categories, is_featured, playback_provider,
-            playback_source, billing_model, minute_cost, preview_source, preview_seconds
+            playback_source, billing_model, minute_cost, preview_source, preview_seconds,
+            transcript, attention_required
         } = req.body;
 
         const description = sanitizeContent(req.body.description);
+        const normalizedProvider = normalizePlaybackProvider(playback_provider);
+        const normalizedBillingModel = normalizeBillingModel(billing_model);
+        const normalizedCategories = parseJsonArray(categories, 'categories');
+
+        // M2: Fail-fast validation of Mux playback source at save time
+        if (normalizedProvider === 'mux' && playback_source) {
+            parseMuxPlaybackSource(playback_source); // throws BadRequestError on invalid ID
+        }
 
         let cover_image = '';
         if (req.file) {
@@ -53,16 +103,18 @@ router.post('/',
             .from('video_courses')
             .insert([{
                 title, description, cover_image, playback_source,
-                playback_provider: playback_provider || 'vdocipher',
-                billing_model: billing_model || 'per_minute',
-                minute_cost: parseInt(minute_cost) || 0,
+                playback_provider: normalizedProvider,
+                billing_model: normalizedBillingModel,
+                minute_cost: parseNumber(minute_cost, normalizedBillingModel === 'per_minute' ? 1 : 0),
                 preview_source: preview_source || null,
-                preview_seconds: parseInt(preview_seconds) || 0,
+                preview_seconds: parseNumber(preview_seconds),
+                transcript: transcript || null,
                 author,
-                categories: categories ? JSON.parse(categories) : [],
-                credits_required: parseInt(req.body.credits_required) || 0,
-                duration: parseInt(req.body.duration) || 0,
-                is_featured: is_featured === 'true',
+                categories: normalizedCategories,
+                credits_required: parseNumber(req.body.credits_required),
+                duration: parseNumber(req.body.duration),
+                is_featured: parseBoolean(is_featured),
+                attention_required: parseBoolean(attention_required),
                 publication_date: new Date().toISOString(),
             }])
             .select();
@@ -88,10 +140,19 @@ router.put('/:id',
         const { id } = req.params;
         const {
             title, author, categories, is_featured, playback_provider,
-            playback_source, billing_model, minute_cost, preview_source, preview_seconds
+            playback_source, billing_model, minute_cost, preview_source, preview_seconds,
+            transcript, attention_required
         } = req.body;
 
         const description = sanitizeContent(req.body.description);
+        const normalizedProvider = normalizePlaybackProvider(playback_provider);
+        const normalizedBillingModel = normalizeBillingModel(billing_model);
+        const normalizedCategories = parseJsonArray(categories, 'categories');
+
+        // M2: Fail-fast validation of Mux playback source at save time
+        if (normalizedProvider === 'mux' && playback_source) {
+            parseMuxPlaybackSource(playback_source); // throws BadRequestError on invalid ID
+        }
 
         const { data: existing, error: fetchErr } = await supabase
             .from('video_courses')
@@ -110,22 +171,23 @@ router.put('/:id',
 
         const updatePayload = {
             title, description, cover_image,
-            playback_provider: playback_provider || 'vdocipher',
-            billing_model: billing_model || 'per_minute',
-            minute_cost: parseInt(minute_cost) || 0,
+            playback_provider: normalizedProvider,
+            billing_model: normalizedBillingModel,
+            minute_cost: parseNumber(minute_cost, normalizedBillingModel === 'per_minute' ? 1 : 0),
+            // L5: Always write playback_source (even empty string) so admins can
+            // intentionally clear it when switching providers. null = cleared.
+            playback_source: playback_source || null,
             preview_source: preview_source || null,
-            preview_seconds: parseInt(preview_seconds) || 0,
+            preview_seconds: parseNumber(preview_seconds),
+            transcript: transcript || null,
             author,
-            categories: categories ? JSON.parse(categories) : [],
-            credits_required: parseInt(req.body.credits_required) || 0,
-            duration: parseInt(req.body.duration) || 0,
-            is_featured: is_featured === 'true',
+            categories: normalizedCategories,
+            credits_required: parseNumber(req.body.credits_required),
+            duration: parseNumber(req.body.duration),
+            is_featured: parseBoolean(is_featured),
+            attention_required: parseBoolean(attention_required),
             updated_at: new Date().toISOString(),
         };
-
-        if (playback_source) {
-            updatePayload.playback_source = playback_source;
-        }
 
         const { data, error } = await supabase
             .from('video_courses')

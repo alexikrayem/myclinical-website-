@@ -1,74 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Coins, Plus, X, Video, FileText, BookOpen, ChevronDown, Tag } from 'lucide-react';
-import { creditsApi } from '../../lib/api';
+import { Coins, Plus, Video, FileText, BookOpen, ChevronDown, Tag } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import toast from 'react-hot-toast';
+import CreditRedeemModal from './CreditRedeemModal';
 
-const RedeemCodeModal = ({ isOpen, onClose, onSuccess }: { isOpen: boolean; onClose: () => void; onSuccess: () => void }) => {
-    const [code, setCode] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-
-    if (!isOpen) return null;
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!code.trim()) return;
-
-        setIsLoading(true);
-        try {
-            const data = await creditsApi.redeemCode(code);
-            if (data.success) {
-                toast.success(data.message);
-                onSuccess();
-                onClose();
-                setCode('');
-            } else {
-                toast.error(data.message);
-            }
-        } catch (error: unknown) {
-            const err = error as { response?: { data?: { error?: string } } };
-            toast.error(err.response?.data?.error || 'فشل شحن الرصيد');
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-3xl w-full max-w-md p-6 animate-scaleIn relative">
-                <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
-                    <X size={24} />
-                </button>
-
-                <h2 className="text-xl font-bold mb-4 flex items-center">
-                    <Coins className="ml-2 text-yellow-500" />
-                    شحن الرصيد
-                </h2>
-
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">كود الشحن</label>
-                        <input
-                            type="text"
-                            value={code}
-                            onChange={(e) => setCode(e.target.value)}
-                            placeholder="أدخل الكود هنا (مثال: GIFT-1234)"
-                            className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all uppercase"
-                        />
-                    </div>
-
-                    <button
-                        type="submit"
-                        disabled={isLoading || !code}
-                        className="btn-primary w-full"
-                    >
-                        {isLoading ? 'جاري التحقق...' : 'شحن الرصيد'}
-                    </button>
-                </form>
-            </div>
-        </div>
-    );
-};
+// M3 fix: removed the duplicate inline RedeemCodeModal — now uses the shared
+// CreditRedeemModal component so both code paths stay in sync.
 
 const CreditBalance = () => {
     const { credits, refreshCredits, isAuthenticated } = useAuth();
@@ -93,6 +29,11 @@ const CreditBalance = () => {
 
     // Don't show if not logged in or credits are not loaded yet
     if (!isAuthenticated || !credits) return null;
+
+    const handleRedeemSuccess = () => {
+        refreshCredits();
+        setIsModalOpen(false);
+    };
 
     return (
         <div className="relative z-50 flex items-center" ref={dropdownRef}>
@@ -174,10 +115,10 @@ const CreditBalance = () => {
                 </div>
             )}
 
-            <RedeemCodeModal
+            {/* M3 fix: now uses the shared CreditRedeemModal instead of a local duplicate */}
+            <CreditRedeemModal
                 isOpen={isModalOpen}
-                onClose={() => setIsModalOpen(false)}
-                onSuccess={refreshCredits}
+                onClose={handleRedeemSuccess}
             />
         </div>
     );

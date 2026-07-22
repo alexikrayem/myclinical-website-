@@ -1,12 +1,18 @@
 import { getVdoPlaybackInfo } from '../vdoService.js';
 import { parseSupabaseSource } from './hlsService.js';
+import { createMuxPlaybackDescriptor } from './muxService.js';
 import { generateChallenges } from './attentionService.js';
 import { AppError, BadRequestError, ForbiddenError, NotFoundError } from '../../utils/errors.js';
 import logger from '../../config/logger.js';
 
 const PLAYBACK_SESSION_TTL_SECONDS = parseInt(process.env.PLAYBACK_SESSION_TTL_SECONDS || '600', 10);
+const PLAYBACK_SESSION_GRACE_SECONDS = parseInt(process.env.PLAYBACK_SESSION_GRACE_SECONDS || '900', 10);
 
-const buildSessionExpiry = () => new Date(Date.now() + PLAYBACK_SESSION_TTL_SECONDS * 1000).toISOString();
+const buildSessionExpiry = (durationSeconds = 0) => {
+  const durationTtl = Number(durationSeconds || 0) + PLAYBACK_SESSION_GRACE_SECONDS;
+  const ttlSeconds = Math.max(PLAYBACK_SESSION_TTL_SECONDS, durationTtl);
+  return new Date(Date.now() + ttlSeconds * 1000).toISOString();
+};
 
 export async function createPlaybackSession({ supabase, courseId, user, baseUrl }) {
   const { data: course, error } = await supabase
@@ -40,20 +46,16 @@ export async function createPlaybackSession({ supabase, courseId, user, baseUrl 
       .eq('custom_user_id', user.id)
       .single();
 
-    const videoMinutes = credits?.video_watch_minutes || 0;
-    const balance = credits?.balance || 0;
+    // Note: we do NOT pre-check the balance here — that check was racy
+    // (no FOR UPDATE lock). The consume_video_minutes_v2 RPC enforces
+    // insufficient-balance rejection transactionally at the first heartbeat.
     creditsSummary = {
-      remaining_minutes: videoMinutes,
-      remaining_balance: balance
+      remaining_minutes: credits?.video_watch_minutes || 0,
+      remaining_balance: credits?.balance || 0,
     };
-
-    const minuteCost = course.minute_cost || 1;
-    if (minuteCost > 0 && videoMinutes < minuteCost && balance < minuteCost) {
-      throw new BadRequestError('رصيد غير كافي');
-    }
   }
 
-  const expiresAt = buildSessionExpiry();
+  const expiresAt = buildSessionExpiry(course.duration);
   const { data: session, error: sessionError } = await supabase
     .from('course_playback_sessions')
     .insert({
@@ -113,6 +115,18 @@ export async function createPlaybackSession({ supabase, courseId, user, baseUrl 
         manifestUrl,
         expiresAt: expiresAt
       };
+      break;
+    }
+    case 'mux': {
+      if (!course.playback_source) {
+        throw new BadRequestError('Missing playback source');
+      }
+      playback = createMuxPlaybackDescriptor({
+        playbackSource: course.playback_source,
+        sessionId: session.id,
+        expiresAt,
+        durationSeconds: course.duration
+      });
       break;
     }
     case 'youtube': {

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, CheckCircle, Mail, Lock, User, Phone, ArrowRight, BookOpen, GraduationCap, Video } from 'lucide-react';
+import { X, CheckCircle, Lock, User, Phone, ArrowRight, BookOpen, GraduationCap, Video } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
@@ -16,18 +16,20 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 'l
     const { login, register } = useAuth();
 
     // Form states
-    const [email, setEmail] = useState(''); // Keep for UI, though context doesn't use it yet
     const [password, setPassword] = useState('');
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [error, setError] = useState('');
 
-    // Password validation (align with backend)
+    // Password validation — MUST mirror backend config/security.js exactly:
+    // 8+ chars, at least one uppercase, one lowercase, one digit, one special char
     const hasMinLength = password.length >= 8;
-    const hasLetter = /[a-zA-Z]/.test(password);
+    const hasUppercase = /[A-Z]/.test(password);
+    const hasLowercase = /[a-z]/.test(password);
     const hasNumber = /\d/.test(password);
-    const isPasswordValid = hasMinLength && hasLetter && hasNumber;
+    const hasSpecial = /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password);
+    const isPasswordValid = hasMinLength && hasUppercase && hasLowercase && hasNumber && hasSpecial;
     const isPhoneValid = /^09\d{8}$/.test(phone);
 
     if (!isOpen) return null;
@@ -57,7 +59,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 'l
                     throw new Error('رقم الهاتف يجب أن يكون بالصيغة 09xxxxxxxx');
                 }
                 if (!isPasswordValid) {
-                    throw new Error('كلمة المرور يجب أن تكون 8 أحرف على الأقل وتحتوي على حرف ورقم');
+                    throw new Error('كلمة المرور يجب أن تحتوي على 8 أحرف على الأقل، حرف كبير وصغير، رقم، ورمز خاص');
                 }
                 if (password !== confirmPassword) {
                     throw new Error('كلمة المرور غير متطابقة');
@@ -168,15 +170,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 'l
                                 </div>
                             </div>
 
-                            {mode === 'register' && (
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1.5">البريد الإلكتروني (اختياري)</label>
-                                    <div className="relative">
-                                        <Mail className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                                        <input type="email" className="input-modern pr-10" placeholder="name@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
-                                    </div>
-                                </div>
-                            )}
+                            {/* Email field intentionally removed — backend does not accept it in the user registration flow */}
 
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1.5">كلمة المرور</label>
@@ -187,12 +181,24 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 'l
                             </div>
 
                             {mode === 'register' && (
-                                <div className="animate-slideDown">
-                                    <label className="block text-sm font-medium text-gray-700 mb-1.5">تأكيد كلمة المرور</label>
-                                    <div className="relative">
-                                        <Lock className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                                        <input type="password" required className="input-modern pr-10" placeholder="••••••••" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+                                <div className="animate-slideDown space-y-3">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1.5">تأكيد كلمة المرور</label>
+                                        <div className="relative">
+                                            <Lock className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                                            <input type="password" required className="input-modern pr-10" placeholder="••••••••" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+                                        </div>
                                     </div>
+                                    {/* Password strength indicators */}
+                                    {password.length > 0 && (
+                                        <ul className="text-xs space-y-1 pr-1">
+                                            <li className={hasMinLength ? 'text-green-600' : 'text-gray-400'}>✓ 8 أحرف على الأقل</li>
+                                            <li className={hasUppercase ? 'text-green-600' : 'text-gray-400'}>✓ حرف كبير (A-Z)</li>
+                                            <li className={hasLowercase ? 'text-green-600' : 'text-gray-400'}>✓ حرف صغير (a-z)</li>
+                                            <li className={hasNumber ? 'text-green-600' : 'text-gray-400'}>✓ رقم (0-9)</li>
+                                            <li className={hasSpecial ? 'text-green-600' : 'text-gray-400'}>✓ رمز خاص (!@#$%...)</li>
+                                        </ul>
+                                    )}
                                 </div>
                             )}
 

@@ -9,18 +9,30 @@ import QuizModal from '../components/courses/QuizModal';
 import SecureVideoPlayer from '../components/courses/SecureVideoPlayer';
 import AttentionCheckModal from '../components/courses/AttentionCheckModal';
 import axios from 'axios';
+import { useAuth } from '../context/AuthContext';
+
+interface QuizQuestion {
+    question: string;
+    options: string[];
+}
 
 interface QuizData {
     id: string;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    questions: any[];
+    questions: QuizQuestion[];
+}
+
+export interface ChallengeData {
+    /** Display text shown to the user (required by all challenge types) */
+    question: string;
+    questionEn?: string;
+    /** Color options for 'color' type challenges */
+    options?: Array<{ nameEn: string; hex: string }>;
 }
 
 export interface Challenge {
     id: string;
     type: "color" | "math" | "confirm";
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    data: any;
+    data: ChallengeData;
     trigger_at_seconds: number;
     timeout_seconds: number;
 }
@@ -30,6 +42,7 @@ type BillingModel = 'free' | 'per_course' | 'per_minute';
 type PlaybackDescriptor =
     | { type: 'vdocipher'; otp: string; playbackInfo: string }
     | { type: 'hls'; manifestUrl: string; expiresAt?: string }
+    | { type: 'mux'; playbackId: string; manifestUrl: string; tokens: { playback: string; thumbnail: string; storyboard: string } | null; expiresAt?: string }
     | { type: 'youtube'; url: string }
     | { type: 'mp4'; url: string };
 
@@ -50,6 +63,7 @@ interface Course {
     categories: string[];
     credits_required: number;
     duration: number;
+    level?: string;
     billing_model: BillingModel;
     minute_cost: number;
     playback_provider: string;
@@ -63,6 +77,7 @@ interface Course {
 
 const CourseDetailPage = () => {
     const { id } = useParams<{ id: string }>();
+    const { isAuthenticated } = useAuth();
     const [course, setCourse] = useState<Course | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [hasAccess, setHasAccess] = useState(false);
@@ -74,7 +89,9 @@ const CourseDetailPage = () => {
     const [isPlaying, setIsPlaying] = useState(false);
     const [credits, setCredits] = useState<{ remaining_minutes?: number; remaining_balance?: number } | null>(null);
     const [autoPlaybackRequested, setAutoPlaybackRequested] = useState(false);
-    const isLoggedIn = Boolean(localStorage.getItem('user_token'));
+    const isLoggedIn = isAuthenticated;
+    // Tracks the real wall-clock time of the last heartbeat to avoid fixed-delta drift (M6)
+    const lastHeartbeatTimeRef = useRef<number>(performance.now());
 
     // Attention verification state
     const [attentionRequired, setAttentionRequired] = useState(false);
@@ -116,7 +133,7 @@ const CourseDetailPage = () => {
                     }
                 }
 
-                if (data.billing_model === 'per_minute' && localStorage.getItem('user_token')) {
+                if (data.billing_model === 'per_minute' && isAuthenticated) {
                     try {
                         const creditData = await creditsApi.getBalance();
                         setCredits({
@@ -137,7 +154,7 @@ const CourseDetailPage = () => {
         };
 
         fetchCourse();
-    }, [id]);
+    }, [id, isAuthenticated]);
 
     const handlePurchase = async () => {
         if (!id) return;
@@ -164,7 +181,7 @@ const CourseDetailPage = () => {
     const startPlayback = useCallback(async () => {
         if (!id) return;
         if (playbackLoading || playback) return;
-        if (!localStorage.getItem('user_token')) {
+        if (!isAuthenticated) {
             toast.error('يرجى تسجيل الدخول لبدء التشغيل');
             return;
         }
@@ -188,7 +205,7 @@ const CourseDetailPage = () => {
         } finally {
             setPlaybackLoading(false);
         }
-    }, [id, playbackLoading, playback]);
+    }, [id, playbackLoading, playback, isAuthenticated]);
 
     useEffect(() => {
         if (!course || !id || autoPlaybackRequested || playback || playbackLoading) return;
@@ -200,14 +217,24 @@ const CourseDetailPage = () => {
 
     useEffect(() => {
         if (!id || !playbackSessionId || !isPlaying || course?.billing_model !== 'per_minute') return;
+
+        // Reset the reference whenever this effect fires (new session / resumed play)
+        lastHeartbeatTimeRef.current = performance.now();
+
         const interval = setInterval(async () => {
+            // M6: Compute actual elapsed seconds rather than using the fixed 30-second constant.
+            // This compensates for tab throttling, CPU pressure, and React re-render jitter.
+            const now = performance.now();
+            const actualDelta = Math.max(1, Math.round((now - lastHeartbeatTimeRef.current) / 1000));
+            lastHeartbeatTimeRef.current = now;
+
             try {
                 const idempotencyKey = typeof crypto?.randomUUID === 'function'
                     ? crypto.randomUUID()
                     : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
                 const result = await coursesApi.sendHeartbeat(id, {
                     session_id: playbackSessionId,
-                    seconds_delta: 30,
+                    seconds_delta: actualDelta,
                     idempotency_key: idempotencyKey
                 });
 
@@ -430,7 +457,7 @@ const CourseDetailPage = () => {
                                     </div>
                                     <div className="flex items-center justify-between py-2 border-b border-gray-700">
                                         <span>المستوى</span>
-                                        <span>متوسط</span>
+                                        <span>{course.level ?? 'متوسط'}</span>
                                     </div>
                                     <div className="flex items-center justify-between py-2 border-b border-gray-700">
                                         <span>الشهادة</span>

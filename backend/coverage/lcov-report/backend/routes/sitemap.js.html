@@ -23,16 +23,16 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">9.43% </span>
+                <span class="strong">7.69% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>5/53</span>
+                <span class='fraction'>4/52</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">7.14% </span>
+                <span class="strong">14.28% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>1/14</span>
+                <span class='fraction'>2/14</span>
             </div>
         
             
@@ -44,9 +44,9 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">9.43% </span>
+                <span class="strong">7.69% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>5/53</span>
+                <span class='fraction'>4/52</span>
             </div>
         
             
@@ -184,26 +184,20 @@
 <a name='L119'></a><a href='#L119'>119</a>
 <a name='L120'></a><a href='#L120'>120</a>
 <a name='L121'></a><a href='#L121'>121</a>
-<a name='L122'></a><a href='#L122'>122</a>
-<a name='L123'></a><a href='#L123'>123</a>
-<a name='L124'></a><a href='#L124'>124</a>
-<a name='L125'></a><a href='#L125'>125</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L122'></a><a href='#L122'>122</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">13x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">13x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">13x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -300,7 +294,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">13x</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -312,16 +306,13 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import express from 'express';
-import dotenv from 'dotenv';
 import { supabasePublic as supabase } from '../config/supabase.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { AppError } from '../utils/errors.js';
 &nbsp;
-dotenv.config();
-&nbsp;
 const router = express.Router();
 &nbsp;
-const SITE_URL = process.env.SITE_URL || <span class="branch-1 cbranch-no" title="branch not covered" >'https://tabeeb.com';</span>
+const SITE_URL = process.env.SITE_URL || 'https://tabeeb.com';
 &nbsp;
 /**
  * @route GET /sitemap.xml
@@ -358,63 +349,63 @@ router.get('/sitemap.xml', asyncHandler(<span class="fstat-no" title="function n
 <span class="cstat-no" title="statement not covered" >        throw new AppError('Error generating sitemap', 500, 'SITEMAP_FETCH_FAILED');</span>
     }
 &nbsp;
-        // Build XML
-        let xml = <span class="cstat-no" title="statement not covered" >'&lt;?xml version="1.0" encoding="UTF-8"?&gt;\n';</span>
-<span class="cstat-no" title="statement not covered" >        xml += '&lt;urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"&gt;\n';</span>
+    // Build XML
+    let xml = <span class="cstat-no" title="statement not covered" >'&lt;?xml version="1.0" encoding="UTF-8"?&gt;\n';</span>
+<span class="cstat-no" title="statement not covered" >    xml += '&lt;urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"&gt;\n';</span>
 &nbsp;
-        // Static pages
-        const ENABLE_COURSES = <span class="cstat-no" title="statement not covered" >process.env.ENABLE_COURSES !== 'false';</span>
-        const staticPages = <span class="cstat-no" title="statement not covered" >[</span>
-            { loc: '/', priority: '1.0' },
-            { loc: '/articles', priority: '0.9' },
-            { loc: '/clinical-cases', priority: '0.9' },
-            ...(ENABLE_COURSES ? [{ loc: '/courses', priority: '0.9' }] : []),
-            { loc: '/research-topics', priority: '0.8' },
-            { loc: '/about', priority: '0.5' },
-        ];
+    // Static pages
+    const ENABLE_COURSES = <span class="cstat-no" title="statement not covered" >process.env.ENABLE_COURSES !== 'false';</span>
+    const staticPages = <span class="cstat-no" title="statement not covered" >[</span>
+        { loc: '/', priority: '1.0' },
+        { loc: '/articles', priority: '0.9' },
+        { loc: '/clinical-cases', priority: '0.9' },
+        ...(ENABLE_COURSES ? [{ loc: '/courses', priority: '0.9' }] : []),
+        { loc: '/research-topics', priority: '0.8' },
+        { loc: '/about', priority: '0.5' },
+    ];
 &nbsp;
-<span class="cstat-no" title="statement not covered" >        staticPages.forEach(<span class="fstat-no" title="function not covered" >pa</span>ge =&gt; {</span>
+<span class="cstat-no" title="statement not covered" >    staticPages.forEach(<span class="fstat-no" title="function not covered" >pa</span>ge =&gt; {</span>
+<span class="cstat-no" title="statement not covered" >        xml += '  &lt;url&gt;\n';</span>
+<span class="cstat-no" title="statement not covered" >        xml += `    &lt;loc&gt;${SITE_URL}${page.loc}&lt;/loc&gt;\n`;</span>
+<span class="cstat-no" title="statement not covered" >        xml += `    &lt;priority&gt;${page.priority}&lt;/priority&gt;\n`;</span>
+<span class="cstat-no" title="statement not covered" >        xml += '    &lt;changefreq&gt;weekly&lt;/changefreq&gt;\n';</span>
+<span class="cstat-no" title="statement not covered" >        xml += '  &lt;/url&gt;\n';</span>
+    });
+&nbsp;
+    // Articles
+<span class="cstat-no" title="statement not covered" >    articles?.forEach(<span class="fstat-no" title="function not covered" >ar</span>ticle =&gt; {</span>
+        const path = <span class="cstat-no" title="statement not covered" >article.slug ? `/articles/${article.slug}` : `/articles/${article.id}`;</span>
+<span class="cstat-no" title="statement not covered" >        xml += '  &lt;url&gt;\n';</span>
+<span class="cstat-no" title="statement not covered" >        xml += `    &lt;loc&gt;${SITE_URL}${path}&lt;/loc&gt;\n`;</span>
+<span class="cstat-no" title="statement not covered" >        xml += `    &lt;lastmod&gt;${new Date(article.updated_at).toISOString().split('T')[0]}&lt;/lastmod&gt;\n`;</span>
+<span class="cstat-no" title="statement not covered" >        xml += '    &lt;priority&gt;0.8&lt;/priority&gt;\n';</span>
+<span class="cstat-no" title="statement not covered" >        xml += '    &lt;changefreq&gt;monthly&lt;/changefreq&gt;\n';</span>
+<span class="cstat-no" title="statement not covered" >        xml += '  &lt;/url&gt;\n';</span>
+    });
+&nbsp;
+    // Research
+<span class="cstat-no" title="statement not covered" >    research?.forEach(<span class="fstat-no" title="function not covered" >pa</span>per =&gt; {</span>
+<span class="cstat-no" title="statement not covered" >        xml += '  &lt;url&gt;\n';</span>
+<span class="cstat-no" title="statement not covered" >        xml += `    &lt;loc&gt;${SITE_URL}/research/${paper.id}&lt;/loc&gt;\n`;</span>
+<span class="cstat-no" title="statement not covered" >        xml += `    &lt;lastmod&gt;${new Date(paper.updated_at).toISOString().split('T')[0]}&lt;/lastmod&gt;\n`;</span>
+<span class="cstat-no" title="statement not covered" >        xml += '    &lt;priority&gt;0.7&lt;/priority&gt;\n';</span>
+<span class="cstat-no" title="statement not covered" >        xml += '    &lt;changefreq&gt;monthly&lt;/changefreq&gt;\n';</span>
+<span class="cstat-no" title="statement not covered" >        xml += '  &lt;/url&gt;\n';</span>
+    });
+&nbsp;
+    // Courses
+<span class="cstat-no" title="statement not covered" >    if (ENABLE_COURSES) {</span>
+<span class="cstat-no" title="statement not covered" >        courses?.forEach(<span class="fstat-no" title="function not covered" >co</span>urse =&gt; {</span>
 <span class="cstat-no" title="statement not covered" >            xml += '  &lt;url&gt;\n';</span>
-<span class="cstat-no" title="statement not covered" >            xml += `    &lt;loc&gt;${SITE_URL}${page.loc}&lt;/loc&gt;\n`;</span>
-<span class="cstat-no" title="statement not covered" >            xml += `    &lt;priority&gt;${page.priority}&lt;/priority&gt;\n`;</span>
-<span class="cstat-no" title="statement not covered" >            xml += '    &lt;changefreq&gt;weekly&lt;/changefreq&gt;\n';</span>
-<span class="cstat-no" title="statement not covered" >            xml += '  &lt;/url&gt;\n';</span>
-        });
-&nbsp;
-        // Articles
-<span class="cstat-no" title="statement not covered" >        articles?.forEach(<span class="fstat-no" title="function not covered" >ar</span>ticle =&gt; {</span>
-            const path = <span class="cstat-no" title="statement not covered" >article.slug ? `/articles/${article.slug}` : `/articles/${article.id}`;</span>
-<span class="cstat-no" title="statement not covered" >            xml += '  &lt;url&gt;\n';</span>
-<span class="cstat-no" title="statement not covered" >            xml += `    &lt;loc&gt;${SITE_URL}${path}&lt;/loc&gt;\n`;</span>
-<span class="cstat-no" title="statement not covered" >            xml += `    &lt;lastmod&gt;${new Date(article.updated_at).toISOString().split('T')[0]}&lt;/lastmod&gt;\n`;</span>
+<span class="cstat-no" title="statement not covered" >            xml += `    &lt;loc&gt;${SITE_URL}/courses/${course.id}&lt;/loc&gt;\n`;</span>
+<span class="cstat-no" title="statement not covered" >            xml += `    &lt;lastmod&gt;${new Date(course.updated_at).toISOString().split('T')[0]}&lt;/lastmod&gt;\n`;</span>
 <span class="cstat-no" title="statement not covered" >            xml += '    &lt;priority&gt;0.8&lt;/priority&gt;\n';</span>
 <span class="cstat-no" title="statement not covered" >            xml += '    &lt;changefreq&gt;monthly&lt;/changefreq&gt;\n';</span>
 <span class="cstat-no" title="statement not covered" >            xml += '  &lt;/url&gt;\n';</span>
         });
+    }
 &nbsp;
-        // Research
-<span class="cstat-no" title="statement not covered" >        research?.forEach(<span class="fstat-no" title="function not covered" >pa</span>per =&gt; {</span>
-<span class="cstat-no" title="statement not covered" >            xml += '  &lt;url&gt;\n';</span>
-<span class="cstat-no" title="statement not covered" >            xml += `    &lt;loc&gt;${SITE_URL}/research/${paper.id}&lt;/loc&gt;\n`;</span>
-<span class="cstat-no" title="statement not covered" >            xml += `    &lt;lastmod&gt;${new Date(paper.updated_at).toISOString().split('T')[0]}&lt;/lastmod&gt;\n`;</span>
-<span class="cstat-no" title="statement not covered" >            xml += '    &lt;priority&gt;0.7&lt;/priority&gt;\n';</span>
-<span class="cstat-no" title="statement not covered" >            xml += '    &lt;changefreq&gt;monthly&lt;/changefreq&gt;\n';</span>
-<span class="cstat-no" title="statement not covered" >            xml += '  &lt;/url&gt;\n';</span>
-        });
-&nbsp;
-        // Courses
-<span class="cstat-no" title="statement not covered" >        if (ENABLE_COURSES) {</span>
-<span class="cstat-no" title="statement not covered" >            courses?.forEach(<span class="fstat-no" title="function not covered" >co</span>urse =&gt; {</span>
-<span class="cstat-no" title="statement not covered" >                xml += '  &lt;url&gt;\n';</span>
-<span class="cstat-no" title="statement not covered" >                xml += `    &lt;loc&gt;${SITE_URL}/courses/${course.id}&lt;/loc&gt;\n`;</span>
-<span class="cstat-no" title="statement not covered" >                xml += `    &lt;lastmod&gt;${new Date(course.updated_at).toISOString().split('T')[0]}&lt;/lastmod&gt;\n`;</span>
-<span class="cstat-no" title="statement not covered" >                xml += '    &lt;priority&gt;0.8&lt;/priority&gt;\n';</span>
-<span class="cstat-no" title="statement not covered" >                xml += '    &lt;changefreq&gt;monthly&lt;/changefreq&gt;\n';</span>
-<span class="cstat-no" title="statement not covered" >                xml += '  &lt;/url&gt;\n';</span>
-            });
-        }
-&nbsp;
-<span class="cstat-no" title="statement not covered" >        xml += '&lt;/urlset&gt;';</span>
+<span class="cstat-no" title="statement not covered" >    xml += '&lt;/urlset&gt;';</span>
 &nbsp;
 <span class="cstat-no" title="statement not covered" >    res.set('Content-Type', 'application/xml');</span>
 <span class="cstat-no" title="statement not covered" >    res.send(xml);</span>
@@ -442,7 +433,7 @@ export default router;
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-05-16T15:35:26.250Z
+                at 2026-06-13T16:41:29.451Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

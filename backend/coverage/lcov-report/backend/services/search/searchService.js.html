@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">17.14% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/35</span>
+                <span class='fraction'>6/35</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">3.7% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/27</span>
+                <span class='fraction'>1/27</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">50% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>0/8</span>
+                <span class='fraction'>4/8</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">11.11% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/27</span>
+                <span class='fraction'>3/27</span>
             </div>
         
             
@@ -117,28 +117,11 @@
 <a name='L52'></a><a href='#L52'>52</a>
 <a name='L53'></a><a href='#L53'>53</a>
 <a name='L54'></a><a href='#L54'>54</a>
-<a name='L55'></a><a href='#L55'>55</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L55'></a><a href='#L55'>55</a>
+<a name='L56'></a><a href='#L56'>56</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -150,6 +133,25 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -162,17 +164,18 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import { searchIndex, isMeiliEnabled } from './meiliClient.js';
 import { normalizeQuery } from './normalize.js';
+import logger from '../../config/logger.js';
 &nbsp;
 function <span class="fstat-no" title="function not covered" >escapeFilterValue(</span>value) {
 <span class="cstat-no" title="statement not covered" >  return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');</span>
@@ -210,18 +213,18 @@ export async function <span class="fstat-no" title="function not covered" >meili
       showRankingScore: true
     });
   } catch (error) {
-<span class="cstat-no" title="statement not covered" >    console.error(`Meilisearch query failed for ${indexName}:`, error);</span>
+<span class="cstat-no" title="statement not covered" >    logger.error(`Meilisearch query failed for ${indexName}:`, error);</span>
 <span class="cstat-no" title="statement not covered" >    return null;</span>
   }
 }
 &nbsp;
-export function <span class="fstat-no" title="function not covered" >orderByIdList(</span>items, ids) {
-  const map = <span class="cstat-no" title="statement not covered" >new Map(items.map(<span class="fstat-no" title="function not covered" >it</span>em =&gt; <span class="cstat-no" title="statement not covered" >[item.id, item])</span>);</span>
-<span class="cstat-no" title="statement not covered" >  return ids.map(<span class="fstat-no" title="function not covered" >id</span> =&gt; <span class="cstat-no" title="statement not covered" >map.get(id))</span>.filter(Boolean);</span>
+export function orderByIdList(items, ids) {
+  const map = new Map(items.map(item =&gt; [item.id, item]));
+  return ids.map(id =&gt; map.get(id)).filter(Boolean);
 }
 &nbsp;
-export function <span class="fstat-no" title="function not covered" >getHitScore(</span>hit, rankIndex = <span class="branch-0 cbranch-no" title="branch not covered" >0)</span> {
-<span class="cstat-no" title="statement not covered" >  if (typeof hit?._rankingScore === 'number') <span class="cstat-no" title="statement not covered" >return hit._rankingScore;</span></span>
+export function getHitScore(hit, rankIndex = <span class="branch-0 cbranch-no" title="branch not covered" >0)</span> {
+  <span class="missing-if-branch" title="else path not taken" >E</span>if (typeof hit?._rankingScore === 'number') return hit._rankingScore;
 <span class="cstat-no" title="statement not covered" >  if (typeof hit?.rankingScore === 'number') <span class="cstat-no" title="statement not covered" >return hit.rankingScore;</span></span>
 <span class="cstat-no" title="statement not covered" >  return 1 / (rankIndex + 1);</span>
 }
@@ -232,7 +235,7 @@ export function <span class="fstat-no" title="function not covered" >getHitScore
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-05-16T15:35:26.250Z
+                at 2026-06-13T16:41:29.451Z
             </div>
         <script src="../../../prettify.js"></script>
         <script>

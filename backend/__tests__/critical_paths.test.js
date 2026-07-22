@@ -178,7 +178,10 @@ describe('Critical Paths Integration Tests (Mocked)', () => {
 
             if (res.status === 500) console.error(res.body);
             expect(res.status).toBeOneOf([200, 201]);
-            expect(res.body).toHaveProperty('token');
+            // Token is now an httpOnly cookie, not in the response body
+            const cookies = res.headers['set-cookie'];
+            expect(cookies).toBeDefined();
+            expect(cookies.some(c => c.startsWith('user_session='))).toBe(true);
         });
 
         it('should login', async () => {
@@ -215,7 +218,10 @@ describe('Critical Paths Integration Tests (Mocked)', () => {
                 .send({ ...testUser, phone_number: '0912345678' });
 
             expect(res.status).toBe(200);
-            expect(res.body).toHaveProperty('token', validToken);
+            // Token is now an httpOnly cookie, not in the response body
+            const cookies = res.headers['set-cookie'];
+            expect(cookies).toBeDefined();
+            expect(cookies.some(c => c.startsWith('user_session='))).toBe(true);
         });
 
         it('should get profile', async () => {

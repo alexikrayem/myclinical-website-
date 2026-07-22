@@ -130,3 +130,31 @@ export async function getPublicCourseById(supabase, id) {
   }
   return data;
 }
+
+/**
+ * Returns a deduplicated, sorted list of all category strings across all
+ * published courses. Queries the `courses_public` view and flattens the
+ * `categories` array column in JS — avoids the need for a custom DB function.
+ */
+export async function getPublicCourseCategories(supabase) {
+  const { data, error } = await supabase
+    .from('courses_public')
+    .select('categories')
+    .not('categories', 'is', null);
+
+  if (error) {
+    logger.error('Error fetching course categories', { error });
+    throw new AppError('Failed to fetch course categories', 500, 'CATALOG_CATEGORIES_FAILED');
+  }
+
+  const unique = new Set();
+  for (const row of data ?? []) {
+    for (const cat of row.categories ?? []) {
+      if (typeof cat === 'string' && cat.trim()) {
+        unique.add(cat.trim());
+      }
+    }
+  }
+
+  return [...unique].sort((a, b) => a.localeCompare(b, 'ar'));
+}

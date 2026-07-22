@@ -2,8 +2,8 @@ import express from 'express';
 import { body, validationResult } from 'express-validator';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { AppError } from '../../utils/errors.js';
-import { supabaseAdmin as supabase } from '../../config/supabase.js';
-import { authenticateToken, trackLoginAttempt, checkLoginAllowed } from '../../middleware/auth.js';
+import { supabaseAdmin as supabase, supabasePublic } from '../../config/supabase.js';
+import { authenticateToken, trackLoginAttempt, checkLoginAllowed, revokeTokenCache } from '../../middleware/auth.js';
 import { authLimiter } from '../../middleware/rateLimiter.js';
 import { ADMIN_SELECT } from '../../utils/queryFields.js';
 import logger from '../../config/logger.js';
@@ -29,14 +29,23 @@ router.post('/login',
 
         const { email, password } = req.body;
 
-        // Sign in with Supabase Auth
-        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        // Sign in with Supabase Auth using the public (anon) client.
+        // The service role key is NOT needed for credential validation and should
+        // not be used here to limit blast radius if the auth endpoint is abused.
+        const { data: authData, error: authError } = await supabasePublic.auth.signInWithPassword({
             email,
             password,
         });
 
         if (authError) {
-            const attemptResult = await trackLoginAttempt(email, false);
+            const attemptResult = await trackLoginAttempt(email, false, req.ip);
+            if (attemptResult.serviceUnavailable) {
+                logger.error('Admin Auth error:', authError.message);
+                return res.status(503).json({
+                    error: 'Authentication service temporarily unavailable. Please try again shortly.',
+                    code: 'SERVICE_UNAVAILABLE'
+                });
+            }
             logger.error('Admin Auth error:', authError.message);
             return res.status(401).json({
                 error: 'Invalid email or password',
@@ -46,7 +55,13 @@ router.post('/login',
         }
 
         if (!authData.user) {
-            await trackLoginAttempt(email, false);
+            const attemptResult = await trackLoginAttempt(email, false, req.ip);
+            if (attemptResult.serviceUnavailable) {
+                return res.status(503).json({
+                    error: 'Authentication service temporarily unavailable. Please try again shortly.',
+                    code: 'SERVICE_UNAVAILABLE'
+                });
+            }
             return res.status(401).json({
                 error: 'Authentication failed',
                 code: 'AUTH_FAILED'
@@ -61,7 +76,7 @@ router.post('/login',
             .single();
 
         if (adminError || !adminData) {
-            await trackLoginAttempt(email, false);
+            await trackLoginAttempt(email, false, req.ip);
             logger.error('Admin check error:', adminError);
             return res.status(403).json({
                 error: 'Access denied - insufficient permissions',
@@ -70,7 +85,7 @@ router.post('/login',
         }
 
         // Successful login
-        await trackLoginAttempt(email, true);
+        await trackLoginAttempt(email, true, req.ip);
 
         const cookieOptions = {
             httpOnly: true,
@@ -89,7 +104,6 @@ router.post('/login',
                     role: adminData.role,
                 },
                 session: {
-                    access_token: authData.session.access_token,
                     expires_at: authData.session.expires_at,
                 },
             });
@@ -97,6 +111,22 @@ router.post('/login',
 
 // Logout
 router.post('/logout', authenticateToken, asyncHandler(async (req, res) => {
+    // 1. Revoke Supabase session so the token is invalidated at the provider level.
+    //    We use signOut with the user's ID to invalidate all sessions for this admin,
+    //    which is appropriate since admin tokens have elevated privileges.
+    try {
+        await supabase.auth.admin.signOut(req.user.id);
+    } catch (signOutErr) {
+        // Log but don't block the logout — we still clear local state below.
+        logger.error('Admin Supabase signOut error:', signOutErr);
+    }
+
+    // 2. Purge the Redis cached auth entry for this specific token so the 60-second
+    //    cache window is closed immediately (resolves the open TODO in auth.js).
+    const rawToken = req.cookies?.session || req.headers['authorization']?.split(' ')[1];
+    await revokeTokenCache(rawToken);
+
+    // 3. Clear the session cookie.
     res.clearCookie('session');
     res.json({
         message: 'Logout successful',

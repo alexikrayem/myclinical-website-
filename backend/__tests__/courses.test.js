@@ -137,10 +137,9 @@ describe('Courses Routes Integration Tests', () => {
                 credits_required: 100
             };
 
-            // 1. Check access (mocking existing access)
-            // auth user lookup in optionalAuth -> check supabase users table
+            // 1. optionalAuth validates the active user session before adding req.user.
             mockSupabase.single.mockResolvedValueOnce({
-                data: { id: 'user-123', is_active: true },
+                data: { id: 'session-1', users: { id: 'user-123', is_active: true } },
                 error: null
             });
 

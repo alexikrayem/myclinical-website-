@@ -47,7 +47,7 @@ const EditCourse: React.FC = () => {
                     preview_seconds: data.preview_seconds || 0,
                     transcript: data.transcript || '',
                     credits_required: data.credits_required || 0,
-                    duration: data.duration || 0,
+                    duration: Math.round((data.duration || 0) / 60),
                     categories: data.categories.join(', '),
                     is_featured: data.is_featured,
                     attention_required: data.attention_required || false
@@ -91,8 +91,8 @@ const EditCourse: React.FC = () => {
             data.append('preview_seconds', formData.preview_seconds.toString());
             data.append('transcript', formData.transcript);
             data.append('credits_required', formData.credits_required.toString());
-            data.append('duration', formData.duration.toString());
-            data.append('categories', JSON.stringify(formData.categories.split(',').map(c => c.trim())));
+            data.append('duration', Math.max(0, formData.duration * 60).toString());
+            data.append('categories', JSON.stringify(formData.categories.split(',').map(c => c.trim()).filter(Boolean)));
             data.append('is_featured', formData.is_featured.toString());
             data.append('attention_required', formData.attention_required.toString());
             if (coverImage) {
@@ -199,6 +199,7 @@ const EditCourse: React.FC = () => {
                                 >
                                     <option value="vdocipher">VdoCipher</option>
                                     <option value="hls">HLS</option>
+                                    <option value="mux">Mux</option>
                                     <option value="youtube">YouTube</option>
                                     <option value="mp4">MP4</option>
                                 </select>
@@ -209,7 +210,7 @@ const EditCourse: React.FC = () => {
                                 <input
                                     type="text"
                                     required
-                                    placeholder="vdocipher-id أو رابط HLS/MP4/YouTube"
+                                    placeholder="vdocipher-id أو mux://signed/playback-id أو رابط HLS/MP4/YouTube"
                                     className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all dir-ltr"
                                     value={formData.playback_source}
                                     onChange={e => setFormData({ ...formData, playback_source: e.target.value })}
@@ -223,7 +224,7 @@ const EditCourse: React.FC = () => {
                                     min="0"
                                     className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
                                     value={formData.duration}
-                                    onChange={e => setFormData({ ...formData, duration: parseInt(e.target.value) })}
+                                    onChange={e => setFormData({ ...formData, duration: parseInt(e.target.value) || 0 })}
                                 />
                             </div>
 

@@ -9,7 +9,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const CONNECTION_STRING = 'postgresql://postgres.nzocrdpkwkiatjabokna:Theeasyhard001999@aws-0-eu-central-1.pooler.supabase.com:5432/postgres';
-const MIGRATIONS_DIR = path.join(__dirname, '../supabase/migrations');
+const MIGRATIONS_DIR = path.join(__dirname, '../../../supabase/migrations');
 
 // List of migrations already run (simulated/hardcoded if needed, or we just trust the DB error)
 // Ideally we should check a schema_migrations table, but Supabase standard table is `supabase_migrations.schema_migrations`
