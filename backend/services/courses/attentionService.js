@@ -60,11 +60,15 @@ function generateChallengeData(type) {
       const shuffled = secureShuffle(COLORS);
       const target = shuffled[0];
       const options = secureShuffle(shuffled.slice(0, 4));
+      const optionsWithIds = options.map(c => ({ id: crypto.randomUUID(), hex: c.hex, isTarget: c.nameEn === target.nameEn }));
+      const targetOption = optionsWithIds.find(option => option.isTarget);
       return {
         question: `اضغط على اللون ${target.name}`,
         questionEn: `Tap the ${target.nameEn} color`,
-        options: options.map(c => ({ nameEn: c.nameEn, hex: c.hex })),
-        correctAnswer: target.nameEn
+        // Only opaque option identifiers reach the browser. The answer mapping
+        // remains in the HMAC and is never serialised with the challenge.
+        options: optionsWithIds.map(({ id, hex }) => ({ id, hex })),
+        correctAnswer: targetOption.id
       };
     }
 
@@ -81,7 +85,6 @@ function generateChallengeData(type) {
       };
     }
 
-    case 'confirm':
     default:
       return {
         question: 'هل أنت لا تزال تشاهد؟ اضغط للتأكيد',
@@ -95,7 +98,9 @@ function generateChallengeData(type) {
  * Generate all challenges for a playback session at random intervals
  * throughout the course duration.
  * 
- * Uses primarily 'color' type with occasional 'math' for variety.
+ * Uses primarily 'color' type with occasional 'math' for variety. A fixed
+ * "confirm" response is intentionally not generated: it offered no actual
+ * verification and could be answered without observing the challenge.
  */
 export async function generateChallenges({ supabase, courseId, sessionId, userId, courseDuration, intervalMin, intervalMax }) {
   const challenges = [];
@@ -182,7 +187,7 @@ export async function getNextChallenge({ supabase, sessionId, currentSeconds, us
     .lte('trigger_at_seconds', currentSeconds)
     .order('trigger_at_seconds', { ascending: true })
     .limit(1)
-    .single();
+    .maybeSingle();
 
   if (error || !challenge) {
     // No challenge due yet - this is normal

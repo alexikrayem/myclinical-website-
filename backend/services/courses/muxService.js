@@ -3,7 +3,6 @@ import { AppError, BadRequestError } from '../../utils/errors.js';
 
 const MUX_STREAM_BASE_URL = 'https://stream.mux.com';
 const MUX_IMAGE_BASE_URL = 'https://image.mux.com';
-const MUX_TOKEN_GRACE_SECONDS = parseInt(process.env.MUX_TOKEN_GRACE_SECONDS || '900', 10);
 
 function decodePrivateKey(value) {
   if (!value) return null;
@@ -84,7 +83,7 @@ function signMuxJwt(playbackId, aud, exp, keyId, privateKey, extra = {}) {
   });
 }
 
-export function createMuxPlaybackDescriptor({ playbackSource, sessionId, expiresAt, durationSeconds = 0 }) {
+export function createMuxPlaybackDescriptor({ playbackSource, sessionId, expiresAt }) {
   const { playbackId, policy } = parseMuxPlaybackSource(playbackSource);
   const defaultPolicy = process.env.MUX_DEFAULT_PLAYBACK_POLICY;
   const effectivePolicy = policy || (defaultPolicy === 'signed' || defaultPolicy === 'public' ? defaultPolicy : null);
@@ -113,10 +112,11 @@ export function createMuxPlaybackDescriptor({ playbackSource, sessionId, expires
   // Signed policy: generate all 3 JWT tokens (playback, thumbnail, storyboard)
   const nowSeconds = Math.floor(Date.now() / 1000);
   const sessionExpirySeconds = Math.floor(new Date(expiresAt).getTime() / 1000);
-  const durationExpirySeconds = nowSeconds + Number(durationSeconds || 0) + MUX_TOKEN_GRACE_SECONDS;
   const configuredTtl = parseInt(process.env.MUX_SIGNED_URL_TTL_SECONDS || '0', 10);
-  const configuredExpirySeconds = configuredTtl > 0 ? nowSeconds + configuredTtl : 0;
-  const exp = Math.max(sessionExpirySeconds, durationExpirySeconds, configuredExpirySeconds);
+  // A token must never outlive the server-enforced playback session.  Duration
+  // based tokens made it possible to keep watching after billing had stopped.
+  const configuredExpirySeconds = configuredTtl > 0 ? nowSeconds + configuredTtl : sessionExpirySeconds;
+  const exp = Math.min(sessionExpirySeconds, configuredExpirySeconds);
 
   const playbackToken = signMuxJwt(playbackId, 'v', exp, keyId, privateKey, {
     custom: { session_id: sessionId },
@@ -127,8 +127,6 @@ export function createMuxPlaybackDescriptor({ playbackSource, sessionId, expires
   return {
     type: 'mux',
     playbackId,
-    // manifestUrl with token retained for HLS.js / Safari native fallback
-    manifestUrl: `${manifestUrl}?token=${encodeURIComponent(playbackToken)}`,
     tokens: {
       playback: playbackToken,
       thumbnail: thumbnailToken,

@@ -26,12 +26,12 @@ export interface ChallengeData {
     question: string;
     questionEn?: string;
     /** Color options for 'color' type challenges */
-    options?: Array<{ nameEn: string; hex: string }>;
+    options?: Array<{ id: string; hex: string }>;
 }
 
 export interface Challenge {
     id: string;
-    type: "color" | "math" | "confirm";
+    type: "color" | "math";
     data: ChallengeData;
     trigger_at_seconds: number;
     timeout_seconds: number;
@@ -42,7 +42,7 @@ type BillingModel = 'free' | 'per_course' | 'per_minute';
 type PlaybackDescriptor =
     | { type: 'vdocipher'; otp: string; playbackInfo: string }
     | { type: 'hls'; manifestUrl: string; expiresAt?: string }
-    | { type: 'mux'; playbackId: string; manifestUrl: string; tokens: { playback: string; thumbnail: string; storyboard: string } | null; expiresAt?: string }
+    | { type: 'mux'; playbackId: string; tokens: { playback: string; thumbnail: string; storyboard: string } | null; expiresAt?: string }
     | { type: 'youtube'; url: string }
     | { type: 'mp4'; url: string };
 
@@ -206,6 +206,29 @@ const CourseDetailPage = () => {
             setPlaybackLoading(false);
         }
     }, [id, playbackLoading, playback, isAuthenticated]);
+
+    useEffect(() => {
+        if (!id || !playbackSessionId || !playback || !['mux', 'hls'].includes(playback.type)) return;
+
+        const refresh = async () => {
+            try {
+                const result = await coursesApi.refreshPlayback(id, playbackSessionId);
+                setPlayback(result.playback);
+                if (result.credits) setCredits(result.credits);
+            } catch (error) {
+                const message = axios.isAxiosError(error) ? error.response?.data?.error : undefined;
+                toast.error(message || 'انتهت صلاحية جلسة المشاهدة');
+                setIsPlaying(false);
+                setPlayback(null);
+                setPlaybackSessionId(null);
+            }
+        };
+
+        // Sessions are 60–120 seconds long. Renew well before expiry so a
+        // network retry has time to complete without interrupting playback.
+        const timer = window.setInterval(refresh, 45_000);
+        return () => window.clearInterval(timer);
+    }, [id, playbackSessionId, playback]);
 
     useEffect(() => {
         if (!course || !id || autoPlaybackRequested || playback || playbackLoading) return;

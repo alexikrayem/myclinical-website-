@@ -66,8 +66,9 @@ describe('muxService Unit Tests', () => {
                 durationSeconds: 120
             });
 
-            // manifestUrl should include the playback token for HLS.js / Safari fallback
-            expect(descriptor.manifestUrl).toContain('https://stream.mux.com/abc123XYZ_9.m3u8?token=');
+            // MuxPlayer consumes the scoped token props directly; do not expose
+            // a redundant signed manifest URL to the browser.
+            expect(descriptor.manifestUrl).toBeUndefined();
 
             // All 3 tokens must be present
             expect(descriptor.tokens).toBeDefined();

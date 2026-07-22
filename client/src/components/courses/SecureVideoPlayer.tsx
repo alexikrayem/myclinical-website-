@@ -275,7 +275,8 @@ const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
         if (Hls.isSupported() && playback.manifestUrl) {
             hls = new Hls({
                 maxMaxBufferLength: 30,
-                startLevel: -1
+                startLevel: -1,
+                xhrSetup: (xhr) => { xhr.withCredentials = true; }
             });
             hls.on(Hls.Events.ERROR, (_event, data) => {
                 if (!data.fatal || !hls) return;
@@ -313,13 +314,6 @@ const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
             video.load();
         };
     }, [playback, isHlsPlayback]);
-
-    useEffect(() => {
-        if (!playback) return;
-        if (playback.type === 'vdocipher') {
-            onPlaybackStateChange?.(true);
-        }
-    }, [playback, onPlaybackStateChange]);
 
     if (!playback) {
         return (

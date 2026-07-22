@@ -247,6 +247,11 @@ export const schemas = {
     })
   }),
 
+  coursePlaybackRefresh: z.object({
+    params: z.object({ id: z.string().uuid() }),
+    body: z.object({ session_id: z.string().uuid() })
+  }),
+
   coursesList: z.object({
     query: z.object({
       category: optionalTrimmedString,
@@ -281,6 +286,14 @@ export const schemas = {
     query: z.object({
       session_id: z.string().uuid(),
       playlist: optionalTrimmedString
+    })
+  }),
+
+  courseHlsSegment: z.object({
+    params: z.object({ id: z.string().uuid() }),
+    query: z.object({
+      session_id: z.string().uuid(),
+      path: z.string().trim().min(1).max(1024)
     })
   }),
 

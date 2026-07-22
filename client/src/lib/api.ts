@@ -302,6 +302,16 @@ export const coursesApi = {
     }
   },
 
+  refreshPlayback: async (id: string, sessionId: string) => {
+    try {
+      const response = await api.post(`/courses/${id}/playback/refresh`, { session_id: sessionId });
+      return response.data;
+    } catch (error) {
+      console.error('Error refreshing playback:', error);
+      throw error;
+    }
+  },
+
   sendHeartbeat: async (id: string, payload: { session_id: string; seconds_delta: number; idempotency_key?: string }) => {
     try {
       const response = await api.post(`/courses/${id}/heartbeat`, payload);

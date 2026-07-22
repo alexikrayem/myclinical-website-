@@ -57,6 +57,20 @@ function normalizeBillingModel(value) {
     return billingModel;
 }
 
+function assertProviderCapabilities({ provider, billingModel, attentionRequired, playbackSource }) {
+    if (provider === 'vdocipher' && attentionRequired) {
+        throw new BadRequestError('VdoCipher iframe playback does not support enforced attention checks');
+    }
+    if (billingModel === 'per_minute') {
+        if (['vdocipher', 'youtube', 'mp4'].includes(provider)) {
+            throw new BadRequestError('Per-minute billing requires signed Mux or authenticated HLS playback');
+        }
+        if (provider === 'mux' && String(playbackSource || '').startsWith('mux://public/')) {
+            throw new BadRequestError('Per-minute billing requires signed Mux playback');
+        }
+    }
+}
+
 // Create course
 router.post('/',
     authenticateToken,
@@ -84,6 +98,8 @@ router.post('/',
         const normalizedProvider = normalizePlaybackProvider(playback_provider);
         const normalizedBillingModel = normalizeBillingModel(billing_model);
         const normalizedCategories = parseJsonArray(categories, 'categories');
+        const normalizedAttentionRequired = parseBoolean(attention_required);
+        assertProviderCapabilities({ provider: normalizedProvider, billingModel: normalizedBillingModel, attentionRequired: normalizedAttentionRequired, playbackSource: playback_source });
 
         // M2: Fail-fast validation of Mux playback source at save time
         if (normalizedProvider === 'mux' && playback_source) {
@@ -114,7 +130,7 @@ router.post('/',
                 credits_required: parseNumber(req.body.credits_required),
                 duration: parseNumber(req.body.duration),
                 is_featured: parseBoolean(is_featured),
-                attention_required: parseBoolean(attention_required),
+                attention_required: normalizedAttentionRequired,
                 publication_date: new Date().toISOString(),
             }])
             .select();
@@ -148,6 +164,8 @@ router.put('/:id',
         const normalizedProvider = normalizePlaybackProvider(playback_provider);
         const normalizedBillingModel = normalizeBillingModel(billing_model);
         const normalizedCategories = parseJsonArray(categories, 'categories');
+        const normalizedAttentionRequired = parseBoolean(attention_required);
+        assertProviderCapabilities({ provider: normalizedProvider, billingModel: normalizedBillingModel, attentionRequired: normalizedAttentionRequired, playbackSource: playback_source });
 
         // M2: Fail-fast validation of Mux playback source at save time
         if (normalizedProvider === 'mux' && playback_source) {
@@ -185,7 +203,7 @@ router.put('/:id',
             credits_required: parseNumber(req.body.credits_required),
             duration: parseNumber(req.body.duration),
             is_featured: parseBoolean(is_featured),
-            attention_required: parseBoolean(attention_required),
+            attention_required: normalizedAttentionRequired,
             updated_at: new Date().toISOString(),
         };
 

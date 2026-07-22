@@ -10,6 +10,7 @@ export const mockRateLimiters = {
     accountRedeemLimiter: (req, res, next) => next(),
     // Added to match the consumeLimiter export on routes/credits.js
     consumeLimiter: (req, res, next) => next(),
+    playbackLimiter: (req, res, next) => next(),
     limiters: {}
 };
 

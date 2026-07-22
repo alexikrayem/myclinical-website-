@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { ShieldAlert, CheckCircle, XCircle, Timer } from 'lucide-react';
 
 interface ColorOption {
-    nameEn: string;
+    id: string;
     hex: string;
 }
 
@@ -14,7 +14,7 @@ interface ChallengeData {
 
 interface Challenge {
     id: string;
-    type: 'color' | 'math' | 'confirm';
+    type: 'color' | 'math';
     data: ChallengeData;
     trigger_at_seconds: number;
     timeout_seconds: number;
@@ -150,11 +150,11 @@ const AttentionCheckModal: React.FC<AttentionCheckModalProps> = ({
                                 <div className="grid grid-cols-2 gap-3">
                                     {challenge.data.options.map((color) => (
                                         <button
-                                            key={color.nameEn}
-                                            onClick={() => handleAnswer(color.nameEn)}
+                                            key={color.id}
+                                            onClick={() => handleAnswer(color.id)}
                                             disabled={isSubmitting}
                                             className="group relative h-20 rounded-2xl border-3 border-gray-200 hover:border-gray-400 transition-all duration-200 hover:scale-[1.03] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden"
-                                            data-testid={`color-option-${color.nameEn}`}
+                                            data-testid={`color-option-${color.id}`}
                                             style={{ backgroundColor: color.hex }}
                                         >
                                             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors rounded-2xl" />
@@ -191,17 +191,6 @@ const AttentionCheckModal: React.FC<AttentionCheckModalProps> = ({
                                 </div>
                             )}
 
-                            {/* Confirm Challenge */}
-                            {challenge.type === 'confirm' && (
-                                <button
-                                    onClick={() => handleAnswer('confirmed')}
-                                    disabled={isSubmitting}
-                                    className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium text-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                    data-testid="confirm-btn"
-                                >
-                                    نعم، أنا أشاهد
-                                </button>
-                            )}
                         </>
                     )}
 

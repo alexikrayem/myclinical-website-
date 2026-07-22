@@ -2,9 +2,9 @@ import express from 'express';
 import { authenticateToken } from '../middleware/auth.js';
 import { authenticateUser, optionalAuth } from '../middleware/userAuth.js';
 import { listPublicCourses, getPublicCourseCategories, COURSE_PUBLIC_SELECT } from '../services/courses/courseCatalogService.js';
-import { createPlaybackSession } from '../services/courses/coursePlaybackService.js';
+import { createPlaybackSession, refreshPlaybackSession } from '../services/courses/coursePlaybackService.js';
 import { consumePlaybackHeartbeat } from '../services/courses/courseBillingService.js';
-import { buildSignedManifest } from '../services/courses/hlsService.js';
+import { buildSignedManifest, createSignedHlsSegmentUrl } from '../services/courses/hlsService.js';
 import { getNextChallenge, verifyChallenge, expireChallenge } from '../services/courses/attentionService.js';
 import { supabaseAdmin, supabasePublic } from '../config/supabase.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
@@ -13,6 +13,7 @@ import { getCourseAccessDetails } from '../services/courses/courseAccessService.
 import { purchaseCourseAccess } from '../services/courses/coursePurchaseService.js';
 import { generateQuizForCourse, getLatestQuizForCourse, submitQuizAnswers } from '../services/courses/courseQuizService.js';
 import { validate, schemas } from '../middleware/validation.js';
+import { playbackLimiter, consumeLimiter } from '../middleware/rateLimiter.js';
 
 const router = express.Router();
 
@@ -61,7 +62,7 @@ router.get('/:id', optionalAuth, validate(schemas.courseById), asyncHandler(asyn
 }));
 
 // Create playback session and return descriptor
-router.post('/:id/playback', authenticateUser, validate(schemas.coursePlayback), asyncHandler(async (req, res) => {
+router.post('/:id/playback', authenticateUser, playbackLimiter, validate(schemas.coursePlayback), asyncHandler(async (req, res) => {
     const { id } = req.params;
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     const result = await createPlaybackSession({
@@ -74,8 +75,22 @@ router.post('/:id/playback', authenticateUser, validate(schemas.coursePlayback),
     res.json(result);
 }));
 
+// Renew the short-lived server session and provider credentials. Per-minute
+// courses reserve the next minute atomically before any fresh token is issued.
+router.post('/:id/playback/refresh', authenticateUser, playbackLimiter, validate(schemas.coursePlaybackRefresh), asyncHandler(async (req, res) => {
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const result = await refreshPlaybackSession({
+        supabase: supabaseAdmin,
+        courseId: req.params.id,
+        sessionId: req.body.session_id,
+        user: req.user,
+        baseUrl
+    });
+    res.json(result);
+}));
+
 // Heartbeat for per-minute billing
-router.post('/:id/heartbeat', authenticateUser, validate(schemas.courseHeartbeat), asyncHandler(async (req, res) => {
+router.post('/:id/heartbeat', authenticateUser, consumeLimiter, validate(schemas.courseHeartbeat), asyncHandler(async (req, res) => {
     const { session_id, seconds_delta, idempotency_key } = req.body || {};
     const seconds = Number(seconds_delta);
 
@@ -134,6 +149,36 @@ router.get('/:id/hls/manifest', authenticateUser, validate(schemas.courseHlsMani
     res.send(manifestResult.manifest);
 }));
 
+// Segments are signed only at the point they are requested. Unlike a manifest
+// containing every signed segment URL, this keeps a long video playable while
+// still checking the authenticated, unexpired session for each segment.
+router.get('/:id/hls/segment', authenticateUser, playbackLimiter, validate(schemas.courseHlsSegment), asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const { session_id, path } = req.query;
+    const { data: session } = await supabaseAdmin
+        .from('course_playback_sessions')
+        .select('id, course_id, custom_user_id, expires_at, status')
+        .eq('id', session_id)
+        .single();
+
+    if (!session || session.course_id !== id || session.custom_user_id !== req.user.id || session.status !== 'active' || new Date(session.expires_at) < new Date()) {
+        throw new AppError('Playback session expired', 403, 'COURSE_HLS_EXPIRED');
+    }
+
+    const { data: course } = await supabaseAdmin
+        .from('video_courses')
+        .select('playback_source, playback_provider')
+        .eq('id', id)
+        .single();
+    if (!course || course.playback_provider !== 'hls') {
+        throw new AppError('HLS playback not available', 400, 'COURSE_HLS_INVALID');
+    }
+
+    const signedUrl = await createSignedHlsSegmentUrl({ supabase: supabaseAdmin, playbackSource: course.playback_source, objectPath: path });
+    res.setHeader('Cache-Control', 'no-store');
+    res.redirect(302, signedUrl);
+}));
+
 // Purchase/Request Access (per-course billing)
 router.post('/:id/access', authenticateUser, validate(schemas.courseAccess), asyncHandler(async (req, res) => {
     const { id } = req.params;
@@ -145,7 +190,7 @@ router.post('/:id/access', authenticateUser, validate(schemas.courseAccess), asy
 }));
 
 // Poll for attention check challenges
-router.get('/:id/attention-check', authenticateUser, validate(schemas.courseAttentionCheck), asyncHandler(async (req, res) => {
+router.get('/:id/attention-check', authenticateUser, playbackLimiter, validate(schemas.courseAttentionCheck), asyncHandler(async (req, res) => {
     const { id } = req.params;
     const { session_id, current_seconds } = req.query;
 
@@ -160,7 +205,7 @@ router.get('/:id/attention-check', authenticateUser, validate(schemas.courseAtte
 }));
 
 // Verify attention check answer
-router.post('/:id/attention-check/verify', authenticateUser, validate(schemas.courseAttentionVerify), asyncHandler(async (req, res) => {
+router.post('/:id/attention-check/verify', authenticateUser, playbackLimiter, validate(schemas.courseAttentionVerify), asyncHandler(async (req, res) => {
     const { session_id, challenge_id, answer, expired } = req.body || {};
 
     let result;

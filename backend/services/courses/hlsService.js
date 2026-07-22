@@ -2,7 +2,7 @@ import axios from 'axios';
 import path from 'path';
 import { AppError, BadRequestError } from '../../utils/errors.js';
 
-const DEFAULT_TTL = parseInt(process.env.HLS_SIGNED_URL_TTL || '600', 10);
+const DEFAULT_TTL = parseInt(process.env.HLS_SIGNED_URL_TTL || '60', 10);
 
 export function parseSupabaseSource(source) {
   if (!source) return null;
@@ -27,7 +27,7 @@ function isRelativeUri(uri) {
   return uri && !uri.startsWith('http://') && !uri.startsWith('https://');
 }
 
-function sanitizePlaylistPath(playlistPath) {
+export function sanitizePlaylistPath(playlistPath) {
   if (!playlistPath) return null;
   if (playlistPath.includes('..') || playlistPath.startsWith('/')) {
     return null;
@@ -43,6 +43,23 @@ async function createSignedUrl(supabase, bucket, objectPath, ttlSeconds) {
 
   if (error) throw new AppError('Failed to create HLS signed URL', 500, 'HLS_URL_FAILED');
   return data.signedUrl;
+}
+
+export async function createSignedHlsSegmentUrl({ supabase, playbackSource, objectPath }) {
+  const parsed = parseSupabaseSource(playbackSource);
+  if (!parsed || !sanitizePlaylistPath(objectPath)) {
+    throw new BadRequestError('Invalid HLS segment path');
+  }
+
+  const baseDir = path.posix.dirname(parsed.objectPath);
+  // Segments and nested playlists must remain inside the course's storage
+  // directory. This prevents a valid session from being used as a storage
+  // signing oracle for unrelated objects in the same bucket.
+  if (objectPath !== parsed.objectPath && !objectPath.startsWith(`${baseDir}/`)) {
+    throw new BadRequestError('Invalid HLS segment path');
+  }
+
+  return createSignedUrl(supabase, parsed.bucket, objectPath, DEFAULT_TTL);
 }
 
 async function rewriteUriLine(line, resolveUri, rewritePlaylist) {
@@ -90,13 +107,21 @@ export async function buildSignedManifest({ supabase, playbackSource, playlistPa
     ? path.posix.join(baseDir, safePlaylist)
     : parsed.objectPath;
 
-  const signedUrl = await createSignedUrl(supabase, parsed.bucket, targetPath, DEFAULT_TTL);
+  const signedUrl = await createSignedHlsSegmentUrl({ supabase, playbackSource, objectPath: targetPath });
   const response = await axios.get(signedUrl);
   const manifestText = response.data;
 
   const resolveUri = async (relative) => {
+    if (!sanitizePlaylistPath(relative)) {
+      throw new BadRequestError('Invalid HLS segment path');
+    }
     const resolvedPath = path.posix.join(baseDir, relative);
-    return createSignedUrl(supabase, parsed.bucket, resolvedPath, DEFAULT_TTL);
+    if (!sanitizePlaylistPath(resolvedPath) || !resolvedPath.startsWith(`${baseDir}/`)) {
+      throw new BadRequestError('Invalid HLS segment path');
+    }
+    const endpoint = `${baseUrl}/api/courses/${courseId}/hls/segment`;
+    const params = new URLSearchParams({ session_id: sessionId, path: resolvedPath });
+    return `${endpoint}?${params.toString()}`;
   };
 
   const rewritePlaylist = (relative) => {

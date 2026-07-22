@@ -187,3 +187,19 @@ export const consumeLimiter = rateLimit({
     });
   }
 });
+
+// Playback creates sessions and attention challenges, so key this limiter by
+// account rather than IP to prevent a single signed-in user growing those
+// tables without penalising a shared network.
+export const playbackLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  keyGenerator: (req) => req.user ? `playback_${req.user.id}` : req.ip,
+  store: createHybridStore('playback'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => res.status(429).json({
+    error: 'Too many playback requests. Please slow down.',
+    retryAfter: Math.ceil(req.rateLimit.resetTime / 1000)
+  })
+});
