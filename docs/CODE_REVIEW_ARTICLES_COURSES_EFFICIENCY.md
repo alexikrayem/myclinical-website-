@@ -13,6 +13,225 @@ scans) **without changing behaviour or breaking functionality.**
 
 ---
 
+## Where the fixes have the biggest impact (deep dive)
+
+Not all findings are equal. Three of them sit on **per-view or per-second hot paths**,
+so fixing them removes work that is multiplied by traffic. The table below models the
+wasted work each one carries today, so effort can be spent where it actually moves p95
+latency and DB load.
+
+### Impact model — what gets multiplied by what
+
+| Fix | Path frequency | Wasted work per unit | Multiplier | Net waste removed |
+|-----|----------------|----------------------|------------|-------------------|
+| **#2 HLS segment** | **per media segment** | 1 extra DB read (immutable `video_courses` row) | segments/view × concurrent viewers | **highest** — scales with watch-time *and* audience |
+| **#1 Article detail** | per article view | 1 guaranteed redundant `checkArticleAccess` (+1 conditional) + serialized waterfall | article views | high — every reader pays it |
+| **#3 Article search** | **per keystroke** | 1 full API request + `searchLimiter` slot + DB search | chars typed × searchers | high — bursty, also causes *failed* searches |
+
+The ranking logic: **#2 is multiplied twice** (by video length and by simultaneous
+viewers), so it dominates under real playback load. **#1 and #3 are multiplied once**
+(by views / by keystrokes) but touch every reader on the busiest public pages.
+
+---
+
+### #2 in depth — the HLS segment route is the single most valuable fix
+
+**File:** `backend/routes/courses.js` → `GET /:id/hls/segment` (and `.../hls/manifest`).
+
+**Why it dominates.** HLS players fetch the media playlist and then request **every
+segment sequentially as playback proceeds**. With typical 6-second segments:
+
+- a **10-minute** lesson ≈ **100 segment requests**,
+- a **45-minute** lesson ≈ **450 segment requests**,
+
+…all from a *single* viewer. Each of those requests currently runs **two sequential
+Supabase reads**:
+
+```js
+// 1) session lookup — legitimately per-request (security: unexpired, owned session)
+const { data: session } = await supabaseAdmin
+  .from('course_playback_sessions')
+  .select('id, course_id, custom_user_id, expires_at, status')
+  .eq('id', session_id).single();
+...
+// 2) course lookup — WASTED: these two columns never change during a session
+const { data: course } = await supabaseAdmin
+  .from('video_courses')
+  .select('playback_source, playback_provider')
+  .eq('id', id).single();
+```
+
+The second query fetches `playback_source` + `playback_provider`, which are
+**immutable for the life of a playback session** (they only change when an admin edits
+the course). So query #2 is pure waste, repeated ~100–450× per view.
+
+**The multiplier that makes this #1.** Multiply by concurrent viewers:
+
+| Scenario | Segment requests | Wasted `video_courses` reads today |
+|----------|------------------|-------------------------------------|
+| 1 viewer, 10-min lesson | ~100 | ~100 |
+| 50 concurrent viewers, 45-min lesson | ~22,500 | **~22,500** |
+
+That is ~22,500 redundant DB reads for data that could have been read **once**. This is
+the only finding whose cost grows with *both* watch-time and audience size — hence the
+highest-value fix.
+
+**Preferred fix — denormalise onto the session row (one read serves both checks).**
+`coursePlaybackService.createPlaybackSession` already loads the course when the session
+is created, so persist the two immutable fields there:
+
+```js
+// in createPlaybackSession — when inserting the course_playback_sessions row:
+await supabase.from('course_playback_sessions').insert({
+  ...existingFields,
+  playback_source,       // copied from the course row already in scope
+  playback_provider,
+});
+```
+
+Then the segment/manifest handlers drop query #2 entirely and read both provider and
+source straight off the session they already fetch:
+
+```js
+const { data: session } = await supabaseAdmin
+  .from('course_playback_sessions')
+  .select('id, course_id, custom_user_id, expires_at, status, playback_source, playback_provider')
+  .eq('id', session_id).single();
+
+if (!session || session.course_id !== id || session.custom_user_id !== req.user.id
+    || session.status !== 'active' || new Date(session.expires_at) < new Date()) {
+  throw new AppError('Playback session expired', 403, 'COURSE_HLS_EXPIRED');
+}
+if (session.playback_provider !== 'hls') {
+  throw new AppError('HLS playback not available', 400, 'COURSE_HLS_INVALID');
+}
+// use session.playback_source directly
+```
+
+**Result:** segment requests go from **2 reads → 1 read** (−50% DB round-trips on the
+hottest path), with no change to the security checks (owner + unexpired + active are
+all still enforced on the session that is still read every time). Alternatives (a
+Supabase FK embed to fetch both in one query, or a short-TTL Redis entry keyed by
+`course_id` invalidated on admin edit) achieve the same 2→1 reduction if a schema
+change is undesirable — the denormalise option is preferred because it needs zero extra
+infrastructure and the write already has the data in hand.
+
+**Verify with:** `backend/__tests__/unit/coursePlaybackService.test.js` and
+`client/e2e/courses.spec.ts` — confirm a full lesson still plays end-to-end and an
+expired/foreign session is still rejected on a segment request.
+
+---
+
+### #1 in depth — every article view carries a guaranteed redundant round-trip
+
+**File:** `client/src/pages/ArticleDetailPage.tsx`, lines 66–119 (confirmed).
+
+The fetch effect runs as a **serial waterfall** and contains a call that is *always*
+redundant:
+
+```ts
+const data = await articlesApi.getById(id);           // ← already returns has_access + credits_required
+setArticle(data);
+
+if (typeof data.has_access !== 'undefined') {
+  setHasAccess(data.has_access);                       // ✓ uses the value it already has
+} else if (user && articleId) {
+  const accessData = await creditsApi.checkArticleAccess(articleId);  // conditional fallback (fine)
+  setHasAccess(accessData.has_access);
+}
+
+// ↓↓ lines 92–100: fires on EVERY view, even though `data.credits_required` is already present
+if (articleId) {
+  const accessData = await creditsApi.checkArticleAccess(articleId);  // ← GUARANTEED redundant
+  setRequiresCredits(accessData.credits_required || 0);
+}
+
+const relatedData = await articlesApi.getRelated(articleId, 3);       // awaited last, in series
+```
+
+**The waste, precisely:**
+
+- Line 94's `checkArticleAccess` runs on **100% of article views** purely to read
+  `credits_required` — a field `getById` already returned on `data` (see the
+  `/:idOrSlug` payload in `backend/routes/articles.js`).
+- Because everything is `await`ed in sequence, total time to interactive ≈
+  `getById` + `checkArticleAccess` + `getRelated` (three serial RTTs) when it could be
+  **two, run partly in parallel**.
+
+**Fix — trust the payload, parallelise the rest:**
+
+```ts
+const data = await articlesApi.getById(id);
+setArticle(data);
+const articleId = data?.id || id;
+
+setHasAccess(data.has_access ?? false);
+setRequiresCredits(data.credits_required ?? 0);      // no network call on the common path
+
+// only hit the network if the payload genuinely lacks the field (legacy API)
+const needsFallback = typeof data.has_access === 'undefined' && !!user;
+
+const [related] = await Promise.all([
+  articlesApi.getRelated(articleId, 3),
+  needsFallback
+    ? creditsApi.checkArticleAccess(articleId).then(a => {
+        setHasAccess(a.has_access);
+        setRequiresCredits(a.credits_required || 0);
+      })
+    : Promise.resolve(),
+]);
+setRelatedArticles(related || []);
+```
+
+**Result:** the common path drops from **3–4 serial requests to 2** (`getById` +
+`getRelated`, and those two overlap), removing one guaranteed round-trip from *every*
+article open while keeping the legacy fallback intact. This is high-impact because the
+article detail page is the primary content surface — the saving applies to every
+reader, every article.
+
+**Verify with:** `client/e2e/articles.spec.ts` — free article renders, paid article
+shows the lock + correct credit cost, unlock flow still updates `hasAccess`.
+
+---
+
+### #3 in depth — search fires one request per keystroke and trips its own limiter
+
+**File:** `client/src/components/article/ArticleList.tsx`, lines ~48–58 (confirmed).
+
+`searchTerm` flows directly into the React Query key, so **each character typed is a
+new query = a new `GET /articles?search=…` request**. Typing an 8-character query =
+**8 requests**, of which only the last matters. Two compounding costs:
+
+1. **DB + rate limiter load:** every request runs the backend search *and* consumes a
+   `searchLimiter` slot. A fast typer can exhaust the limiter and get **HTTP 429s** —
+   so this isn't just wasteful, it produces *visibly failed searches*.
+2. **Inconsistency:** `CoursesPage` already debounces the same interaction at 500 ms,
+   so the articles flow is the odd one out — the fix is to match an existing pattern,
+   not invent one.
+
+**Fix — debounce before the value becomes a query key** (input stays instant because
+local `searchTerm` state is untouched; only the *networked* value is delayed):
+
+```ts
+const debouncedSearch = useDebouncedValue(searchTerm, 500); // match CoursesPage
+const queryParams = useMemo(() => {
+  const params = { limit };
+  if (debouncedSearch) params.search = debouncedSearch;
+  if (selectedTags.length) params.tags = selectedTags.join(',');
+  return params;
+}, [limit, selectedTags, debouncedSearch]);
+```
+
+**Result:** an 8-character search collapses from **8 requests → 1**, eliminating the
+429s entirely and cutting search-driven DB load by ~85–90% for typical query lengths.
+High-impact because search is one of the most-used interactions on the articles list
+and the current behaviour actively degrades UX under fast input.
+
+**Verify with:** `client/e2e/articles.spec.ts` search assertions — results still update
+after typing stops; no dependence on per-keystroke requests.
+
+---
+
 ## Files reviewed
 
 | Layer | Files |
