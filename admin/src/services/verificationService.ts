@@ -1,39 +1,69 @@
 import { api } from '../context/AuthContext';
 
-export interface PendingDoctor {
+// ─────────────────────────────────────────────────────────────────────────────
+// Types — reflecting the new verification_submissions table
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface VerificationUser {
   id: string;
-  phone_number: string;
-  display_name: string;
-  role: string;
+  display_name: string | null;
+  social_provider: 'facebook' | 'instagram' | null;
+  social_username: string | null;
+  social_profile_url: string | null;
+  social_avatar_url: string | null;
+  specialty: string | null;
+  is_verified: boolean;
   verification_status: 'none' | 'pending' | 'approved' | 'rejected';
-  specialization: string;
-  bio: string;
-  education: string;
-  experience_years: number;
-  clinic_address: string;
-  email: string | null;
-  website: string | null;
-  created_at: string;
 }
 
+export interface PendingSubmission {
+  id: string;
+  full_name: string;
+  specialty: string;
+  notes: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  created_at: string;
+  users: VerificationUser;
+}
+
+export interface DocumentUrls {
+  personal_id_url: string;
+  medical_id_url: string;
+  practice_license_url: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Service
+// ─────────────────────────────────────────────────────────────────────────────
+
 export const verificationService = {
-  getPending: async (): Promise<PendingDoctor[]> => {
+  /**
+   * Fetches all pending verification submissions.
+   */
+  getPending: async (): Promise<PendingSubmission[]> => {
     const response = await api.get('/admin/verifications');
     return response.data;
   },
 
-  getCardUrl: async (id: string): Promise<string> => {
-    const response = await api.get(`/admin/verifications/${id}/card`);
-    return response.data.signedUrl;
+  /**
+   * Returns signed URLs (15-minute expiry) for all three verification documents.
+   * Old single card URL endpoint replaced with a multi-document endpoint.
+   */
+  getDocumentUrls: async (submissionId: string): Promise<DocumentUrls> => {
+    const response = await api.get(`/admin/verifications/${submissionId}/documents`);
+    return response.data as DocumentUrls;
   },
 
-  approve: async (id: string): Promise<{ success: boolean; message: string }> => {
-    const response = await api.post(`/admin/verifications/${id}/approve`);
+  approve: async (submissionId: string): Promise<{ success: boolean; message: string }> => {
+    const response = await api.post(`/admin/verifications/${submissionId}/approve`);
     return response.data;
   },
 
-  reject: async (id: string, reason: string): Promise<{ success: boolean; message: string }> => {
-    const response = await api.post(`/admin/verifications/${id}/reject`, {
+  reject: async (
+    submissionId: string,
+    reason: string
+  ): Promise<{ success: boolean; message: string }> => {
+    const response = await api.post(`/admin/verifications/${submissionId}/reject`, {
       rejection_reason: reason,
     });
     return response.data;

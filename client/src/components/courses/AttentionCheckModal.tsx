@@ -1,24 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { ShieldAlert, CheckCircle, XCircle, Timer } from 'lucide-react';
-
-interface ColorOption {
-    id: string;
-    hex: string;
-}
-
-interface ChallengeData {
-    question: string;
-    questionEn?: string;
-    options?: ColorOption[];
-}
-
-interface Challenge {
-    id: string;
-    type: 'color' | 'math';
-    data: ChallengeData;
-    trigger_at_seconds: number;
-    timeout_seconds: number;
-}
+import type { Challenge } from '../../types/courses';
 
 interface AttentionCheckModalProps {
     challenge: Challenge;

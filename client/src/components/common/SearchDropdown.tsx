@@ -24,10 +24,13 @@ interface SearchDropdownProps {
     searchTerm: string;
 }
 
+// Evaluated once at module load time (Vite inlines env vars at build anyway).
+// Kept at module scope for consistency with Navbar.tsx and App.tsx.
+const ENABLE_COURSES = import.meta.env.VITE_ENABLE_COURSES !== 'false';
+
 const SearchDropdown: React.FC<SearchDropdownProps> = ({ results, loading, isOpen, onClose, searchTerm }) => {
     if (!isOpen || !searchTerm) return null;
 
-    const ENABLE_COURSES = import.meta.env.VITE_ENABLE_COURSES !== 'false';
     const displayResults = ENABLE_COURSES ? results : results.filter(r => r.type !== 'course');
 
     const getResultHref = (result: SearchResult) => {

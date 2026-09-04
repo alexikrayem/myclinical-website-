@@ -3,26 +3,10 @@ import Hls from 'hls.js';
 import MuxPlayer from '@mux/mux-player-react';
 import Plyr from 'plyr';
 import { Lock, AlertCircle, Play, Loader2 } from 'lucide-react';
+import type { PlaybackDescriptor, MuxTokens } from '../../types/courses';
 
 const HLS_MAX_RETRIES = 3;
 
-interface MuxTokens {
-    playback: string;
-    thumbnail: string;
-    storyboard: string;
-}
-
-interface PlaybackDescriptor {
-    type: 'vdocipher' | 'hls' | 'mux' | 'youtube' | 'mp4';
-    otp?: string;
-    playbackInfo?: string;
-    playbackId?: string;
-    manifestUrl?: string;
-    url?: string;
-    expiresAt?: string;
-    /** Present for signed Mux assets; null for public assets. */
-    tokens?: MuxTokens | null;
-}
 
 interface SecureVideoPlayerProps {
     title: string;
@@ -379,7 +363,9 @@ const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
     }
 
     if (playback.type === 'vdocipher' && playback.otp && playback.playbackInfo) {
-        const iframeSrc = `https://player.vdocipher.com/v2/?otp=${playback.otp}&playbackInfo=${playback.playbackInfo}`;
+        // C1: Encode OTP and playbackInfo to prevent iframe URL parameter injection
+        // if the backend ever returns a value containing '&', '#', or similar chars.
+        const iframeSrc = `https://player.vdocipher.com/v2/?otp=${encodeURIComponent(playback.otp)}&playbackInfo=${encodeURIComponent(playback.playbackInfo)}`;
         return (
             <iframe
                 src={iframeSrc}
@@ -408,16 +394,18 @@ const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
 
     if (playback.type === 'youtube' && playback.url) {
         const videoId = extractYouTubeId(playback.url);
+        // C2: If we cannot extract a valid YouTube ID via the robust parser, render
+        // a clean error state instead of constructing an untrusted embed URL via
+        // string replacement (which is brittle and can break on non-standard URLs).
         if (!videoId) {
-            const embedUrl = playback.url.replace('watch?v=', 'embed/');
             return (
-                <iframe
-                    src={`${embedUrl}?modestbranding=1&rel=0&showinfo=0&iv_load_policy=3`}
-                    className="w-full h-full"
-                    title={title}
-                    allowFullScreen
-                    sandbox="allow-scripts allow-same-origin allow-presentation"
-                ></iframe>
+                <div
+                    className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900"
+                    data-testid="course-video-error"
+                >
+                    <AlertCircle size={48} className="text-red-500 mb-4" />
+                    <p className="text-gray-300">تعذّر تحميل الفيديو. الرجاء التواصل مع المسؤول.</p>
+                </div>
             );
         }
         return <div ref={youtubeRef} className="w-full h-full" data-testid="course-video-youtube"></div>;

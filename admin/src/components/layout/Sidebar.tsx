@@ -76,6 +76,12 @@ const Sidebar: React.FC = () => {
       color: 'text-indigo-500',
     },
     {
+      icon: FileText,
+      label: 'طلبات المحتوى',
+      path: '/submissions',
+      color: 'text-teal-500',
+    },
+    {
       icon: Users,
       label: 'المؤلفون',
       path: '/authors',

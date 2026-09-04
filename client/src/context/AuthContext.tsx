@@ -1,14 +1,23 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { authApi, creditsApi } from '../lib/api';
 
+// =============================================================================
 // Types
+// =============================================================================
+
 interface User {
     id: string;
-    phone_number: string;
     display_name: string | null;
+    social_provider: 'facebook' | 'instagram' | null;
+    social_username: string | null;
+    social_profile_url: string | null;
+    social_avatar_url: string | null;
+    specialty: string | null;
+    is_verified: boolean;
+    verification_status?: 'none' | 'pending' | 'approved' | 'rejected';
     role?: string;
-    verification_status?: string;
-    rejection_reason?: string | null;
+    // Legacy — may be null for social-auth users
+    phone_number?: string | null;
 }
 
 interface TypedCredit {
@@ -33,13 +42,22 @@ interface AuthContextType {
     credits: Credits | null;
     isAuthenticated: boolean;
     isLoading: boolean;
-    login: (phoneNumber: string, password: string) => Promise<void>;
-    register: (phoneNumber: string, password: string, displayName?: string) => Promise<void>;
-    registerDoctor: (formData: FormData) => Promise<void>;
+    /** Exchange an OAuth code from Meta for a session. Optionally provide specialty for new-user registration. */
+    socialLogin: (
+        provider: 'facebook' | 'instagram',
+        code: string,
+        specialty?: string
+    ) => Promise<{ isNewUser: boolean }>;
+    /** Authenticated users submit professional verification documents. */
+    submitVerification: (formData: FormData) => Promise<void>;
     logout: () => Promise<void>;
     refreshCredits: () => Promise<void>;
-    updateProfile: (displayName: string) => Promise<void>;
+    updateProfile: (updates: { display_name?: string; specialty?: string }) => Promise<void>;
 }
+
+// =============================================================================
+// Context
+// =============================================================================
 
 const defaultCredits: Credits = {
     balance: 0,
@@ -48,7 +66,7 @@ const defaultCredits: Credits = {
     research_credits: 0,
     total_earned: 0,
     total_spent: 0,
-    typed_credits: []
+    typed_credits: [],
 };
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -75,24 +93,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     useEffect(() => {
         const checkSession = async () => {
             try {
-                // If the user has a valid httpOnly cookie, getProfile will succeed
                 const response = await authApi.getProfile();
                 setUser(response.user);
                 setCredits(response.credits || defaultCredits);
             } catch {
-                // No session or invalid session
                 setUser(null);
                 setCredits(null);
             } finally {
                 setIsLoading(false);
             }
         };
-
         checkSession();
     }, []);
 
-    // Listen for the axios interceptor signalling that the session expired
-    // mid-flight (e.g. token revoked on the server while the user was active).
+    // Listen for session-expired events dispatched by the axios interceptor
     useEffect(() => {
         const handleExpiry = () => {
             setUser(null);
@@ -102,74 +116,72 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         return () => window.removeEventListener('auth:session-expired', handleExpiry);
     }, []);
 
-
     const getApiErrorMessage = (error: unknown, fallback: string) => {
         const err = error as {
             response?: {
                 data?: {
                     message?: string;
                     error?: string;
+                    code?: string;
                     details?: { message?: string }[];
                 };
             };
         };
         const data = err.response?.data;
-        return data?.message || data?.details?.[0]?.message || data?.error || fallback;
+        // Surface backend error code for caller to branch on (e.g. SPECIALTY_REQUIRED)
+        const code = data?.code;
+        const message = data?.message || data?.details?.[0]?.message || data?.error || fallback;
+        if (code) {
+            const e = new Error(message);
+            (e as Error & { code: string }).code = code;
+            throw e;
+        }
+        throw new Error(message);
     };
 
-    const login = async (phoneNumber: string, password: string) => {
+    // ── socialLogin ──────────────────────────────────────────────────────────
+    const socialLogin = async (
+        provider: 'facebook' | 'instagram',
+        code: string,
+        specialty?: string
+    ): Promise<{ isNewUser: boolean }> => {
         try {
-            const response = await authApi.login(phoneNumber, password);
-
-            // Backend sets httpOnly cookie automatically. 
-            // The response still includes 'token' for mobile, but web ignores it.
+            const response = await authApi.socialCallback(provider, code, specialty);
             setUser(response.user);
-
-            // Fetch credits after login
             await refreshCredits();
+            return { isNewUser: response.isNewUser };
         } catch (error: unknown) {
-            throw new Error(getApiErrorMessage(error, 'فشل تسجيل الدخول'));
+            return getApiErrorMessage(error, 'فشل تسجيل الدخول الاجتماعي');
         }
     };
 
-    const register = async (phoneNumber: string, password: string, displayName?: string) => {
+    // ── submitVerification ───────────────────────────────────────────────────
+    const submitVerification = async (formData: FormData): Promise<void> => {
         try {
-            const response = await authApi.register(phoneNumber, password, displayName);
-
-            // Backend sets httpOnly cookie automatically
-            setUser(response.user);
-            setCredits(defaultCredits);
+            await authApi.submitVerification(formData);
+            // Refresh profile to get updated verification_status
+            const profile = await authApi.getProfile();
+            setUser(profile.user);
         } catch (error: unknown) {
-            throw new Error(getApiErrorMessage(error, 'فشل إنشاء الحساب'));
+            return getApiErrorMessage(error, 'فشل تقديم طلب التوثيق');
         }
     };
 
-    const registerDoctor = async (formData: FormData) => {
-        try {
-            const response = await authApi.registerDoctor(formData);
-
-            // Backend sets httpOnly cookie automatically
-            setUser(response.user);
-            setCredits(defaultCredits);
-        } catch (error: unknown) {
-            throw new Error(getApiErrorMessage(error, 'فشل إنشاء الحساب المهني للطبيب'));
-        }
-    };
-
+    // ── logout ───────────────────────────────────────────────────────────────
     const logout = async () => {
         try {
             await authApi.logout();
         } catch {
-            // Ignore logout errors
+            // Ignore logout errors — always clear local state
         } finally {
             setUser(null);
             setCredits(null);
         }
     };
 
+    // ── refreshCredits ────────────────────────────────────────────────────────
     const refreshCredits = async () => {
         try {
-            // M1 fix: use the lightweight credits endpoint instead of the full profile fetch
             const balance = await creditsApi.getBalance();
             setCredits(balance || defaultCredits);
         } catch (error) {
@@ -177,12 +189,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
     };
 
-    const updateProfile = async (displayName: string) => {
+    // ── updateProfile ─────────────────────────────────────────────────────────
+    const updateProfile = async (updates: { display_name?: string; specialty?: string }) => {
         try {
-            const response = await authApi.updateProfile(displayName);
-            setUser(response.user);
+            const response = await authApi.updateProfile(updates);
+            setUser((prev) => prev ? { ...prev, ...response.user } : response.user);
         } catch (error: unknown) {
-            throw new Error(getApiErrorMessage(error, 'فشل تحديث الملف الشخصي'));
+            return getApiErrorMessage(error, 'فشل تحديث الملف الشخصي');
         }
     };
 
@@ -191,12 +204,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         credits,
         isAuthenticated: !!user,
         isLoading,
-        login,
-        register,
-        registerDoctor,
+        socialLogin,
+        submitVerification,
         logout,
         refreshCredits,
-        updateProfile
+        updateProfile,
     };
 
     return (

@@ -15,6 +15,7 @@ import { optionalAuth } from '../middleware/userAuth.js';
 import { supabaseAdmin, supabasePublic } from '../config/supabase.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { AppError, NotFoundError } from '../utils/errors.js';
+import { applyPublicArticleFilter } from '../utils/articleVisibility.js';
 
 import { validateFileSignature } from '../utils/fileValidation.js';
 
@@ -189,18 +190,14 @@ router.post("/generate-article-from-file", aiLimiter, uploadLimiter, upload.sing
  *               items:
  *                 type: string
  */
-router.get('/tags', asyncHandler(async (req, res) => {
-  const { data, error } = await supabasePublic
-    .from('articles')
-    .select('tags');
+router.get('/tags', cacheMiddleware(3600), asyncHandler(async (req, res) => {
+  const { data, error } = await supabasePublic.rpc('get_public_article_tags');
 
   if (error) {
     throw new AppError('Failed to fetch tags', 500, 'ARTICLES_TAGS_FAILED');
   }
 
-  // Flatten tags array and get unique values
-  const allTags = data.flatMap(article => article.tags);
-  const uniqueTags = [...new Set(allTags)].sort();
+  const uniqueTags = (data || []).map(({ tag }) => tag).sort();
 
   res.json(uniqueTags);
 }));
@@ -218,24 +215,21 @@ router.get('/by-tags', cacheMiddleware(300), asyncHandler(async (req, res) => {
     tagsToFetch = req.query.tags.split(',').map(t => t.trim()).filter(Boolean);
   } else {
     // Fetch all known tags
-    const { data: tagData, error: tagError } = await supabasePublic
-      .from('articles')
-      .select('tags');
+    const { data: tagData, error: tagError } = await supabasePublic.rpc('get_public_article_tags');
     if (tagError) {
       throw new AppError('Failed to fetch articles by tags', 500, 'ARTICLES_BY_TAGS_FAILED');
     }
-    const allTags = tagData.flatMap(a => a.tags);
-    tagsToFetch = [...new Set(allTags)].sort();
+    tagsToFetch = (tagData || []).map(({ tag }) => tag).sort();
   }
 
   // Fetch latest articles for each tag in parallel
   const results = {};
   await Promise.all(
     tagsToFetch.map(async (tag) => {
-      const { data, error } = await supabasePublic
+      const { data, error } = await applyPublicArticleFilter(supabasePublic
         .from('articles')
         .select('id, title, slug, excerpt, cover_image, publication_date, author, tags, article_type')
-        .contains('tags', [tag])
+        .contains('tags', [tag]))
         .order('publication_date', { ascending: false })
         .limit(parsedLimit);
 
@@ -322,7 +316,7 @@ router.get('/',
     const offset = (page - 1) * limit;
 
     // Note: `dbQuery` is used instead of `query` to avoid shadowing the destructured `req.query` above.
-    let dbQuery = supabasePublic.from('articles').select(`${ARTICLE_LIST_SELECT}`, { count: 'exact' });
+    let dbQuery = applyPublicArticleFilter(supabasePublic.from('articles').select(`${ARTICLE_LIST_SELECT}`, { count: 'exact' }));
 
     // Tag filtering
     if (tag) {
@@ -362,10 +356,10 @@ router.get('/',
           });
         }
 
-        const { data: rows, error: fetchError } = await supabasePublic
+        const { data: rows, error: fetchError } = await applyPublicArticleFilter(supabasePublic
           .from('articles')
           .select(ARTICLE_LIST_SELECT)
-          .in('id', ids);
+          .in('id', ids));
 
         if (fetchError) {
           throw new AppError('Failed to fetch articles', 500, 'ARTICLES_FETCH_FAILED');
@@ -413,10 +407,10 @@ router.get('/',
 
 // Get featured articles
 router.get('/featured', cacheMiddleware(600), asyncHandler(async (req, res) => {
-  const { data: articles, error } = await supabasePublic
+  const { data: articles, error } = await applyPublicArticleFilter(supabasePublic
     .from('articles')
     .select(ARTICLE_LIST_SELECT)
-    .eq('is_featured', true)
+    .eq('is_featured', true))
     .order('publication_date', { ascending: false })
     .limit(5);
 
@@ -467,6 +461,21 @@ router.get('/featured', cacheMiddleware(600), asyncHandler(async (req, res) => {
  *       404:
  *         description: Article not found
  */
+// Direct token access is the sole public path for approved unlisted articles.
+router.get('/shared/:token', optionalAuth, asyncHandler(async (req, res) => {
+  const { data: article, error } = await supabaseAdmin
+    .from('articles')
+    .select(ARTICLE_DETAIL_SELECT)
+    .eq('share_token', req.params.token)
+    .eq('status', 'approved')
+    .eq('visibility', 'unlisted')
+    .eq('audience', 'public')
+    .single();
+  if (error || !article) throw new NotFoundError('Article not found');
+  res.set('X-Robots-Tag', 'noindex, nofollow');
+  res.json({ ...article, is_shared: true, is_preview: false, has_access: true });
+}));
+
 router.get('/:idOrSlug', optionalAuth, asyncHandler(async (req, res) => {
   const { idOrSlug } = req.params;
   const authHeader = req.headers['authorization'];
@@ -487,7 +496,7 @@ router.get('/:idOrSlug', optionalAuth, asyncHandler(async (req, res) => {
   // Check if idOrSlug looks like a UUID
   const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrSlug);
 
-  let query = supabasePublic.from('articles').select(ARTICLE_DETAIL_SELECT);
+  let query = applyPublicArticleFilter(supabasePublic.from('articles').select(ARTICLE_DETAIL_SELECT));
   if (isUUID) {
     query = query.eq('id', idOrSlug);
   } else {
@@ -503,33 +512,26 @@ router.get('/:idOrSlug', optionalAuth, asyncHandler(async (req, res) => {
     throw new AppError('Failed to fetch article', 500, 'ARTICLE_FETCH_FAILED');
   }
 
-  // 3. Check Access (if user is logged in)
-  if (userId) {
-    // Check for Admin
-    const { data: admin } = await supabaseAdmin
-      .from('admins')
-      .select('id')
-      .eq('id', userId)
-      .single();
+  // 3. Free content never needs a user-specific access lookup.
+  if (article.credits_required === 0) {
+    hasAccess = true;
+  } else if (userId) {
+    // Admin and explicit-access checks are independent, so issue them together.
+    const [{ data: admin, error: adminError }, { data: access, error: accessError }] = await Promise.all([
+      supabaseAdmin.from('admins').select('id').eq('id', userId).single(),
+      supabaseAdmin.from('article_access').select('id').eq('user_id', userId).eq('article_id', article.id).single()
+    ]);
 
-    if (admin) {
-      hasAccess = true;
-    } else {
-      // Check Article Access table
-      const { data: access } = await supabaseAdmin
-        .from('article_access')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('article_id', article.id)
-        .single();
-
-      if (access) hasAccess = true;
+    if (adminError && adminError.code !== 'PGRST116') {
+      throw new AppError('Failed to check article access', 500, 'ARTICLE_ACCESS_CHECK_FAILED');
     }
+    if (accessError && accessError.code !== 'PGRST116') {
+      throw new AppError('Failed to check article access', 500, 'ARTICLE_ACCESS_CHECK_FAILED');
+    }
+    hasAccess = Boolean(admin || access);
   }
 
   // 4. Handle Content Delivery
-  // If article is free (credits_required = 0), grant access to everyone
-  if (article.credits_required === 0) hasAccess = true;
 
   // Return truncated content (Peek) when no access
   const TRUNCATE_LENGTH = 600;
@@ -565,10 +567,10 @@ router.get('/:id/related', asyncHandler(async (req, res) => {
   const { limit = 3 } = req.query;
 
   // 1. Get current article details
-  const { data: article, error: articleError } = await supabasePublic
+  const { data: article, error: articleError } = await applyPublicArticleFilter(supabasePublic
     .from('articles')
     .select('tags, article_type, categories')
-    .eq('id', id)
+    .eq('id', id))
     .single();
 
   if (articleError) {
@@ -578,11 +580,11 @@ router.get('/:id/related', asyncHandler(async (req, res) => {
   // 2. Fetch candidates (pool of potentially related items)
   // We fetch more than needed to sort them in memory
   // Strategy: Get items with overlapping tags OR same category
-  const { data: candidates, error } = await supabasePublic
+  const { data: candidates, error } = await applyPublicArticleFilter(supabasePublic
     .from('articles')
     .select('id, title, excerpt, cover_image, publication_date, author, tags, article_type')
     .neq('id', id) // Exclude current
-    .overlaps('tags', article.tags || []) // Must have at least one tag in common
+    .overlaps('tags', article.tags || [])) // Must have at least one tag in common
     .limit(20); // Fetch pool of 20
 
   if (error) {
@@ -616,10 +618,10 @@ router.get('/:id/related', asyncHandler(async (req, res) => {
 
   // If we have fewer than requested, fill with recent articles
   if (finalResults.length < parseInt(limit)) {
-    const { data: fallback } = await supabasePublic
+    const { data: fallback } = await applyPublicArticleFilter(supabasePublic
       .from('articles')
       .select('id, title, excerpt, cover_image, publication_date, author, tags, article_type')
-      .neq('id', id)
+      .neq('id', id))
       .order('publication_date', { ascending: false })
       .limit(parseInt(limit) - finalResults.length);
 

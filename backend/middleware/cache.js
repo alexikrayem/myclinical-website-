@@ -13,6 +13,10 @@ export const cacheMiddleware = (duration = 300) => async (req, res, next) => {
         return next();
     }
 
+    // Let browsers and CDNs reuse the same public responses that Redis caches.
+    // Authenticated requests return above and never receive shared-cache headers.
+    res.set('Cache-Control', `public, max-age=${Math.min(duration, 60)}, stale-while-revalidate=${duration}`);
+
     // Allow intentional cache bypass, but only for authenticated requests
     // (Prevents unauthenticated cache-busting / DoS)
     if (req.query.refresh === 'true' && req.headers.authorization) {

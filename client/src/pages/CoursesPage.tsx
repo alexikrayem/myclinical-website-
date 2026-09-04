@@ -35,17 +35,21 @@ const CoursesPage = () => {
             .catch(() => setCategories([]));
     }, []);
 
+    // Featured courses do not depend on the list filters, so avoid fetching
+    // them again for every search term or category selection.
+    useEffect(() => {
+        coursesApi.getFeatured()
+            .then(setFeaturedCourses)
+            .catch(() => setFeaturedCourses([]));
+    }, []);
+
     useEffect(() => {
         const fetchCourses = async () => {
             setIsLoading(true);
             try {
-                const [allCoursesData, featuredData] = await Promise.all([
-                    coursesApi.getAll({ search: searchQuery, category: activeCategory }),
-                    coursesApi.getFeatured()
-                ]);
+                const allCoursesData = await coursesApi.getAll({ search: searchQuery, category: activeCategory });
 
                 setCourses(allCoursesData.data);
-                setFeaturedCourses(featuredData);
             } catch (error) {
                 console.error('Failed to fetch courses', error);
             } finally {

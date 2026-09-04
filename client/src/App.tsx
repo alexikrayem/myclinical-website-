@@ -26,6 +26,13 @@ const ProfilePage = lazy(() => import('./pages/ProfilePage'));
 const ClinicalCasesPage = lazy(() => import('./pages/ClinicalCasesPage'));
 const CoursesPage = lazy(() => import('./pages/CoursesPage'));
 const CourseDetailPage = lazy(() => import('./pages/CourseDetailPage'));
+const AccountPage = lazy(() => import('./pages/account/AccountPage'));
+const ArticleEditorPage = lazy(() => import('./pages/account/ArticleEditorPage'));
+const CourseSubmitPage = lazy(() => import('./pages/account/CourseSubmitPage'));
+const SharedArticlePage = lazy(() => import('./pages/SharedArticlePage'));
+const AuthorProfilePage = lazy(() => import('./pages/AuthorProfilePage'));
+const VerificationPage = lazy(() => import('./pages/VerificationPage'));
+const RequireAuth = lazy(() => import('./components/auth/RequireAuth'));
 
 const LoadingFallback = () => (
   <div className="min-h-[50vh] flex items-center justify-center">
@@ -50,6 +57,8 @@ function App() {
                 <Route path="/" element={<HomePage />} />
                 <Route path="/articles" element={<ArticlesPage />} />
                 <Route path="/articles/:id" element={<ArticleDetailPage />} />
+                <Route path="/p/:token" element={<SharedArticlePage />} />
+                <Route path="/u/:slug" element={<AuthorProfilePage />} />
                 {ENABLE_COURSES && (
                   <>
                     <Route path="/courses" element={<CoursesPage />} />
@@ -61,8 +70,15 @@ function App() {
                 <Route path="/about" element={<AboutPage />} />
                 <Route path="/clinical-cases" element={<ClinicalCasesPage />} />
                 <Route path="/login" element={<LoginPage />} />
+                {/* /auth/callback receives the OAuth redirect from Meta — LoginPage handles the code exchange */}
+                <Route path="/auth/callback" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
                 <Route path="/profile" element={<ProfilePage />} />
+                <Route path="/verify" element={<RequireAuth><VerificationPage /></RequireAuth>} />
+                <Route path="/account" element={<RequireAuth><AccountPage /></RequireAuth>} />
+                <Route path="/account/articles/new" element={<RequireAuth><ArticleEditorPage /></RequireAuth>} />
+                <Route path="/account/articles/:id/edit" element={<RequireAuth><ArticleEditorPage /></RequireAuth>} />
+                <Route path="/account/courses/new" element={<RequireAuth><CourseSubmitPage /></RequireAuth>} />
                 <Route path="*" element={<NotFoundPage />} />
               </Routes>
             </Suspense>

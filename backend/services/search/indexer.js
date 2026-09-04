@@ -103,6 +103,9 @@ async function deleteDocument(indexName, id) {
 
 export async function indexArticle(article) {
   if (!article) return null;
+  if (article.status !== 'approved' || article.visibility !== 'listed') {
+    return removeArticle(article.id);
+  }
   return addDocuments('articles', [prepareArticleDoc(article)]);
 }
 
@@ -113,11 +116,12 @@ export async function indexResearch(research) {
 
 export async function indexCourse(course) {
   if (!course) return null;
+  if (course.status !== 'approved') return removeCourse(course.id);
   return addDocuments('courses', [prepareCourseDoc(course)]);
 }
 
 export async function indexArticlesBatch(articles) {
-  return addDocuments('articles', articles.map(prepareArticleDoc));
+  return addDocuments('articles', articles.filter(article => article?.status === 'approved' && article?.visibility === 'listed').map(prepareArticleDoc));
 }
 
 export async function indexResearchBatch(researches) {
@@ -125,7 +129,7 @@ export async function indexResearchBatch(researches) {
 }
 
 export async function indexCoursesBatch(courses) {
-  return addDocuments('courses', courses.map(prepareCourseDoc));
+  return addDocuments('courses', courses.filter(course => course?.status === 'approved').map(prepareCourseDoc));
 }
 
 export async function removeArticle(id) {

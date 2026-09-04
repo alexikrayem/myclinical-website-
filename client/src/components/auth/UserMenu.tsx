@@ -107,6 +107,14 @@ const UserMenu: React.FC<UserMenuProps> = ({ onRedeemClick }) => {
                                 <User size={18} className="text-gray-400" />
                                 <span className="text-gray-700">الملف الشخصي</span>
                             </Link>
+                            <Link
+                                to="/account"
+                                onClick={() => setIsOpen(false)}
+                                className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 rounded-xl transition-colors"
+                            >
+                                <FileText size={18} className="text-gray-400" />
+                                <span className="text-gray-700">حسابي / لوحة الكاتب</span>
+                            </Link>
 
                             <button
                                 onClick={() => {

@@ -84,57 +84,44 @@ const bodyInt = (min, max) => z.preprocess(
 );
 
 export const schemas = {
-  // Auth Schemas
-  register: z.object({
-    body: z.object({
-      phone_number: phoneSchema,
-      password: z.string()
-        .min(8, 'كلمة المرور يجب أن تكون 8 أحرف على الأقل')
-        .regex(/[A-Z]/, 'كلمة المرور يجب أن تحتوي على حرف كبير واحد على الأقل')
-        .regex(/[a-z]/, 'كلمة المرور يجب أن تحتوي على حرف صغير واحد على الأقل')
-        .regex(/\d/, 'كلمة المرور يجب أن تحتوي على رقم واحد على الأقل')
-        .regex(/[!@#$%^&*()_+\-=\[\]{};':\"\\|,.<>\/?]/, 'كلمة المرور يجب أن تحتوي على رمز خاص واحد على الأقل'),
-      display_name: displayNameSchema,
-    }),
-  }),
+  // ── Social Auth Schemas ──────────────────────────────────────────────────
 
-  login: z.object({
+  // POST /api/auth/social/callback
+  socialCallback: z.object({
     body: z.object({
-      phone_number: phoneSchema,
-      password: z.string().min(1, 'كلمة المرور مطلوبة'),
-    }),
-  }),
-
-  // Doctor registration — all required professional fields validated up-front
-  registerDoctor: z.object({
-    body: z.object({
-      phone_number: phoneSchema,
-      password: z.string()
-        .min(8, 'كلمة المرور يجب أن تكون 8 أحرف على الأقل')
-        .regex(/[A-Z]/, 'كلمة المرور يجب أن تحتوي على حرف كبير واحد على الأقل')
-        .regex(/[a-z]/, 'كلمة المرور يجب أن تحتوي على حرف صغير واحد على الأقل')
-        .regex(/\d/, 'كلمة المرور يجب أن تحتوي على رقم واحد على الأقل')
-        .regex(/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/, 'كلمة المرور يجب أن تحتوي على رمز خاص واحد على الأقل'),
-      display_name: z.string().trim().min(2, 'الاسم يجب أن يكون حرفين على الأقل'),
-      specialization: z.string().trim().min(1, 'التخصص مطلوب'),
-      bio: z.string().trim().min(10, 'نبذة مهنية مطلوبة (10 أحرف على الأقل)'),
-      education: z.string().trim().min(2, 'المؤهل العلمي مطلوب'),
-      clinic_address: z.string().trim().min(2, 'عنوان العيادة مطلوب'),
-      experience_years: z.preprocess(
+      provider: z.enum(['facebook', 'instagram'], {
+        errorMap: () => ({ message: 'مزود تسجيل الدخول يجب أن يكون facebook أو instagram' })
+      }),
+      code: z.string().trim().min(1, 'رمز المصادقة مطلوب').max(4096),
+      specialty: z.preprocess(
         (val) => {
-          const n = Number(val);
-          return Number.isFinite(n) ? n : val;
+          if (typeof val !== 'string') return val;
+          const trimmed = val.trim();
+          return trimmed === '' ? undefined : trimmed;
         },
-        z.number().int().min(0).max(70).optional()
+        z.string().max(100, 'التخصص لا يتجاوز 100 حرف').optional()
       ),
-      email: z.string().trim().email('البريد الإلكتروني غير صالح').optional().or(z.literal('')),
-      website: z.string().trim().url('رابط الموقع غير صالح').optional().or(z.literal('')),
     }),
   }),
 
+  // POST /api/auth/verify (multipart — non-file fields only)
+  verificationSubmission: z.object({
+    body: z.object({
+      full_name: z.string().trim().min(2, 'الاسم الكامل مطلوب (حرفان على الأقل)').max(150),
+      specialty: z.string().trim().min(1, 'التخصص مطلوب').max(100),
+      notes: z.preprocess(
+        (val) => {
+          if (typeof val !== 'string') return val;
+          const trimmed = val.trim();
+          return trimmed === '' ? undefined : trimmed;
+        },
+        z.string().max(1000).optional()
+      ),
+    }),
+  }),
 
-  // Profile update — display_name is optional so users can submit a no-op;
-  // but if provided it must be a non-empty string within sensible length bounds.
+  // Profile update — display_name and specialty are both optional;
+  // but if provided they must be non-empty within sensible length bounds.
   updateProfile: z.object({
     body: z.object({
       display_name: z.preprocess(
@@ -146,6 +133,17 @@ export const schemas = {
         z.string()
           .min(2, 'الاسم يجب أن يكون حرفين على الأقل')
           .max(100, 'الاسم لا يمكن أن يتجاوز 100 حرف')
+          .optional()
+      ),
+      specialty: z.preprocess(
+        (val) => {
+          if (typeof val !== 'string') return val;
+          const trimmed = val.trim();
+          return trimmed === '' ? undefined : trimmed;
+        },
+        z.string()
+          .min(1, 'التخصص لا يمكن أن يكون فارغاً')
+          .max(100, 'التخصص لا يتجاوز 100 حرف')
           .optional()
       ),
     }),

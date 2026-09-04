@@ -10,6 +10,7 @@ import SecureVideoPlayer from '../components/courses/SecureVideoPlayer';
 import AttentionCheckModal from '../components/courses/AttentionCheckModal';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import type { Challenge, PlaybackDescriptor } from '../types/courses';
 
 interface QuizQuestion {
     question: string;
@@ -21,30 +22,7 @@ interface QuizData {
     questions: QuizQuestion[];
 }
 
-export interface ChallengeData {
-    /** Display text shown to the user (required by all challenge types) */
-    question: string;
-    questionEn?: string;
-    /** Color options for 'color' type challenges */
-    options?: Array<{ id: string; hex: string }>;
-}
-
-export interface Challenge {
-    id: string;
-    type: "color" | "math";
-    data: ChallengeData;
-    trigger_at_seconds: number;
-    timeout_seconds: number;
-}
-
 type BillingModel = 'free' | 'per_course' | 'per_minute';
-
-type PlaybackDescriptor =
-    | { type: 'vdocipher'; otp: string; playbackInfo: string }
-    | { type: 'hls'; manifestUrl: string; expiresAt?: string }
-    | { type: 'mux'; playbackId: string; tokens: { playback: string; thumbnail: string; storyboard: string } | null; expiresAt?: string }
-    | { type: 'youtube'; url: string }
-    | { type: 'mp4'; url: string };
 
 interface TypedCredit {
     credit_type_id: string;
@@ -52,6 +30,7 @@ interface TypedCredit {
     prefix: string;
     balance: number;
 }
+
 
 interface Course {
     id: string;
@@ -228,7 +207,7 @@ const CourseDetailPage = () => {
         // network retry has time to complete without interrupting playback.
         const timer = window.setInterval(refresh, 45_000);
         return () => window.clearInterval(timer);
-    }, [id, playbackSessionId, playback]);
+    }, [id, playbackSessionId, playback?.type]);
 
     useEffect(() => {
         if (!course || !id || autoPlaybackRequested || playback || playbackLoading) return;

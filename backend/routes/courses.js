@@ -14,17 +14,18 @@ import { purchaseCourseAccess } from '../services/courses/coursePurchaseService.
 import { generateQuizForCourse, getLatestQuizForCourse, submitQuizAnswers } from '../services/courses/courseQuizService.js';
 import { validate, schemas } from '../middleware/validation.js';
 import { playbackLimiter, consumeLimiter } from '../middleware/rateLimiter.js';
+import { cacheMiddleware } from '../middleware/cache.js';
 
 const router = express.Router();
 
 // Get all courses (public)
-router.get('/', validate(schemas.coursesList), asyncHandler(async (req, res) => {
+router.get('/', cacheMiddleware(300), validate(schemas.coursesList), asyncHandler(async (req, res) => {
     const result = await listPublicCourses(supabasePublic, req.query);
     res.json(result);
 }));
 
 // Get featured courses (public)
-router.get('/featured', asyncHandler(async (req, res) => {
+router.get('/featured', cacheMiddleware(600), asyncHandler(async (req, res) => {
     const { data, error } = await supabasePublic
         .from('courses_public')
         .select(COURSE_PUBLIC_SELECT)
@@ -38,7 +39,7 @@ router.get('/featured', asyncHandler(async (req, res) => {
 }));
 
 // Get all unique course categories (public)
-router.get('/categories', asyncHandler(async (req, res) => {
+router.get('/categories', cacheMiddleware(300), asyncHandler(async (req, res) => {
     const categories = await getPublicCourseCategories(supabasePublic);
     res.json(categories);
 }));
@@ -112,7 +113,7 @@ router.get('/:id/hls/manifest', authenticateUser, validate(schemas.courseHlsMani
 
     const { data: session } = await supabaseAdmin
         .from('course_playback_sessions')
-        .select('id, course_id, custom_user_id, expires_at, status')
+        .select('id, course_id, custom_user_id, expires_at, status, provider, playback_source')
         .eq('id', session_id)
         .single();
 
@@ -124,20 +125,14 @@ router.get('/:id/hls/manifest', authenticateUser, validate(schemas.courseHlsMani
         throw new AppError('Playback session expired', 403, 'COURSE_HLS_EXPIRED');
     }
 
-    const { data: course } = await supabaseAdmin
-        .from('video_courses')
-        .select('playback_source, playback_provider')
-        .eq('id', id)
-        .single();
-
-    if (!course || course.playback_provider !== 'hls') {
+    if (session.provider !== 'hls' || !session.playback_source) {
         throw new AppError('HLS playback not available', 400, 'COURSE_HLS_INVALID');
     }
 
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     const manifestResult = await buildSignedManifest({
         supabase: supabaseAdmin,
-        playbackSource: course.playback_source,
+        playbackSource: session.playback_source,
         playlistPath: typeof playlist === 'string' ? playlist : null,
         sessionId: session_id,
         courseId: id,
@@ -157,7 +152,7 @@ router.get('/:id/hls/segment', authenticateUser, playbackLimiter, validate(schem
     const { session_id, path } = req.query;
     const { data: session } = await supabaseAdmin
         .from('course_playback_sessions')
-        .select('id, course_id, custom_user_id, expires_at, status')
+        .select('id, course_id, custom_user_id, expires_at, status, provider, playback_source')
         .eq('id', session_id)
         .single();
 
@@ -165,16 +160,11 @@ router.get('/:id/hls/segment', authenticateUser, playbackLimiter, validate(schem
         throw new AppError('Playback session expired', 403, 'COURSE_HLS_EXPIRED');
     }
 
-    const { data: course } = await supabaseAdmin
-        .from('video_courses')
-        .select('playback_source, playback_provider')
-        .eq('id', id)
-        .single();
-    if (!course || course.playback_provider !== 'hls') {
+    if (session.provider !== 'hls' || !session.playback_source) {
         throw new AppError('HLS playback not available', 400, 'COURSE_HLS_INVALID');
     }
 
-    const signedUrl = await createSignedHlsSegmentUrl({ supabase: supabaseAdmin, playbackSource: course.playback_source, objectPath: path });
+    const signedUrl = await createSignedHlsSegmentUrl({ supabase: supabaseAdmin, playbackSource: session.playback_source, objectPath: path });
     res.setHeader('Cache-Control', 'no-store');
     res.redirect(302, signedUrl);
 }));

@@ -13,6 +13,7 @@ import { indexCourse, removeCourse } from '../../services/search/indexer.js';
 import { uploadToSupabase } from './utils.js';
 import logger from '../../config/logger.js';
 import { parseMuxPlaybackSource } from '../../services/courses/muxService.js';
+import { invalidateCachePattern } from '../../middleware/cache.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -143,6 +144,8 @@ router.post('/',
             logger.error('Search index error (course create):', err);
         }
 
+        await invalidateCachePattern('cache:/api/courses*');
+
         res.status(201).json(data[0]);
     }));
 
@@ -221,6 +224,8 @@ router.put('/:id',
             logger.error('Search index error (course update):', err);
         }
 
+        await invalidateCachePattern('cache:/api/courses*');
+
         res.json(data[0]);
     }));
 
@@ -287,6 +292,8 @@ router.delete('/:id', authenticateToken, asyncHandler(async (req, res) => {
     } catch (err) {
         logger.error('Search index error (course delete):', err);
     }
+
+    await invalidateCachePattern('cache:/api/courses*');
 
     res.json({ message: 'Course deleted successfully' });
 }));

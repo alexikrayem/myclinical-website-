@@ -122,6 +122,7 @@ export async function createPlaybackSession({ supabase, courseId, user, baseUrl 
       course_id: courseId,
       custom_user_id: user.id,
       provider: course.playback_provider,
+      playback_source: course.playback_source,
       expires_at: expiresAt
     })
     .select()
@@ -206,7 +207,11 @@ export async function refreshPlaybackSession({ supabase, courseId, sessionId, us
   const expiresAt = buildSessionExpiry();
   const { error: updateError } = await supabase
     .from('course_playback_sessions')
-    .update({ expires_at: expiresAt })
+    .update({
+      expires_at: expiresAt,
+      provider: course.playback_provider,
+      playback_source: course.playback_source
+    })
     .eq('id', sessionId)
     .eq('status', 'active');
   if (updateError) throw new AppError('Failed to renew playback session', 500, 'PLAYBACK_SESSION_REFRESH_FAILED');

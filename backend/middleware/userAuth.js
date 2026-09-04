@@ -81,12 +81,19 @@ export const authenticateUser = async (req, res, next) => {
         // Add user info to request
         req.user = {
             id: session.users.id,
-            phoneNumber: session.users.phone_number,
             displayName: session.users.display_name,
             isActive: session.users.is_active,
             createdAt: session.users.created_at,
             role: session.users.role || 'user',
-            verificationStatus: session.users.verification_status || 'none'
+            verificationStatus: session.users.verification_status || 'none',
+            isVerified: session.users.is_verified === true,
+            specialty: session.users.specialty || null,
+            socialProvider: session.users.social_provider || null,
+            socialUsername: session.users.social_username || null,
+            socialProfileUrl: session.users.social_profile_url || null,
+            socialAvatarUrl: session.users.social_avatar_url || null,
+            // Legacy field — may be null for social-auth users
+            phoneNumber: session.users.phone_number || null,
         };
         req.sessionId = session.id;
 
@@ -183,12 +190,18 @@ export const optionalAuth = async (req, res, next) => {
 
         req.user = {
             id: session.users.id,
-            phoneNumber: session.users.phone_number,
             displayName: session.users.display_name,
             isActive: session.users.is_active,
             createdAt: session.users.created_at,
             role: session.users.role || 'user',
-            verificationStatus: session.users.verification_status || 'none'
+            verificationStatus: session.users.verification_status || 'none',
+            isVerified: session.users.is_verified === true,
+            specialty: session.users.specialty || null,
+            socialProvider: session.users.social_provider || null,
+            socialUsername: session.users.social_username || null,
+            socialProfileUrl: session.users.social_profile_url || null,
+            socialAvatarUrl: session.users.social_avatar_url || null,
+            phoneNumber: session.users.phone_number || null,
         };
         req.sessionId = session.id;
 

@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import {
-    User, Phone, Edit2, Check, X, CreditCard, History,
-    Coins, Video, FileText, Lock, LogOut, BookOpen, Tag,
-    AlertCircle, CheckCircle
+    User, Edit2, Check, X, CreditCard, History,
+    Coins, Video, FileText, LogOut, BookOpen, Tag,
+    AlertCircle, CheckCircle, ShieldCheck, Instagram, Facebook, Stethoscope
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { creditsApi, authApi } from '../lib/api';
+import { creditsApi } from '../lib/api';
 import CreditRedeemModal from '../components/credits/CreditRedeemModal';
 import toast from 'react-hot-toast';
 
@@ -23,12 +23,6 @@ const ProfilePage: React.FC = () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [transactions, setTransactions] = useState<any[]>([]);
     const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
-
-    // Password change state
-    const [currentPassword, setCurrentPassword] = useState('');
-    const [newPassword, setNewPassword] = useState('');
-    const [confirmNewPassword, setConfirmNewPassword] = useState('');
-    const [isChangingPassword, setIsChangingPassword] = useState(false);
 
     useEffect(() => {
         if (!isLoading && !isAuthenticated) {
@@ -63,7 +57,7 @@ const ProfilePage: React.FC = () => {
     const handleSaveProfile = async () => {
         setIsSaving(true);
         try {
-            await updateProfile(displayName);
+            await updateProfile({ display_name: displayName });
             toast.success('تم تحديث الملف الشخصي');
             setIsEditing(false);
         } catch (error: unknown) {
@@ -73,33 +67,6 @@ const ProfilePage: React.FC = () => {
         }
     };
 
-    const handleChangePassword = async (e: React.FormEvent) => {
-        e.preventDefault();
-
-        if (newPassword !== confirmNewPassword) {
-            toast.error('كلمتا المرور غير متطابقتين');
-            return;
-        }
-
-        if (newPassword.length < 8) {
-            toast.error('كلمة المرور يجب أن تكون 8 أحرف على الأقل');
-            return;
-        }
-
-        setIsChangingPassword(true);
-        try {
-            await authApi.changePassword(currentPassword, newPassword);
-            toast.success('تم تغيير كلمة المرور بنجاح');
-            setCurrentPassword('');
-            setNewPassword('');
-            setConfirmNewPassword('');
-        } catch (error: unknown) {
-            const err = error as { response?: { data?: { error?: string } } };
-            toast.error(err.response?.data?.error || 'فشل تغيير كلمة المرور');
-        } finally {
-            setIsChangingPassword(false);
-        }
-    };
 
     const handleLogout = async () => {
         await logout();
@@ -145,17 +112,21 @@ const ProfilePage: React.FC = () => {
                             <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center">
                                 <User size={32} />
                             </div>
-                             <div>
+                            <div>
                                 <div className="flex items-center gap-2">
                                     <h1 className="text-2xl font-bold">{user?.display_name || 'مستخدم'}</h1>
-                                    {user?.role === 'doctor' && user.verification_status === 'approved' && (
+                                    {user?.is_verified && (
                                         <span className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-lg flex items-center gap-1 font-semibold border border-white/25">
                                             <CheckCircle size={12} className="text-green-300" />
-                                            <span>طبيب معتمد</span>
+                                            <span>موثّق</span>
                                         </span>
                                     )}
                                 </div>
-                                <p className="text-white/80" dir="ltr">{user?.phone_number}</p>
+                                <div className="flex items-center gap-1.5 text-white/80 text-sm mt-0.5">
+                                    {user?.social_provider === 'facebook' && <Facebook size={13} />}
+                                    {user?.social_provider === 'instagram' && <Instagram size={13} />}
+                                    <span>{user?.social_username || user?.social_provider || ''}</span>
+                                </div>
                             </div>
                         </div>
                         <button
@@ -217,59 +188,77 @@ const ProfilePage: React.FC = () => {
 
             {/* Tabs */}
             <div className="container mx-auto px-4 -mt-4">
-                {/* Doctor Verification Status Banners */}
-                {user?.role === 'doctor' && (
+                {/* Verification Status Banners */}
+                {!user?.is_verified && (
                     <div className="mb-6">
-                        {user.verification_status === 'pending' && (
+                        {(!user?.verification_status || user.verification_status === 'none') && (
+                            <div className="bg-blue-50 border border-blue-200 text-blue-800 rounded-2xl p-5 flex items-start gap-4 shadow-sm">
+                                <div className="p-2 bg-blue-100 rounded-xl text-blue-600 mt-0.5">
+                                    <ShieldCheck size={20} />
+                                </div>
+                                <div className="flex-1">
+                                    <h3 className="font-bold text-lg mb-1">احصل على حساب موثّق</h3>
+                                    <p className="text-sm text-blue-700/90 leading-relaxed mb-3">
+                                        قدّم وثائقك المهنية للحصول على شارة التوثيق ونشر المحتوى الطبي على المنصة.
+                                    </p>
+                                    <Link
+                                        to="/verify"
+                                        className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-xl transition-colors"
+                                    >
+                                        <ShieldCheck size={16} />
+                                        تقديم طلب التوثيق
+                                    </Link>
+                                </div>
+                            </div>
+                        )}
+
+                        {user?.verification_status === 'pending' && (
                             <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl p-5 flex items-start gap-4 shadow-sm">
                                 <div className="p-2 bg-amber-100 rounded-xl text-amber-600 mt-0.5">
                                     <AlertCircle size={20} />
                                 </div>
                                 <div>
-                                    <h3 className="font-bold text-lg mb-1">طلب التحقق قيد المراجعة</h3>
+                                    <h3 className="font-bold text-lg mb-1">طلب التوثيق قيد المراجعة</h3>
                                     <p className="text-sm text-amber-700/95 leading-relaxed">
-                                        طلبك لتوثيق الحساب كطبيب قيد المراجعة حالياً من قبل الإدارة. بعد الموافقة، سيتم إنشاء ملف كاتب/مؤلف لك لتتمكن من نشر أعمالك ومقالاتك الطبية في المنصة.
-                                    </p>
-                                </div>
-                            </div>
-                        )}
-                        
-                        {user.verification_status === 'rejected' && (
-                            <div className="bg-red-50 border border-red-200 text-red-800 rounded-2xl p-5 flex items-start gap-4 shadow-sm animate-fadeIn">
-                                <div className="p-2 bg-red-100 rounded-xl text-red-600 mt-0.5">
-                                    <AlertCircle size={20} />
-                                </div>
-                                <div className="flex-1">
-                                    <h3 className="font-bold text-lg mb-1">تم رفض طلب توثيق الحساب</h3>
-                                    <p className="text-sm text-red-700/95 leading-relaxed mb-3">
-                                        عذراً، لقد تم رفض طلب توثيق حسابك كطبيب بسبب عدم وضوح أو مطابقة البيانات المرفقة.
-                                    </p>
-                                    {user.rejection_reason && (
-                                        <div className="bg-white/60 rounded-xl p-3 border border-red-100 text-sm font-medium text-red-800/90 mb-3" dir="rtl">
-                                            <span className="font-bold">سبب الرفض: </span>
-                                            {user.rejection_reason}
-                                        </div>
-                                    )}
-                                    <p className="text-xs text-red-600 font-medium font-semibold">
-                                        يرجى التواصل مع الإدارة أو الدعم الفني لإعادة المراجعة.
+                                        وثائقك مُستلمة وقيد المراجعة من قبل الإدارة. بعد الموافقة ستتمكن من نشر المحتوى المهني.
                                     </p>
                                 </div>
                             </div>
                         )}
 
-                        {user.verification_status === 'approved' && (
-                            <div className="bg-green-50 border border-green-200 text-green-800 rounded-2xl p-5 flex items-start gap-4 shadow-sm animate-fadeIn">
-                                <div className="p-2 bg-green-100 rounded-xl text-green-600 mt-0.5">
-                                    <CheckCircle size={20} className="text-green-600" />
+                        {user?.verification_status === 'rejected' && (
+                            <div className="bg-red-50 border border-red-200 text-red-800 rounded-2xl p-5 flex items-start gap-4 shadow-sm">
+                                <div className="p-2 bg-red-100 rounded-xl text-red-600 mt-0.5">
+                                    <AlertCircle size={20} />
                                 </div>
-                                <div>
-                                    <h3 className="font-bold text-lg mb-1">حساب طبيب موثق</h3>
-                                    <p className="text-sm text-green-700/95 leading-relaxed">
-                                        تهانينا! حسابك موثق كطبيب معتمد في المنصة. تم ربط حسابك بملف مؤلف خاص بك، ويمكنك الآن نشر المقالات والأبحاث الطبية.
+                                <div className="flex-1">
+                                    <h3 className="font-bold text-lg mb-1">تم رفض طلب التوثيق</h3>
+                                    <p className="text-sm text-red-700/95 leading-relaxed mb-3">
+                                        يرجى مراجعة سبب الرفض وإعادة التقديم بوثائق صحيحة.
                                     </p>
+                                    <Link
+                                        to="/verify"
+                                        className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold px-4 py-2 rounded-xl transition-colors"
+                                    >
+                                        إعادة تقديم الطلب
+                                    </Link>
                                 </div>
                             </div>
                         )}
+                    </div>
+                )}
+
+                {user?.is_verified && (
+                    <div className="bg-green-50 border border-green-200 text-green-800 rounded-2xl p-5 flex items-start gap-4 shadow-sm mb-6">
+                        <div className="p-2 bg-green-100 rounded-xl text-green-600 mt-0.5">
+                            <CheckCircle size={20} className="text-green-600" />
+                        </div>
+                        <div>
+                            <h3 className="font-bold text-lg mb-1">حساب موثّق</h3>
+                            <p className="text-sm text-green-700/95 leading-relaxed">
+                                حسابك موثق. يمكنك نشر المقالات والدورات المهنية على المنصة.
+                            </p>
+                        </div>
                     </div>
                 )}
 
@@ -277,7 +266,6 @@ const ProfilePage: React.FC = () => {
                     <div className="flex border-b border-gray-100">
                         {[
                             { id: 'profile', label: 'الملف الشخصي', icon: User },
-                            { id: 'security', label: 'الأمان', icon: Lock },
                             { id: 'history', label: 'السجل', icon: History },
                         ].map(({ id, label, icon: Icon }) => (
                             <button
@@ -325,12 +313,19 @@ const ProfilePage: React.FC = () => {
                                             <p className="text-gray-900">{user?.display_name || 'غير محدد'}</p>
                                         )}
                                     </div>
-
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-500 mb-1">رقم الهاتف</label>
-                                        <p className="text-gray-900 flex items-center gap-2" dir="ltr">
-                                            <Phone size={16} className="text-gray-400" />
-                                            {user?.phone_number}
+                                        <label className="block text-sm font-medium text-gray-500 mb-1">التخصص الطبي</label>
+                                        <p className="text-gray-900 flex items-center gap-2">
+                                            <Stethoscope size={15} className="text-blue-400" />
+                                            {user?.specialty || 'غير محدد'}
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-500 mb-1">منصة التسجيل</label>
+                                        <p className="text-gray-900 flex items-center gap-2">
+                                            {user?.social_provider === 'facebook' && <Facebook size={15} className="text-blue-500" />}
+                                            {user?.social_provider === 'instagram' && <Instagram size={15} className="text-pink-500" />}
+                                            {user?.social_username || user?.social_provider || 'غير محدد'}
                                         </p>
                                     </div>
                                 </div>
@@ -363,66 +358,6 @@ const ProfilePage: React.FC = () => {
                                         </button>
                                     </div>
                                 )}
-                            </div>
-                        )}
-
-                        {activeTab === 'security' && (
-                            <div className="space-y-6">
-                                <h2 className="text-xl font-bold text-gray-900">تغيير كلمة المرور</h2>
-
-                                <form onSubmit={handleChangePassword} className="space-y-4 max-w-md">
-                                    <div>
-                                        <label htmlFor="currentPassword" className="block text-sm font-medium text-gray-700 mb-1">
-                                            كلمة المرور الحالية
-                                        </label>
-                                        <input
-                                            id="currentPassword"
-                                            type="password"
-                                            value={currentPassword}
-                                            onChange={(e) => setCurrentPassword(e.target.value)}
-                                            className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500"
-                                            required
-                                        />
-                                    </div>
-                                    <div>
-                                        <label htmlFor="newPassword" className="block text-sm font-medium text-gray-700 mb-1">
-                                            كلمة المرور الجديدة
-                                        </label>
-                                        <input
-                                            id="newPassword"
-                                            type="password"
-                                            value={newPassword}
-                                            onChange={(e) => setNewPassword(e.target.value)}
-                                            className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500"
-                                            required
-                                            minLength={8}
-                                        />
-                                    </div>
-                                    <div>
-                                        <label htmlFor="confirmNewPassword" className="block text-sm font-medium text-gray-700 mb-1">
-                                            تأكيد كلمة المرور الجديدة
-                                        </label>
-                                        <input
-                                            id="confirmNewPassword"
-                                            type="password"
-                                            value={confirmNewPassword}
-                                            onChange={(e) => setConfirmNewPassword(e.target.value)}
-                                            className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500"
-                                            required
-                                        />
-                                    </div>
-                                    <button
-                                        type="submit"
-                                        disabled={isChangingPassword}
-                                        className="w-full py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 flex items-center justify-center gap-2"
-                                    >
-                                        {isChangingPassword ? (
-                                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                        ) : (
-                                            'تغيير كلمة المرور'
-                                        )}
-                                    </button>
-                                </form>
                             </div>
                         )}
 

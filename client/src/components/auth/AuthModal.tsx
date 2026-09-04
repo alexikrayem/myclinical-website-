@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, CheckCircle, Lock, User, Phone, ArrowRight, BookOpen, GraduationCap, Video } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import axios from 'axios';
@@ -21,6 +21,22 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = 'l
     const [phone, setPhone] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [error, setError] = useState('');
+
+    // H3: Sync mode and reset all form fields when the modal opens (or when
+    // initialMode prop changes). Without this, closing the modal in 'register'
+    // mode and reopening with 'login' would still show the register form.
+    // IMPORTANT: This effect is declared BEFORE the early-return guard to satisfy
+    // React rules of hooks — hooks must always be called in the same order.
+    useEffect(() => {
+        if (isOpen) {
+            setMode(initialMode);
+            setError('');
+            setPassword('');
+            setPhone('');
+            setName('');
+            setConfirmPassword('');
+        }
+    }, [isOpen, initialMode]);
 
     // Password validation — MUST mirror backend config/security.js exactly:
     // 8+ chars, at least one uppercase, one lowercase, one digit, one special char

@@ -117,6 +117,11 @@ export const articlesApi = {
     }
   },
 
+  getShared: async (token: string) => {
+    const response = await api.get(`/articles/shared/${token}`);
+    return response.data;
+  },
+
   // Get related articles
   getRelated: async (id: string, limit = 3) => {
     try {
@@ -248,6 +253,24 @@ export const authorsApi = {
       throw error;
     }
   },
+  getBySlug: async (slug: string) => {
+    const response = await api.get(`/authors/by-slug/${encodeURIComponent(slug)}`);
+    return response.data;
+  },
+};
+
+// Creator dashboard and submission API. All calls use the httpOnly user session.
+export const creatorApi = {
+  getProfile: async () => (await api.get('/me/profile')).data,
+  updateProfile: async (data: Record<string, unknown>) => (await api.put('/me/profile', data)).data,
+  getArticles: async () => (await api.get('/me/articles')).data,
+  createArticle: async (data: Record<string, unknown>) => (await api.post('/me/articles', data)).data,
+  updateArticle: async (id: string, data: Record<string, unknown>) => (await api.put(`/me/articles/${id}`, data)).data,
+  submitArticle: async (id: string) => (await api.post(`/me/articles/${id}/submit`)).data,
+  deleteArticle: async (id: string) => api.delete(`/me/articles/${id}`),
+  getCourses: async () => (await api.get('/me/courses')).data,
+  createCourse: async (data: Record<string, unknown>) => (await api.post('/me/courses', data)).data,
+  submitCourse: async (id: string) => (await api.post(`/me/courses/${id}/submit`)).data,
 };
 
 // Courses API
@@ -383,47 +406,38 @@ export const coursesApi = {
   }
 };
 
-// Auth API for regular users (phone + password)
+// Auth API — social login only (Meta/Facebook OAuth2)
 export const authApi = {
-  register: async (phoneNumber: string, password: string, displayName?: string) => {
+  /**
+   * Exchange a Meta OAuth authorization code for a session.
+   * For new users, `specialty` is required to complete account creation.
+   */
+  socialCallback: async (
+    provider: 'facebook' | 'instagram',
+    code: string,
+    specialty?: string
+  ) => {
     try {
-      const response = await api.post('/auth/register', {
-        phone_number: phoneNumber,
-        password,
-        display_name: displayName || undefined
+      const response = await api.post('/auth/social/callback', {
+        provider,
+        code,
+        specialty,
       });
       return response.data;
     } catch (error) {
-      console.error('Error registering:', error);
+      console.error('Error in social callback:', error);
       throw error;
     }
   },
 
-  registerDoctor: async (formData: FormData) => {
-    try {
-      const response = await api.post('/auth/register-doctor', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-      return response.data;
-    } catch (error) {
-      console.error('Error registering doctor:', error);
-      throw error;
-    }
-  },
-
-  login: async (phoneNumber: string, password: string) => {
-    try {
-      const response = await api.post('/auth/login', {
-        phone_number: phoneNumber,
-        password
-      });
-      return response.data;
-    } catch (error) {
-      console.error('Error logging in:', error);
-      throw error;
-    }
+  /** Returns public App ID + redirect URI + scopes needed to build OAuth URL client-side. */
+  getSocialConfig: async () => {
+    const response = await api.get('/auth/social/config');
+    return response.data as {
+      appId: string;
+      redirectUri: string;
+      scopes: Record<string, string>;
+    };
   },
 
   logout: async () => {
@@ -444,11 +458,10 @@ export const authApi = {
     }
   },
 
-  updateProfile: async (displayName: string) => {
+  /** Update display_name and/or specialty */
+  updateProfile: async (updates: { display_name?: string; specialty?: string }) => {
     try {
-      const response = await api.put('/auth/profile',
-        { display_name: displayName }
-      );
+      const response = await api.put('/auth/profile', updates);
       return response.data;
     } catch (error) {
       console.error('Error updating profile:', error);
@@ -456,17 +469,42 @@ export const authApi = {
     }
   },
 
-  changePassword: async (currentPassword: string, newPassword: string) => {
+  /**
+   * Submit professional verification documents as multipart/form-data.
+   * Fields: personal_id (File), medical_id (File), practice_license (File),
+   *         full_name (string), specialty (string), notes? (string)
+   */
+  submitVerification: async (formData: FormData) => {
     try {
-      const response = await api.put('/auth/change-password',
-        { current_password: currentPassword, new_password: newPassword }
-      );
+      const response = await api.post('/auth/verify', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
       return response.data;
     } catch (error) {
-      console.error('Error changing password:', error);
+      console.error('Error submitting verification:', error);
       throw error;
     }
-  }
+  },
+
+  /** Get the current user's latest verification submission status. */
+  getVerificationStatus: async () => {
+    try {
+      const response = await api.get('/auth/verification-status');
+      return response.data as {
+        is_verified: boolean;
+        submission: {
+          id: string;
+          status: 'pending' | 'approved' | 'rejected';
+          rejection_reason?: string | null;
+          created_at: string;
+          updated_at: string;
+        } | null;
+      };
+    } catch (error) {
+      console.error('Error fetching verification status:', error);
+      throw error;
+    }
+  },
 };
 
 // Credits API

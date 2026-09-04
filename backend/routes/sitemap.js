@@ -2,6 +2,7 @@ import express from 'express';
 import { supabasePublic as supabase } from '../config/supabase.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { AppError } from '../utils/errors.js';
+import { applyPublicArticleFilter } from '../utils/articleVisibility.js';
 
 const router = express.Router();
 
@@ -13,10 +14,10 @@ const SITE_URL = process.env.SITE_URL || 'https://tabeeb.com';
  */
 router.get('/sitemap.xml', asyncHandler(async (req, res) => {
     // Fetch all articles
-    const { data: articles, error: articlesError } = await supabase
+    const { data: articles, error: articlesError } = await applyPublicArticleFilter(supabase
         .from('articles')
         .select('id, slug, updated_at')
-        .order('updated_at', { ascending: false });
+        .order('updated_at', { ascending: false }));
 
     if (articlesError) {
         throw new AppError('Error generating sitemap', 500, 'SITEMAP_FETCH_FAILED');

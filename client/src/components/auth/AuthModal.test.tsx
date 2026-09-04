@@ -1,6 +1,6 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import AuthModal from './AuthModal';
 import { useAuth } from '../../context/AuthContext';
 import { BrowserRouter } from 'react-router-dom';
@@ -35,7 +35,9 @@ describe('AuthModal', () => {
     it('renders login mode initially if specified', () => {
         renderWithRouter(<AuthModal isOpen={true} onClose={mockOnClose} initialMode="login" />);
         expect(screen.getByText('أهلاً بعودتك! 👋')).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /تسجيل الدخول/i, hidden: true })).toBeInTheDocument();
+        // There are two buttons with this label (tab + submit form button), so use getAllByRole
+        const loginButtons = screen.getAllByRole('button', { name: /تسجيل الدخول/i });
+        expect(loginButtons.length).toBeGreaterThanOrEqual(1);
     });
 
     it('switches to register mode when button is clicked', () => {
@@ -96,12 +98,12 @@ describe('AuthModal', () => {
         fireEvent.submit(submitBtn!.closest('form')!);
 
         await waitFor(() => {
-            expect(screen.getByText('كلمة المرور يجب أن تكون 8 أحرف على الأقل وتحتوي على حرف ورقم')).toBeInTheDocument();
+            expect(screen.getByText('كلمة المرور يجب أن تحتوي على 8 أحرف على الأقل، حرف كبير وصغير، رقم، ورمز خاص')).toBeInTheDocument();
             expect(mockRegister).not.toHaveBeenCalled();
         });
 
         // Fix password, test mismatch
-        fireEvent.change(passwordInput, { target: { value: 'validPass123' } });
+        fireEvent.change(passwordInput, { target: { value: 'ValidPass1!' } });
         fireEvent.submit(submitBtn!.closest('form')!);
 
         await waitFor(() => {
@@ -119,15 +121,41 @@ describe('AuthModal', () => {
 
         fireEvent.change(nameInput, { target: { value: 'Test User' } });
         fireEvent.change(phoneInput, { target: { value: '0912345678' } });
-        fireEvent.change(passwordInput, { target: { value: 'validPass123' } });
-        fireEvent.change(confirmInput, { target: { value: 'validPass123' } });
+        // Password must satisfy strict validation: uppercase, lowercase, digit, special char
+        fireEvent.change(passwordInput, { target: { value: 'ValidPass1!' } });
+        fireEvent.change(confirmInput, { target: { value: 'ValidPass1!' } });
 
         const form = screen.getAllByRole('button', { name: /إنشاء الحساب/i }).find(btn => btn.closest('form'))!.closest('form')!;
         fireEvent.submit(form);
 
         await waitFor(() => {
-            expect(mockRegister).toHaveBeenCalledWith('0912345678', 'validPass123', 'Test User');
+            expect(mockRegister).toHaveBeenCalledWith('0912345678', 'ValidPass1!', 'Test User');
             expect(mockOnClose).toHaveBeenCalled();
         });
+    });
+
+    it('resets to initialMode when modal is reopened with a different mode (H3)', () => {
+        const { rerender } = renderWithRouter(
+            <AuthModal isOpen={true} onClose={mockOnClose} initialMode="register" />
+        );
+        // Initially shows register
+        expect(screen.getByText('ابدأ رحلتك معنا 🚀')).toBeInTheDocument();
+
+        // Close the modal
+        rerender(
+            <BrowserRouter>
+                <AuthModal isOpen={false} onClose={mockOnClose} initialMode="register" />
+            </BrowserRouter>
+        );
+
+        // Reopen with login mode
+        rerender(
+            <BrowserRouter>
+                <AuthModal isOpen={true} onClose={mockOnClose} initialMode="login" />
+            </BrowserRouter>
+        );
+
+        // Should now show login form, not register
+        expect(screen.getByText('أهلاً بعودتك! 👋')).toBeInTheDocument();
     });
 });

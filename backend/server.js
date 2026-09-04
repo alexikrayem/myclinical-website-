@@ -24,6 +24,8 @@ import uploadRoutes from './routes/upload.js';
 import sitemapRoutes from './routes/sitemap.js';
 import securePdfRoutes from './routes/securePdf.js';
 import searchRoutes from './routes/search.js';
+import meRoutes from './routes/me.js';
+import shareRoutes from './routes/share.js';
 import { setupSwagger } from './config/swagger.js';
 
 // Security Middleware
@@ -196,8 +198,10 @@ app.use('/api/credits', creditsRoutes);
 app.use('/api/auth', userAuthRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/search', searchRoutes);
+app.use('/api/me', meRoutes);
 
 // SEO Routes (no /api prefix)
+app.use('/', shareRoutes);
 app.use('/', sitemapRoutes);
 
 // 404 handler for API routes

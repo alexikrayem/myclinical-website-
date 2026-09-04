@@ -7,13 +7,12 @@ import { ar } from 'date-fns/locale';
 import { researchApi } from '../lib/api';
 import PdfViewer from '../components/research/PdfViewer';
 import ShareButtons from '../components/article/ShareButtons';
+import type { Research } from '../types/models';
 
 const ResearchDetailPage: React.FC = () => {
     const { id } = useParams<{ id: string }>();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const [research, setResearch] = useState<any | null>(null);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const [relatedPapers, setRelatedPapers] = useState<any[]>([]);
+    const [research, setResearch] = useState<Research | null>(null);
+    const [relatedPapers, setRelatedPapers] = useState<Research[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchParams] = useSearchParams();
     const initialViewMode = searchParams.get('view') === 'full' ? 'full' : 'abstract';
@@ -99,7 +98,9 @@ const ResearchDetailPage: React.FC = () => {
     }
 
     const currentUrl = typeof window !== 'undefined' ? window.location.href : '';
-    const formattedDate = format(new Date(research.publication_date), 'dd MMMM yyyy', { locale: ar });
+    const formattedDate = research.publication_date
+        ? format(new Date(research.publication_date), 'dd MMMM yyyy', { locale: ar })
+        : '';
 
     return (
         <div className="layout-modern py-12">

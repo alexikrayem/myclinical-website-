@@ -1,15 +1,15 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Menu, X, Search, Home, Newspaper, Stethoscope, GraduationCap, Microscope, ChevronDown, ArrowRight, User } from 'lucide-react';
 import UserMenu from '../auth/UserMenu';
 import AuthModal from '../auth/AuthModal';
 import CreditRedeemModal from '../credits/CreditRedeemModal';
 import { useAuth } from '../../context/AuthContext';
-
+import { useQuery } from '@tanstack/react-query';
 import SearchDropdown from '../common/SearchDropdown';
 import { useDebounce } from '../../hooks/useDebounce';
 import { searchApi, articlesApi, researchApi, coursesApi } from '../../lib/api';
-import type { GlobalSearchResult } from '../../lib/api';
+import type { GlobalSearchResult } from '../../types';
 
 const ENABLE_COURSES = import.meta.env.VITE_ENABLE_COURSES !== 'false';
 
@@ -33,7 +33,6 @@ const Navbar: React.FC = () => {
   // Header expansion state
   const [activePath, setActivePath] = useState<string | null>(null);
   const [isMenuExpanded, setIsMenuExpanded] = useState(false);
-  const [navData, setNavData] = useState<Record<string, NavItemData>>({});
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Search State
@@ -44,66 +43,74 @@ const Navbar: React.FC = () => {
 
   const { user } = useAuth();
 
-  // Fetch dynamic categories and tags
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [tags, journals, courseCats] = await Promise.all([
-          articlesApi.getTags() as Promise<string[]>,
-          researchApi.getJournals() as Promise<string[]>,
-          ENABLE_COURSES ? coursesApi.getCategories() as Promise<string[]> : Promise.resolve([])
-        ]);
+  // H4: Replace raw useEffect fetch with TanStack Query hooks.
+  // Data is near-static (tags, journals, categories change infrequently),
+  // so a 5-minute staleTime prevents redundant requests on every route change.
+  const { data: tags = [] } = useQuery<string[]>({
+    queryKey: ['navbar-tags'],
+    queryFn: () => articlesApi.getTags() as Promise<string[]>,
+    staleTime: 5 * 60 * 1000,
+  });
 
-        const data: Record<string, NavItemData> = {
-          '/articles': {
-            label: 'المقالات',
-            icon: Newspaper,
-            items: tags.slice(0, 6).map(tag => ({
-              name: tag,
-              path: `/articles?tag=${encodeURIComponent(tag)}`,
-              description: `تصفح المقالات المتعلقة بـ ${tag}`
-            }))
-          },
-          '/clinical-cases': {
-            label: 'حالات سريرية',
-            icon: Stethoscope,
-            items: tags.slice(0, 4).map(tag => ({
-              name: tag,
-              path: `/clinical-cases?tag=${encodeURIComponent(tag)}`,
-              description: `دراسة حالات سريرية في ${tag}`
-            }))
-          },
-          '/research-topics': {
-            label: 'أبحاث علمية',
-            icon: Microscope,
-            items: journals.slice(0, 4).map(journal => ({
-              name: journal,
-              path: `/research-topics?journal=${encodeURIComponent(journal)}`,
-              description: `أحدث الأبحاث من مجلة ${journal}`
-            }))
-          }
-        };
+  const { data: journals = [] } = useQuery<string[]>({
+    queryKey: ['navbar-journals'],
+    queryFn: () => researchApi.getJournals() as Promise<string[]>,
+    staleTime: 5 * 60 * 1000,
+  });
 
-        if (ENABLE_COURSES) {
-          data['/courses'] = {
-            label: 'الدورات',
-            icon: GraduationCap,
-            items: courseCats.slice(0, 4).map(cat => ({
-              name: cat,
-              path: `/courses?category=${encodeURIComponent(cat)}`,
-              description: `دورات تدريبية مختصة في ${cat}`
-            }))
-          };
-        }
+  const { data: courseCats = [] } = useQuery<string[]>({
+    queryKey: ['navbar-course-categories'],
+    queryFn: () => coursesApi.getCategories() as Promise<string[]>,
+    staleTime: 5 * 60 * 1000,
+    enabled: ENABLE_COURSES,
+  });
 
-        setNavData(data);
-      } catch (error) {
-        console.error("Error fetching navbar data:", error);
-      }
+  // Derive navData from query results — recomputed only when the data changes.
+  const navData = useMemo<Record<string, NavItemData>>(() => {
+    const data: Record<string, NavItemData> = {
+      '/articles': {
+        label: 'المقالات',
+        icon: Newspaper,
+        items: tags.slice(0, 6).map(tag => ({
+          name: tag,
+          path: `/articles?tag=${encodeURIComponent(tag)}`,
+          description: `تصفح المقالات المتعلقة بـ ${tag}`,
+        })),
+      },
+      '/clinical-cases': {
+        label: 'حالات سريرية',
+        icon: Stethoscope,
+        items: tags.slice(0, 4).map(tag => ({
+          name: tag,
+          path: `/clinical-cases?tag=${encodeURIComponent(tag)}`,
+          description: `دراسة حالات سريرية في ${tag}`,
+        })),
+      },
+      '/research-topics': {
+        label: 'أبحاث علمية',
+        icon: Microscope,
+        items: journals.slice(0, 4).map(journal => ({
+          name: journal,
+          path: `/research-topics?journal=${encodeURIComponent(journal)}`,
+          description: `أحدث الأبحاث من مجلة ${journal}`,
+        })),
+      },
     };
 
-    fetchData();
-  }, []);
+    if (ENABLE_COURSES) {
+      data['/courses'] = {
+        label: 'الدورات',
+        icon: GraduationCap,
+        items: courseCats.slice(0, 4).map(cat => ({
+          name: cat,
+          path: `/courses?category=${encodeURIComponent(cat)}`,
+          description: `دورات تدريبية مختصة في ${cat}`,
+        })),
+      };
+    }
+
+    return data;
+  }, [tags, journals, courseCats]);
 
   const openAuthModal = (mode: 'login' | 'register') => {
     setAuthMode(mode);

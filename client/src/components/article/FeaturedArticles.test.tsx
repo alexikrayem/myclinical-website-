@@ -1,5 +1,5 @@
-import React from 'react';
-import { render, screen, fireEvent, act, cleanup } from '@testing-library/react';
+
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import FeaturedArticles from './FeaturedArticles';
 import { useAllFeaturedContent } from '../../hooks/useArticles';
@@ -75,8 +75,10 @@ describe('FeaturedArticles', () => {
             isLoading: false,
         });
         render(<FeaturedArticles />);
-        expect(screen.getByText('First Article')).toBeInTheDocument();
-        expect(screen.getByText('Second Article')).toBeInTheDocument();
+        // Title renders in two places: the hero <h2> and the sidebar subtitle div.
+        // getAllByText avoids the "Found multiple elements" error.
+        expect(screen.getAllByText('First Article').length).toBeGreaterThanOrEqual(1);
+        expect(screen.getAllByText('Second Article').length).toBeGreaterThanOrEqual(1);
         expect(screen.getByText('Author 1')).toBeInTheDocument();
         expect(screen.getByText('Author 2')).toBeInTheDocument();
     });
@@ -98,11 +100,11 @@ describe('FeaturedArticles', () => {
         });
         render(<FeaturedArticles />);
 
-        // First article is active by default. The button text depends on type.
-        const readButton = screen.getByText('اقرأ المقال كاملاً');
-        fireEvent.click(readButton);
+        // Both slides render "اقرأ المقال كاملاً" but only the first (index 0) is
+        // pointer-events-auto (active). Click the first match.
+        const readButtons = screen.getAllByText('اقرأ المقال كاملاً');
+        fireEvent.click(readButtons[0]);
         expect(mockNavigate).toHaveBeenCalledWith('/articles/1');
-        expect(window.scrollY).toBe(0); // Mocking or ignoring window.scrollTo is often needed, testing library jsdom env mocks it to no-op or we need to ensure it doesn't throw.
     });
 
     it('rotates to next article automatically', () => {

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import ArticleCard from './ArticleCard';
 import { useArticles } from '../../hooks/useArticles';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { Search, Filter, X, Loader, FileText } from 'lucide-react';
 
 import { Article } from '../../types';
@@ -21,6 +22,7 @@ const ArticleList: React.FC<ArticleListProps> = ({ tag, limit = 12, showFilters 
   const [showTagFilter, setShowTagFilter] = useState(false);
   const [isVisible, setIsVisible] = useState(!lazy);
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const debouncedSearchTerm = useDebouncedValue(searchTerm, 500);
 
   useEffect(() => {
     if (!lazy || isVisible) return;
@@ -44,9 +46,9 @@ const ArticleList: React.FC<ArticleListProps> = ({ tag, limit = 12, showFilters 
   const queryParams = useMemo(() => {
     const params: Record<string, string | number> = { limit };
     if (selectedTags.length > 0) params.tag = selectedTags[0];
-    if (searchTerm) params.search = searchTerm;
+    if (debouncedSearchTerm) params.search = debouncedSearchTerm;
     return params;
-  }, [limit, selectedTags, searchTerm]);
+  }, [limit, selectedTags, debouncedSearchTerm]);
 
   const { data: response, isLoading: loading } = useArticles(isVisible ? queryParams : undefined);
 

@@ -76,36 +76,33 @@ const ArticleDetailPage: React.FC = () => {
         // Always use canonical UUID from API response for endpoints that require article_id
         const articleId = data?.id || id;
 
-        // Use server-side access check if available; fallback to credits endpoint
-        if (typeof data.has_access !== 'undefined') {
-          setHasAccess(data.has_access);
-        } else if (user && articleId) {
-          try {
-            const accessData = await creditsApi.checkArticleAccess(articleId);
-            setHasAccess(accessData.has_access);
-          } catch (error) {
-            console.error('Error checking article access:', error);
-          }
-        }
+        // Detail responses already include these values. Retain the legacy
+        // fallback only for an older API response that omits has_access.
+        setHasAccess(data.has_access ?? false);
+        setRequiresCredits(data.credits_required ?? 0);
 
-        // Fetch required credits (does not block rendering the article)
-        if (articleId) {
-          try {
-            const accessData = await creditsApi.checkArticleAccess(articleId);
-            setRequiresCredits(accessData.credits_required || 0);
-          } catch (error) {
-            console.error('Error fetching article credit requirement:', error);
-            setRequiresCredits(data?.credits_required || 0);
-          }
-        }
+        const relatedRequest = articlesApi.getRelated(articleId, 3);
+        const accessFallback = typeof data.has_access === 'undefined' && user
+          ? creditsApi.checkArticleAccess(articleId)
+          : null;
 
-        // Fetch related articles
-        try {
-          const relatedData = await articlesApi.getRelated(articleId, 3);
-          setRelatedArticles(relatedData || []);
-        } catch (error) {
-          console.error('Error fetching related articles:', error);
+        const [relatedResult, accessResult] = await Promise.allSettled([
+          relatedRequest,
+          accessFallback ?? Promise.resolve(null),
+        ]);
+
+        if (relatedResult.status === 'fulfilled') {
+          setRelatedArticles(relatedResult.value || []);
+        } else {
+          console.error('Error fetching related articles:', relatedResult.reason);
           setRelatedArticles([]);
+        }
+
+        if (accessResult.status === 'fulfilled' && accessResult.value) {
+          setHasAccess(accessResult.value.has_access);
+          setRequiresCredits(accessResult.value.credits_required || 0);
+        } else if (accessResult.status === 'rejected') {
+          console.error('Error checking article access:', accessResult.reason);
         }
       } catch (error) {
         console.error('Error fetching article:', error);

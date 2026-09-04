@@ -44,7 +44,10 @@ export interface Research {
     abstract?: string;
     excerpt?: string;
     journal_name?: string;
-    authors?: string[];
+    /** Field name returned by the backend API (alias for journal_name). */
+    journal?: string;
+    /** Authors may arrive as a pre-joined string or as an array. */
+    authors?: string | string[];
     publication_date?: string;
     url?: string;
     created_at?: string;

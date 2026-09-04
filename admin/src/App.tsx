@@ -21,6 +21,7 @@ import EditCourse from './pages/EditCourse';
 import GenerateCodes from './pages/GenerateCodes';
 import LicenseReports from './pages/LicenseReports';
 import Verifications from './pages/Verifications';
+import Submissions from './pages/Submissions';
 import NotFoundPage from './pages/NotFoundPage';
 
 // Context
@@ -54,6 +55,7 @@ function App() {
             <Route path="/codes/generate" element={<ProtectedRoute><GenerateCodes /></ProtectedRoute>} />
             <Route path="/licenses" element={<ProtectedRoute><LicenseReports /></ProtectedRoute>} />
             <Route path="/verifications" element={<ProtectedRoute><Verifications /></ProtectedRoute>} />
+            <Route path="/submissions" element={<ProtectedRoute><Submissions /></ProtectedRoute>} />
 
             {/* 404 Page */}
             <Route path="*" element={<NotFoundPage />} />

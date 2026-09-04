@@ -10,6 +10,7 @@ import { supabasePublic as supabase } from '../config/supabase.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { AppError } from '../utils/errors.js';
 import logger from '../config/logger.js';
+import { applyPublicArticleFilter } from '../utils/articleVisibility.js';
 
 const router = express.Router();
 
@@ -57,10 +58,10 @@ function sortMergedResults(items) {
 
 async function fetchArticles(ids) {
   if (!ids.length) return [];
-  const { data, error } = await supabase
+  const { data, error } = await applyPublicArticleFilter(supabase
     .from('articles')
     .select('id, title, excerpt, cover_image, author, tags, is_featured, publication_date, article_type, slug')
-    .in('id', ids);
+    .in('id', ids));
   if (error) throw new AppError('Search query failed', 500, 'SEARCH_QUERY_FAILED');
   return orderByIdList(data, ids);
 }
@@ -203,10 +204,10 @@ router.get('/',
       const tasks = [];
       if (types.includes('articles')) {
         tasks.push(
-          supabase
+          applyPublicArticleFilter(supabase
             .from('articles')
             .select('id, title, excerpt, cover_image, author, tags, is_featured, publication_date, article_type, slug', { count: 'exact' })
-            .or(`title.fts."${ftsString}",excerpt.fts."${ftsString}",author.fts."${ftsString}"`)
+            .or(`title.fts."${ftsString}",excerpt.fts."${ftsString}",author.fts."${ftsString}"`))
             .order('publication_date', { ascending: false })
             .range(offset, offset + limit - 1)
         );
